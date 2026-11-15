@@ -130,6 +130,11 @@ body.in-game h1 { font-size: 1.2rem; margin: 8px 0 6px; }
 .hand .card.none { opacity: 0.4; }
 #can-build { margin-top: 6px; }
 #hand-limit { margin-top: 2px; }
+.my-projects { margin-top: 10px; }
+.my-projects ul { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.my-project { display: flex; flex-direction: column; padding: 4px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); }
+.my-project .when { font-size: 0.75rem; color: var(--muted); }
+.my-project.lighthouse { border-color: #ffd400; }
 #hand-limit.warn { color: var(--strong); font-weight: 600; }
 .card { padding: 4px 8px; border-radius: 6px; border: 1px solid var(--line); font-weight: 600; color: #1d2228; }
 .card.r0 { background: var(--forest); color: #fff; } .card.r1 { background: var(--quarry); }

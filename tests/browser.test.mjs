@@ -235,17 +235,22 @@ for (const [name, type] of Object.entries(BROWSERS)) {
         await page.waitForFunction(b => document.querySelector('#log').textContent !== b, before, { timeout: 5000 });
         return true;
       };
-      const ready = async () => (await host.evaluate(() => document.body.dataset.phase === 'main' && document.body.dataset.myTurn === 'true'
-        && [...document.querySelectorAll('#hand .card')].some(c => c.dataset.count !== '0')))
-        && (await friend.evaluate(() => [...document.querySelectorAll('#hand .card')].filter(c => c.dataset.count !== '0').length >= 1));
-      for (let i = 0; i < 300 && !(await ready()); i++) {
+      // Ready: Ann's main turn, and she holds a resource while Matt holds a different one (so
+      // Matt has something else to give back). Returns that resource of Ann's, or -1.
+      const counts = page => page.evaluate(() => [...document.querySelectorAll('#hand .card')].map(c => Number(c.dataset.count)));
+      const ready = async () => {
+        if (!(await host.evaluate(() => document.body.dataset.phase === 'main' && document.body.dataset.myTurn === 'true'))) return -1;
+        const [ann, matt] = [await counts(host), await counts(friend)];
+        return ann.findIndex((n, r) => n > 0 && matt.some((m, s) => m > 0 && s !== r));
+      };
+      let gi = -1;
+      for (let i = 0; i < 600 && (gi = await ready()) < 0; i++) {
         if (!(await step(host)) && !(await step(friend))) await host.waitForTimeout(25);
       }
-      assert.ok(await ready(), 'reached a main turn where both hold cards');
+      assert.ok(gi >= 0, 'reached a main turn where Ann and Matt hold different resources');
 
-      // Ann offers 1 of her first card for 1 of the next resource
+      // Ann offers 1 of that resource for 1 of the next
       await host.click('[data-tab="trade"]');
-      const gi = await host.evaluate(() => [...document.querySelectorAll('#deal-give .stepper')].findIndex(s => !s.querySelector('button:last-child').disabled));
       await host.locator('#deal-give .stepper').nth(gi).locator('button').last().click();
       await host.locator('#deal-get .stepper').nth((gi + 1) % 5).locator('button').last().click();
       await host.click('#make-offer');
