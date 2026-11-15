@@ -149,6 +149,7 @@ body.in-game h1 { font-size: 1.2rem; margin: 8px 0 6px; }
 .shop-item button { grid-column: 2; grid-row: 1 / span 3; }
 .shop-item .why { grid-column: 1 / span 2; font-size: 0.8rem; color: var(--muted); }
 .shop-item .why:empty { display: none; }
+.shop-item:not(.project-item) + .project-item { margin-top: 8px; }
 .chip { font-size: 0.75rem; padding: 1px 6px; border-radius: 4px; border: 1px solid var(--line); color: #1d2228; }
 .chip.r0 { background: var(--forest); color: #fff; } .chip.r1 { background: var(--quarry); }
 .chip.r2 { background: var(--fields); } .chip.r3 { background: var(--mine); color: #fff; } .chip.r4 { background: var(--paddy); }

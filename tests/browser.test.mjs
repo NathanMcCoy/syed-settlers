@@ -131,9 +131,16 @@ for (const [name, type] of Object.entries(BROWSERS)) {
       assert.deepEqual(await page.locator('#shop [data-build]').evaluateAll(bs => bs.map(b => b.dataset.build)), ['path', 'hut', 'lodge']);
       assert.equal(await page.locator('.target').count(), 0, 'on your main turn nothing is lit until you pick');
       for (const item of await page.locator('#shop .shop-item').all()) {
-        const b = item.locator('[data-build]');
+        const b = item.locator('button');
         if (await b.isDisabled()) assert.notEqual((await item.locator('.why').textContent()).trim(), '', 'a disabled item says why');
       }
+      // Project cards are in the shop too: hidden by default, so one card drawn unseen, with its cost
+      const card = page.locator('#shop .shop-item.project-item');
+      assert.equal(await card.count(), 1);
+      assert.match(await card.textContent(), /Project card.*Drawn unseen.*\d+ left/);
+      assert.deepEqual(await card.locator('.chip').allTextContents(), ['Grain', 'Copper', 'Fish']);
+      const canBuy = await page.evaluate(() => [2, 3, 4].every(r => Number(document.querySelectorAll('#hand .card')[r].dataset.count) >= 1));
+      assert.equal(await card.locator('[data-buy="buy 0"]').isEnabled(), canBuy, 'Buy is on exactly when the hand pays for it');
       const ready = page.locator('#shop [data-build]:not([disabled])');
       if (await ready.count()) {
         const kind = await ready.first().getAttribute('data-build');
@@ -161,6 +168,23 @@ for (const [name, type] of Object.entries(BROWSERS)) {
       await page.waitForSelector('#offer-box[hidden]', { state: 'attached' });
       assert.match(await page.textContent('#log'), /offered/);
       assert.deepEqual(errors, []);
+    } finally {
+      await browser.close();
+    }
+  });
+
+  test(`${name}: with projects face up, the shop shows each face-up card by name`, async () => {
+    const { browser, page } = await open(type);
+    try {
+      await page.goto(base + '/');
+      await page.check('input[name="faceUp"]');
+      await page.click('button[type="submit"]');
+      await page.waitForSelector('#shop .project-item');
+      const names = await page.locator('#shop .project-item strong').allTextContents();
+      assert.equal(names.length, 3, 'the face-up row has 3 cards');
+      for (const n of names) assert.ok(['Pilot', 'Lighthouse', 'Road Crew', 'Good Harvest', 'Good Bargain'].includes(n), n);
+      assert.deepEqual(await page.locator('#shop [data-buy]').evaluateAll(bs => bs.map(b => b.dataset.buy)), ['buy 0', 'buy 1', 'buy 2']);
+      assert.ok(await page.locator('#shop [data-buy]').first().isDisabled(), 'not buyable during setup');
     } finally {
       await browser.close();
     }
