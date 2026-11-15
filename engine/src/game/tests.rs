@@ -384,7 +384,7 @@ fn trading_rates_bank_markets_and_good_bargain() {
 }
 
 #[test]
-fn paths_join_your_network_but_not_through_another_players_building() {
+fn paths_join_your_network_even_through_another_players_building() {
     let mut g = after_setup(2);
     g.phase = Phase::Main;
     g.current = 0;
@@ -399,23 +399,27 @@ fn paths_join_your_network_but_not_through_another_players_building() {
     for e in edges(&g) {
         let ok = gr.edge_corners[e].iter().any(|&c| {
             let c = c as usize;
-            g.corner_owner[c] == 0 || (g.corner_owner[c] == NOBODY && listed(&gr.corner_edges[c]).any(|x| g.edge_owner[x] == 0))
+            g.corner_owner[c] == 0 || listed(&gr.corner_edges[c]).any(|x| g.edge_owner[x] == 0)
         });
         assert!(ok, "every offered edge joins player 1's network");
     }
-    // Put player 2's Hut at the far end of one of player 1's edges: edges beyond it are cut off
+    // Put player 2's Hut at the far end of one of player 1's edges: player 1 can still build past it
     let mine = (0..gr.edges()).find(|&e| g.edge_owner[e] == 0 && gr.edge_corners[e].iter().any(|&c| g.corner_owner[c as usize] == NOBODY)).unwrap();
     let end = gr.edge_corners[mine].iter().map(|&c| c as usize).find(|&c| g.corner_owner[c] == NOBODY).unwrap();
+    let before = edges(&g);
     g.corner_owner[end] = 1;
     g.corner_kind[end] = HUT;
+    let after = edges(&g);
+    assert_eq!(before, after, "another player's Hut takes away no Path spots");
+    let mut past = 0;
     for e in listed(&gr.corner_edges[end]) {
-        if e == mine || g.edge_owner[e] != NOBODY {
+        if e == mine || g.edge_owner[e] != NOBODY || !board.edge_land[e] {
             continue;
         }
-        let other = gr.edge_corners[e].iter().map(|&c| c as usize).find(|&c| c != end).unwrap();
-        let reachable_otherwise = g.corner_owner[other] == 0 || listed(&gr.corner_edges[other]).any(|x| g.edge_owner[x] == 0);
-        assert_eq!(edges(&g).contains(&e), reachable_otherwise, "edge {e} past another player's Hut");
+        assert!(after.contains(&e), "edge {e} past another player's Hut is offered");
+        past += 1;
     }
+    assert!(past > 0, "the test looked at at least one edge past the Hut");
 }
 
 // A chain of `len` edges walking away from a corner, over land edges
@@ -437,7 +441,7 @@ fn chain(g: &Game, start: usize, len: usize) -> Vec<usize> {
 }
 
 #[test]
-fn longest_path_takes_the_longest_line_and_other_buildings_break_it() {
+fn longest_path_takes_the_longest_line_and_other_buildings_dont_break_it() {
     let mut g = game(3);
     g.turn = 1;
     g.phase = Phase::Main;
@@ -453,14 +457,14 @@ fn longest_path_takes_the_longest_line_and_other_buildings_break_it() {
     g.edge_kind[line[4]] = PATH;
     g.update_titles();
     assert_eq!((g.line[0], g.longest), (5, 0));
-    // Another player's Hut on the corner between the 2nd and 3rd edges splits it into 2 and 3
+    // Another player's Hut on the corner between the 2nd and 3rd edges doesn't split it
     let gr = &g.board.graph;
     let [a, b] = gr.edge_corners[line[1]];
     let mid = if gr.edge_corners[line[2]].contains(&a) { a } else { b } as usize;
     g.corner_owner[mid] = 1;
     g.corner_kind[mid] = HUT;
     g.update_titles();
-    assert_eq!((g.line[0], g.longest), (3, NOBODY));
+    assert_eq!((g.line[0], g.longest), (5, 0));
 }
 
 #[test]

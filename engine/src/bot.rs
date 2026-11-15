@@ -288,7 +288,7 @@ fn best_spot_beyond(g: &Game, p: u8, e: usize) -> f64 {
     best
 }
 
-// The best free spot p can reach by building along free edges (a shortest route that doesn't pass
+// The best free spot p can reach by building along free edges (a shortest route; it may pass
 // through other players' buildings), weighing value against distance: (corner, edges needed, the
 // first edge to build). Distance 0: buildable now.
 fn reachable_spot(g: &Game, p: u8) -> Option<(usize, u32, Option<usize>)> {
@@ -298,7 +298,7 @@ fn reachable_spot(g: &Game, p: u8) -> Option<(usize, u32, Option<usize>)> {
     let mut first: Vec<Option<usize>> = vec![None; corners];
     let mut queue = std::collections::VecDeque::new();
     for c in 0..corners {
-        let mine = g.corner_owner[c] == p || (g.corner_owner[c] == NOBODY && listed(&gr.corner_edges[c]).any(|e| g.edge_owner[e] == p));
+        let mine = g.corner_owner[c] == p || listed(&gr.corner_edges[c]).any(|e| g.edge_owner[e] == p);
         if mine {
             dist[c] = 0;
             queue.push_back(c);
@@ -308,9 +308,6 @@ fn reachable_spot(g: &Game, p: u8) -> Option<(usize, u32, Option<usize>)> {
         queue.clear(); // no Paths left: only spots already connected
     }
     while let Some(c) = queue.pop_front() {
-        if g.corner_owner[c] != NOBODY && g.corner_owner[c] != p {
-            continue; // can't build through another player's building
-        }
         for (k, n) in listed(&gr.corner_corners[c]).enumerate() {
             if dist[n] != u32::MAX {
                 continue;

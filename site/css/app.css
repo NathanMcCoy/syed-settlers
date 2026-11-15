@@ -131,7 +131,10 @@ body.in-game h1 { font-size: 1.2rem; margin: 8px 0 6px; }
 #hand-limit { margin-top: 2px; }
 .my-projects { margin-top: 10px; }
 .my-projects ul { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 6px; }
-.my-project { display: flex; flex-direction: column; padding: 4px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); }
+.my-project { display: flex; align-items: center; gap: 8px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); }
+.my-project .text { display: flex; flex-direction: column; }
+.my-project.usable { border-color: var(--sea); }
+.my-project .use { flex: none; }
 .my-project .when { font-size: 0.75rem; color: var(--muted); }
 .my-project.lighthouse { border-color: #ffd400; }
 #hand-limit.warn { color: var(--strong); font-weight: 600; }
