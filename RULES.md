@@ -59,7 +59,8 @@ island, so a good (or unfair) island can be shared and replayed.
 
 Small islands of 1–3 hexes offshore, reachable only by Boat.
 
-- **count** ⚙ 0–6 (default 2), spread around the island, at least one sea hex apart.
+- **count** ⚙ 0–6, spread around the island, at least one sea hex apart. **Default 0 for now:**
+  sailing is on hold (Nov 14) while the main game is settled; turn them on to try them.
 - **distance** ⚙ 1.0–3.0 (default 1.5): the average number of sea hexes between an islet and the
   main island. 1 is a narrow strait (about 2 Boats). Between whole numbers, some islets are nearer
   and some further: 1.5 with 2 islets means one at 1 and one at 2.
@@ -109,8 +110,9 @@ In this order:
 1. Everyone holding **more than 7** ⚙ cards loses half of them (rounded down), **choosing which**.
 2. The roller **moves the squall 1 to 4** ⚙ steps (counting every hex, sea included) onto a land
    hex. It must move.
-3. The roller takes one random card from a player with a building touching the squall's new hex.
-   If several have one, the roller chooses which; never from themselves; nothing if nobody has.
+3. The roller takes one random card from a player with a building touching the squall's new hex
+   who has at least one card. If several qualify, the roller chooses which; never from themselves;
+   nothing if nobody qualifies.
 
 ## Trading
 

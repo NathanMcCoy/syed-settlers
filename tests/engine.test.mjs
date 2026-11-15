@@ -34,7 +34,8 @@ test('islands come out of WebAssembly with every part', () => {
   const main = island.hexes.filter(h => h.terrain !== 'sea' && h.islet === null);
   assert.equal(main.length, 19, 'the hexagon, 5 across');
   assert.equal(island.markets.length, 7);
-  assert.equal(island.info.islets.length, 2);
+  assert.equal(island.info.islets.length, 0, 'islets are off by default for now');
+  assert.equal(engine.island('betta', { 'islets.count': 2 }).info.islets.length, 2);
   assert.equal(island.hexes[island.squall].terrain, 'dunes');
   assert.ok(main.some(h => h.terrain === 'paddy'));
   assert.deepEqual(engine.island('betta'), island, 'same seed, same island');

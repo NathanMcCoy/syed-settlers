@@ -4,7 +4,10 @@
 //
 // Speed matters (bots will play thousands of games), so the board is flat arrays of small numbers,
 // with no searching through lists during play, and nothing here allocates while a game is played.
+pub mod bot;
+pub mod game;
 pub mod hex;
+pub mod sim;
 pub mod island;
 pub mod json;
 pub mod rng;
