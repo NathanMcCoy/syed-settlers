@@ -16,6 +16,8 @@
 }
 
 * { box-sizing: border-box; }
+/* Hidden means hidden, even for elements whose style sets how they're displayed */
+[hidden] { display: none !important; }
 html { touch-action: manipulation; }
 body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.4 system-ui, sans-serif; }
 header, main { max-width: 960px; margin: 0 auto; padding: 0 16px; }
@@ -71,24 +73,95 @@ select, input { font: inherit; color: var(--text); background: var(--bg); border
 /* Desktop: the game uses the whole width, and the board is 80% of the window's height */
 @media (min-width: 821px) {
   body.in-game header, body.in-game main { max-width: none; padding: 0 24px; }
-  body.in-game .table { grid-template-columns: minmax(0, 1fr) 360px; }
+  body.in-game .table { grid-template-columns: minmax(0, 1fr) 380px; }
   body.in-game #board svg { height: 80vh; max-height: none; }
 }
+/* In a game, the header is one short line, so the turn bar and the board fit the window */
+body.in-game header .sub { display: none; }
+body.in-game h1 { font-size: 1.2rem; margin: 8px 0 6px; }
+.main-col { min-width: 0; }
+.main-col .error:empty { display: none; }
 .side { min-width: 0; }
 .status { font-weight: 600; margin: 0 0 8px; min-height: 1.4em; }
 .choices { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
 
-.players { list-style: none; padding: 0; margin: 0 0 10px; display: flex; flex-direction: column; gap: 4px; }
-.player { display: grid; grid-template-columns: 14px auto; column-gap: 8px; align-items: center; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
-.player .info { grid-column: 2; color: var(--muted); font-size: 0.85rem; }
+/* Players: compact cards with a Renown bar */
+.players { list-style: none; padding: 0; margin: 0 0 10px; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 6px; }
+.player { padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
 .player.acting { outline: 2px solid var(--text); }
+.player.winner { outline: 3px solid #ffd400; }
+.player-top { display: flex; align-items: center; gap: 6px; }
+.player-top strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.player .tag { font-size: 0.75rem; color: var(--muted); }
+.player .renown { margin-left: auto; font-weight: 700; font-variant-numeric: tabular-nums; }
+.bar { height: 6px; border-radius: 3px; background: var(--line); margin: 5px 0 4px; overflow: hidden; }
+.bar .fill { height: 100%; border-radius: 3px; }
+.fill.p0 { background: var(--p0); } .fill.p1 { background: var(--p1); } .fill.p2 { background: var(--p2); } .fill.p3 { background: var(--p3); }
+.player .info { color: var(--muted); font-size: 0.8rem; }
+.title-badge { display: inline-block; font-size: 0.7rem; font-weight: 700; padding: 0 6px; border-radius: 9px; background: #ffd400; color: #1d2228; }
+
+/* The turn bar above the board */
+.turnbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+.turnbar .status { margin: 0; flex: 1 1 260px; }
+.turnbar .choices { margin: 0; }
+.dice { display: flex; align-items: center; gap: 6px; }
+.die { width: 30px; height: 30px; border-radius: 6px; background: #fffaf0; border: 1px solid #b9b2a3; display: grid; grid-template: repeat(3, 1fr) / repeat(3, 1fr); padding: 4px; box-sizing: border-box; }
+.die span { display: block; }
+.die .pip { background: #1d2228; border-radius: 50%; margin: 1px; }
+.dice .total { font-weight: 700; font-size: 1.2rem; min-width: 1.5em; }
+.dice .round { font-size: 0.85rem; color: var(--muted); white-space: nowrap; }
+.board-wrap { position: relative; }
+.toast { position: absolute; left: 50%; top: 8px; transform: translateX(-50%); margin: 0; padding: 8px 14px; border-radius: 8px; background: rgba(20, 24, 29, 0.88); color: #fff; font-weight: 600; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3); max-width: calc(100% - 24px); text-align: center; pointer-events: none; }
+
+/* Tabs */
+.tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); margin: 6px 0 0; }
+.tabs [role="tab"] { border: 1px solid transparent; border-bottom: none; border-radius: 6px 6px 0 0; background: none; padding: 6px 12px; color: var(--muted); position: relative; }
+.tabs [role="tab"][aria-selected="true"] { border-color: var(--line); background: var(--panel); color: var(--text); font-weight: 600; margin-bottom: -1px; }
+.badge { display: inline-block; min-width: 1.2em; padding: 0 4px; border-radius: 9px; background: var(--strong); color: #fff; font-size: 0.75rem; font-weight: 700; }
+.tab-panel { border-top-left-radius: 0; border-top: none; }
+.tab-panel > div + div { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--line); }
 .dot { width: 14px; height: 14px; border-radius: 50%; display: inline-block; }
 .dot.p0 { background: var(--p0); } .dot.p1 { background: var(--p1); } .dot.p2 { background: var(--p2); } .dot.p3 { background: var(--p3); }
 
-.hand { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.hand { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.hand .card { display: flex; flex-direction: column; align-items: center; padding: 6px 2px; }
+.hand .card b { font-size: 1.5rem; line-height: 1.1; }
+.hand .card span { font-size: 0.75rem; }
+.hand .card.none { opacity: 0.4; }
+#can-build { margin-top: 6px; }
+#hand-limit { margin-top: 2px; }
+#hand-limit.warn { color: var(--strong); font-weight: 600; }
 .card { padding: 4px 8px; border-radius: 6px; border: 1px solid var(--line); font-weight: 600; color: #1d2228; }
 .card.r0 { background: var(--forest); color: #fff; } .card.r1 { background: var(--quarry); }
 .card.r2 { background: var(--fields); } .card.r3 { background: var(--mine); color: #fff; } .card.r4 { background: var(--paddy); }
+
+/* The Build shop */
+.shop { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
+.shop-item { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; align-items: center; padding: 6px; border-radius: 6px; }
+.shop-item.picked { outline: 2px solid #ffd400; }
+.shop-item strong { grid-column: 1; }
+.shop-item .note { grid-column: 1; margin: 0; }
+.shop-item .cost-chips { grid-column: 1; display: flex; flex-wrap: wrap; gap: 3px; }
+.shop-item button { grid-column: 2; grid-row: 1 / span 3; }
+.shop-item .why { grid-column: 1 / span 2; font-size: 0.8rem; color: var(--muted); }
+.shop-item .why:empty { display: none; }
+.chip { font-size: 0.75rem; padding: 1px 6px; border-radius: 4px; border: 1px solid var(--line); color: #1d2228; }
+.chip.r0 { background: var(--forest); color: #fff; } .chip.r1 { background: var(--quarry); }
+.chip.r2 { background: var(--fields); } .chip.r3 { background: var(--mine); color: #fff; } .chip.r4 { background: var(--paddy); }
+.chip.short { opacity: 0.35; }
+
+/* Trading with players */
+.offer { border-color: #ffd400; }
+.answers { list-style: none; padding: 0; margin: 4px 0 8px; font-size: 0.9rem; }
+.answers li.p0::before, .answers li.p1::before, .answers li.p2::before, .answers li.p3::before { content: "● "; }
+.answers li.p0::before { color: var(--p0); } .answers li.p1::before { color: var(--p1); }
+.answers li.p2::before { color: var(--p2); } .answers li.p3::before { color: var(--p3); }
+.steppers { display: flex; flex-wrap: wrap; gap: 6px; }
+.stepper { display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px; }
+.stepper button { padding: 0 8px; min-width: 28px; }
+#deal-box #make-offer { margin-top: 10px; }
+.open-offer { display: flex; align-items: center; gap: 6px; margin-top: 10px; font-size: 0.9rem; }
+#counter-box { margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--line); }
 
 .pick { display: flex; flex-wrap: wrap; gap: 6px; }
 .pick button[aria-pressed="true"] { outline: 3px solid var(--text); outline-offset: 1px; }
@@ -116,9 +189,17 @@ select, input { font: inherit; color: var(--text); background: var(--bg); border
 .road.p2, .building.p2 { stroke: var(--p2); } .road.p3, .building.p3 { stroke: var(--p3); }
 .building { stroke: #fff !important; stroke-width: 2; }
 .building.p0 { fill: var(--p0); } .building.p1 { fill: var(--p1); } .building.p2 { fill: var(--p2); } .building.p3 { fill: var(--p3); }
-.target { cursor: pointer; }
+/* What just happened: producing hexes flash; new pieces glow */
+.token.flash { animation: flash 1.8s ease-out; }
+@keyframes flash { 0%, 40% { fill: #ffd400; stroke: #ffd400; stroke-width: 6; } 100% { fill: #fffaf0; stroke-width: 1; } }
+.building.new, .road.new, .squall.new { animation: glow 2s ease-out; }
+@keyframes glow { 0%, 50% { filter: drop-shadow(0 0 6px #ffd400) drop-shadow(0 0 3px #fff); } 100% { filter: none; } }
+@media (prefers-reduced-motion: reduce) { .token.flash, .building.new, .road.new, .squall.new { animation: none; } }
+/* Lit spots catch clicks over their whole area, even where they're see-through (a Lodge spot is
+   a ring around your Hut: clicking the Hut in its middle must work) */
+.target { cursor: pointer; pointer-events: all; }
 .target.corner { fill: #fff; fill-opacity: 0.85; stroke: #1d2228; stroke-width: 2; }
-.target.corner.lodge { fill: none; stroke: #fff; stroke-width: 3; stroke-dasharray: 3 2; r: 13; }
+.target.corner.lodge { fill: #ffd400; fill-opacity: 0.15; stroke: #fff; stroke-width: 3; stroke-dasharray: 3 2; }
 .target.edge { stroke: #fff; stroke-opacity: 0.75; stroke-width: 9; stroke-linecap: round; }
 .target.edge.chosen { stroke: #ffd400; stroke-opacity: 1; }
 .target.hex-target { fill: #fff; fill-opacity: 0.18; stroke: #fff; stroke-width: 3; }

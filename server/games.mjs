@@ -50,7 +50,8 @@ export function makeGames(engine, { botDelay = 700, now = () => Date.now() } = {
       if (s.kind === 'bot') return { kind: 'bot', name: bots.pop(), key: null, from: i };
       const key = newKey();
       keys.push({ from: i, seat, key });
-      return { kind: 'person', name: cleanName(s.name, i === 0 ? 'You' : `Friend ${i}`), key: hash(key), from: i };
+      // A blank name: "Host" for whoever started the game ("You" would read wrong on friends' screens)
+      return { kind: 'person', name: cleanName(s.name, i === 0 ? 'Host' : `Friend ${i}`), key: hash(key), from: i };
     });
     const game = { id, engineId, seats: table, log: [], listeners: new Set(), timer: null, touched: now(), created: now() };
     games.set(id, game);
@@ -116,16 +117,24 @@ export function makeGames(engine, { botDelay = 700, now = () => Date.now() } = {
     schedule(game);
   }
 
+  // Bots' next step, after a pause: first answers to an open offer made to bots (one per pause, so
+  // people see them come in), then the move of a bot whose turn it is
   function schedule(game) {
     if (game.timer) return;
     const v = engine.view(game.engineId, null);
-    if (v.phase === 'over' || game.seats[v.toAct].kind !== 'bot') return;
+    if (v.phase === 'over') return;
+    const answering = v.offer ? v.offer.to.find(s => game.seats[s].kind === 'bot' && v.offer.answers[s] === null) : undefined;
+    if (answering === undefined && game.seats[v.toAct].kind !== 'bot') return;
     game.timer = setTimeout(() => {
       game.timer = null;
       if (!games.has(game.id)) return;
-      const seat = engine.view(game.engineId, null).toAct;
-      const move = engine.bot(game.engineId);
-      record(game, seat, move);
+      if (answering !== undefined) {
+        const move = engine.botAnswer(game.engineId, answering);
+        if (move) record(game, answering, move);
+      } else {
+        const seat = engine.view(game.engineId, null).toAct;
+        record(game, seat, engine.bot(game.engineId));
+      }
       changed(game);
     }, botDelay);
   }

@@ -17,11 +17,11 @@ pub const NOBODY: u8 = u8::MAX;
 
 // Resources, in this order everywhere: Timber, Stone, Grain, Copper, Fish
 pub type Hand = [u8; 5];
-pub const PATH_COST: Hand = [1, 1, 0, 0, 0];
-pub const BOAT_COST: Hand = [1, 0, 0, 0, 1];
-pub const HUT_COST: Hand = [1, 1, 1, 0, 1];
-pub const LODGE_COST: Hand = [0, 0, 2, 3, 0];
-pub const PROJECT_COST: Hand = [0, 0, 1, 1, 1];
+pub const PATH_COST: Hand = [1, 1, 0, 0, 0];     // Timber + Stone
+pub const BOAT_COST: Hand = [1, 0, 0, 0, 1];     // Timber + Fish
+pub const HUT_COST: Hand = [1, 1, 1, 0, 1];      // Timber + Stone + Grain + Fish
+pub const LODGE_COST: Hand = [0, 0, 2, 3, 0];    // 2 Grain + 3 Copper
+pub const PROJECT_COST: Hand = [0, 0, 1, 1, 1];  // Grain + Copper + Fish
 
 // What stands on a corner or an edge (0: nothing)
 pub const HUT: u8 = 1;
@@ -61,6 +61,18 @@ pub enum Action {
     Play(Project),
     Take(u8),        // choose a resource (Good Harvest, Fair Winds)
     EndTurn,
+    // Trading between players (RULES.md "Trading"): the player whose turn it is offers cards for
+    // cards to some of the others (`to`: one bit per seat); each answers; the offerer completes the
+    // deal with one who accepted, or withdraws. Offers aren't in legal() (too many to list): see
+    // offer_ok().
+    // `open`: the first to accept trades at once, without the offerer choosing
+    Offer { give: Hand, get: Hand, to: u8, open: bool },
+    Answer(u8, bool), // this seat accepts (true) or declines the offer
+    Deal(u8),         // trade with this seat, who accepted
+    Withdraw,
+    // A seat offered the trade proposes a changed one instead: what the OFFERER would give and get
+    Counter { seat: u8, give: Hand, get: Hand },
+    Accept(u8),       // the offerer takes this seat's counter-offer
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -172,10 +184,42 @@ pub struct Game {
     pub winds: u8,                    // Fair Winds' resource this turn, or NOBODY
     pub last_roll: u8,
     pub winner: u8,
+    pub last_dice: [u8; 2],           // the last roll's two dice (0, 0 before the first)
+    pub short: u8,                    // resources the bank couldn't pay on the last roll (a bit each)
+    pub by_rounds: bool,              // the game ended at the round limit (the winner may be NOBODY: a draw)
+    pub offer: Option<Offer>,         // the current player's open offer to other players
+    pub offers_made: u8,              // this turn
     pub rng: Rng,
 }
 
-fn afford(hand: &Hand, cost: &Hand) -> bool {
+// An offer to other players: what the offerer gives and wants, who it's to (a bit per seat), and
+// each seat's answer (0 none yet, 1 accepted, 2 declined)
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct Offer {
+    pub give: Hand,
+    pub get: Hand,
+    pub to: u8,
+    pub open: bool,
+    pub answers: [u8; MAX_PLAYERS],
+    // Counter-offers, per seat: what the offerer would give and get instead
+    pub counters: [Option<(Hand, Hand)>; MAX_PLAYERS],
+}
+pub const ACCEPTED: u8 = 1;
+pub const DECLINED: u8 = 2;
+pub const COUNTERED: u8 = 3;
+
+// Is this a real trade: cards on both sides, no resource on both?
+fn trade_shape_ok(give: &Hand, get: &Hand) -> Result<(), String> {
+    if give.iter().all(|&n| n == 0) || get.iter().all(|&n| n == 0) {
+        return Err("an offer needs cards on both sides".into());
+    }
+    if (0..5).any(|r| give[r] > 0 && get[r] > 0) {
+        return Err("a resource can't be on both sides".into());
+    }
+    Ok(())
+}
+
+pub fn afford(hand: &Hand, cost: &Hand) -> bool {
     hand.iter().zip(cost).all(|(h, c)| h >= c)
 }
 fn pay(hand: &mut Hand, cost: &Hand) {
@@ -231,6 +275,11 @@ impl Game {
             winds: NOBODY,
             last_roll: 0,
             winner: NOBODY,
+            last_dice: [0, 0],
+            short: 0,
+            by_rounds: false,
+            offer: None,
+            offers_made: 0,
             rng,
             board,
         }
@@ -411,7 +460,7 @@ impl Game {
                 for give in 0..5 {
                     if hand[give] >= self.rate(p, give) {
                         for get in 0..5 {
-                            if get != give {
+                            if get != give && self.bank(get) > 0 {
                                 out.push(Action::Trade(give as u8, get as u8));
                             }
                         }
@@ -427,13 +476,31 @@ impl Game {
                     }
                 }
                 self.legal_plays(pu, out);
+                if let Some(o) = &self.offer {
+                    out.push(Action::Withdraw);
+                    for s in 0..self.players {
+                        if o.answers[s] == ACCEPTED && self.deal_ok(s) {
+                            out.push(Action::Deal(s as u8));
+                        }
+                        if self.counter_deal_ok(s) {
+                            out.push(Action::Accept(s as u8));
+                        }
+                    }
+                }
                 out.push(Action::EndTurn);
             }
             Phase::FreeBuild { .. } => {
                 let p = self.current;
                 self.legal_edges(p, self.pieces[p as usize][P_PATH] > 0, self.pieces[p as usize][P_BOAT] > 0, out);
             }
-            Phase::Harvest { .. } | Phase::Winds => {
+            Phase::Harvest { .. } => {
+                for r in 0..5 {
+                    if self.bank(r as usize) > 0 {
+                        out.push(Action::Take(r));
+                    }
+                }
+            }
+            Phase::Winds => {
                 for r in 0..5 {
                     out.push(Action::Take(r));
                 }
@@ -454,6 +521,86 @@ impl Game {
                 out.push(Action::Boat(e as u16));
             }
         }
+    }
+
+    // Every action `seat` may take now: the player to act's legal(), plus answers to an open offer
+    // made to this seat (others answer while it's someone else's turn)
+    pub fn legal_for(&self, seat: u8, out: &mut Vec<Action>) {
+        if seat == self.to_act() {
+            self.legal(out);
+        } else {
+            out.clear();
+        }
+        if let Some(o) = &self.offer {
+            let s = seat as usize;
+            if seat != self.current && s < self.players && o.to & (1 << s) != 0 && o.answers[s] == 0 && !self.over() {
+                // Accepting an open offer trades at once, so the offerer must still hold the cards too
+                if afford(&self.hands[s], &o.get) && (!o.open || self.deal_ok(s)) {
+                    out.push(Action::Answer(seat, true));
+                }
+                out.push(Action::Answer(seat, false));
+            }
+        }
+    }
+
+    // May the current player make this offer now? Why not, if not.
+    pub fn offer_ok(&self, give: &Hand, get: &Hand, to: u8) -> Result<(), String> {
+        if self.phase != Phase::Main {
+            return Err("offers are made after rolling".into());
+        }
+        if self.offers_made >= self.settings().trade_offers {
+            return Err(format!("{} offers a turn at most", self.settings().trade_offers));
+        }
+        trade_shape_ok(give, get)?;
+        if !afford(&self.hands[self.current as usize], give) {
+            return Err("you don't have those cards".into());
+        }
+        let others: u8 = (0..self.players as u8).filter(|&s| s != self.current).map(|s| 1 << s).sum();
+        if to == 0 || to & !others != 0 {
+            return Err("offer to one or more of the other players".into());
+        }
+        Ok(())
+    }
+
+    // Can the open offer still be completed with seat s (both still hold the cards)?
+    fn deal_ok(&self, s: usize) -> bool {
+        self.offer.is_some_and(|o| afford(&self.hands[self.current as usize], &o.give) && afford(&self.hands[s], &o.get))
+    }
+
+    // May `seat` send this counter-offer (what the offerer would give and get) now? Why not, if not.
+    pub fn counter_ok(&self, seat: u8, give: &Hand, get: &Hand) -> Result<(), String> {
+        let Some(o) = &self.offer else { return Err("there's no offer to answer".into()) };
+        let s = seat as usize;
+        if seat == self.current || s >= self.players || o.to & (1 << s) == 0 {
+            return Err("only a player offered the trade can counter it".into());
+        }
+        if o.answers[s] == ACCEPTED {
+            return Err("you've already accepted".into());
+        }
+        trade_shape_ok(give, get)?;
+        if !afford(&self.hands[s], get) {
+            return Err("you don't have those cards".into());
+        }
+        Ok(())
+    }
+
+    // Can the offerer still take seat s's counter-offer (both hold the cards)?
+    fn counter_deal_ok(&self, s: usize) -> bool {
+        self.offer.is_some_and(|o| {
+            o.counters[s].is_some_and(|(give, get)| afford(&self.hands[self.current as usize], &give) && afford(&self.hands[s], &get))
+        })
+    }
+
+    // The offerer gives `give` to seat s and gets `get` from them; the offer ends
+    fn swap(&mut self, s: usize, give: Hand, get: Hand) {
+        let me = self.current as usize;
+        pay(&mut self.hands[me], &give);
+        pay(&mut self.hands[s], &get);
+        for r in 0..5 {
+            self.hands[me][r] += get[r];
+            self.hands[s][r] += give[r];
+        }
+        self.offer = None;
     }
 
     fn legal_plays(&self, p: usize, out: &mut Vec<Action>) {
@@ -481,10 +628,27 @@ impl Game {
 
     // Takes the action if it's legal now; otherwise changes nothing and says why
     pub fn apply(&mut self, a: Action) -> Result<(), String> {
-        let mut list = Vec::new();
-        self.legal(&mut list);
-        if !list.contains(&a) {
-            return Err(format!("{a:?} isn't allowed now ({:?})", self.phase));
+        self.apply_as(self.to_act(), a)
+    }
+
+    // The same, for an action by `seat` (answers to offers come from seats other than the one to act)
+    pub fn apply_as(&mut self, seat: u8, a: Action) -> Result<(), String> {
+        if let Action::Offer { give, get, to, .. } = a {
+            if seat != self.current || self.to_act() != seat {
+                return Err("it isn't your turn".into());
+            }
+            self.offer_ok(&give, &get, to)?;
+        } else if let Action::Counter { seat: s, give, get } = a {
+            if s != seat {
+                return Err("nobody counters for someone else".into());
+            }
+            self.counter_ok(seat, &give, &get)?;
+        } else {
+            let mut list = Vec::new();
+            self.legal_for(seat, &mut list);
+            if !list.contains(&a) {
+                return Err(format!("{a:?} isn't allowed now ({:?})", self.phase));
+            }
         }
         self.apply_unchecked(a);
         Ok(())
@@ -553,31 +717,85 @@ impl Game {
                     Project::Lighthouse => unreachable!("Lighthouses aren't played"),
                 };
                 self.finish_free_build();
+                self.finish_harvest();
             }
             Action::Take(r) => match self.phase {
                 Phase::Harvest { left } => {
                     self.hands[pu][r as usize] += 1;
                     self.phase = if left > 1 { Phase::Harvest { left: left - 1 } } else { self.back };
+                    self.finish_harvest();
                 }
                 _ => {
                     self.winds = r;
                     self.phase = self.back;
                 }
             },
+            Action::Offer { give, get, to, open } => {
+                self.offer = Some(Offer { give, get, to, open, answers: [0; MAX_PLAYERS], counters: [None; MAX_PLAYERS] });
+                self.offers_made += 1;
+            }
+            Action::Answer(s, yes) => {
+                let o = self.offer.as_mut().expect("an offer");
+                o.answers[s as usize] = if yes { ACCEPTED } else { DECLINED };
+                // An open offer goes to the first who accepts, at once
+                if yes && o.open {
+                    let (give, get) = (o.give, o.get);
+                    self.swap(s as usize, give, get);
+                }
+            }
+            Action::Deal(s) => {
+                let o = self.offer.expect("an offer");
+                self.swap(s as usize, o.give, o.get);
+            }
+            Action::Counter { seat, give, get } => {
+                let o = self.offer.as_mut().expect("an offer");
+                o.counters[seat as usize] = Some((give, get));
+                o.answers[seat as usize] = COUNTERED;
+            }
+            Action::Accept(s) => {
+                let (give, get) = self.offer.expect("an offer").counters[s as usize].expect("a counter-offer");
+                self.swap(s as usize, give, get);
+            }
+            Action::Withdraw => self.offer = None,
             Action::EndTurn => {
+                self.offer = None;
+                self.offers_made = 0;
                 self.current = ((self.current as usize + 1) % self.players) as u8;
                 self.turn += 1;
                 self.bought = [0; 5];
                 self.project_used = false;
                 self.winds = NOBODY;
                 self.phase = Phase::PreRoll;
+                let limit = self.settings().round_limit as u32;
+                if limit > 0 && self.turn > limit * self.players as u32 {
+                    self.end_by_rounds();
+                    return;
+                }
             }
         }
         // You win the moment you have enough Renown during your own turn
         if self.turn > 0 && self.phase != Phase::Over && self.renown(self.current as usize) >= self.settings().win as u32 {
             self.winner = self.current;
             self.phase = Phase::Over;
+            self.offer = None;
         }
+    }
+
+    // The round limit is reached: the most Renown wins; a tie goes to more Lodges; still level, a
+    // draw (winner NOBODY)
+    fn end_by_rounds(&mut self) {
+        let score = |p: usize| (self.renown(p), self.lodges(p));
+        let best = (0..self.players).map(score).max().unwrap();
+        let leaders: Vec<usize> = (0..self.players).filter(|&p| score(p) == best).collect();
+        self.winner = if leaders.len() == 1 { leaders[0] as u8 } else { NOBODY };
+        self.by_rounds = true;
+        self.phase = Phase::Over;
+        self.offer = None;
+    }
+
+    // The round being played (1 for the first; 0 during setup)
+    pub fn round(&self) -> u32 {
+        if self.turn == 0 { 0 } else { (self.turn - 1) / self.players as u32 + 1 }
     }
 
     fn place_hut(&mut self, p: u8, c: usize) {
@@ -598,7 +816,7 @@ impl Game {
             if self.setup_step as usize >= self.players {
                 for h in listed(&self.board.graph.corner_hexes[c]) {
                     let r = self.board.resource[h];
-                    if r != NOBODY {
+                    if r != NOBODY && self.bank(r as usize) > 0 {
                         self.hands[pu][r as usize] += 1;
                     }
                 }
@@ -649,13 +867,15 @@ impl Game {
     }
 
     fn roll(&mut self) {
-        let total = (self.rng.below(6) + self.rng.below(6) + 2) as u8;
-        self.rolled(total);
+        let dice = [self.rng.below(6) as u8 + 1, self.rng.below(6) as u8 + 1];
+        self.last_dice = dice;
+        self.rolled(dice[0] + dice[1]);
     }
 
     // What a dice total does (separate from the dice so tests can choose the total)
     fn rolled(&mut self, total: u8) {
         self.last_roll = total;
+        self.short = 0;
         self.back = Phase::Main;
         if total == 7 {
             let over = self.settings().discard_over as u32;
@@ -671,8 +891,11 @@ impl Game {
     }
 
     // Every hex with this number (except under the squall) pays 1 per Hut and 2 per Lodge around it
+    // With a limited bank, a resource the bank can't pay in full to everyone owed it goes to nobody
+    // (that roll); `short` records which ones, for the page
     fn produce(&mut self, total: u8) {
         let g = &self.board.graph;
+        let mut owed = [[0u8; 5]; MAX_PLAYERS];
         for &h in &self.board.by_number[total as usize] {
             if h == self.squall {
                 continue;
@@ -681,8 +904,38 @@ impl Game {
             for &c in &g.hex_corners[h as usize] {
                 let o = self.corner_owner[c as usize];
                 if o != NOBODY {
-                    self.hands[o as usize][r] += self.corner_kind[c as usize];
+                    owed[o as usize][r] += self.corner_kind[c as usize];
                 }
+            }
+        }
+        self.short = 0;
+        for r in 0..5 {
+            let wanted: u32 = owed.iter().map(|o| o[r] as u32).sum();
+            if wanted > self.bank(r) {
+                self.short |= 1 << r;
+                continue;
+            }
+            for p in 0..self.players {
+                self.hands[p][r] += owed[p][r];
+            }
+        }
+    }
+
+    // Cards of a resource left in the bank: the game's total less what players hold (u32::MAX when
+    // the bank never runs out)
+    pub fn bank(&self, r: usize) -> u32 {
+        let cap = self.settings().bank_cards as u32;
+        if cap == 0 {
+            return u32::MAX;
+        }
+        cap.saturating_sub((0..self.players).map(|p| self.hands[p][r] as u32).sum())
+    }
+
+    // Good Harvest ends early when the bank has nothing left to take
+    fn finish_harvest(&mut self) {
+        if let Phase::Harvest { .. } = self.phase {
+            if (0..5).all(|r| self.bank(r) == 0) {
+                self.phase = self.back;
             }
         }
     }
@@ -708,7 +961,9 @@ impl Game {
 
     fn update_titles(&mut self) {
         let s = self.settings();
-        let (nav_min, harbour_min) = (s.navigator_min, s.harbourmaster_min);
+        // Navigator needs a longer line on a map with islets, where Boats make lines easier
+        let nav_min = if self.board.islets > 0 { s.navigator_min_islets } else { s.navigator_min };
+        let harbour_min = s.harbourmaster_min;
         for p in 0..self.players {
             self.line[p] = self.longest_line(p as u8);
             self.markets[p] = self.markets_touched(p as u8);

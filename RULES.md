@@ -12,6 +12,10 @@ a bot, four friends. People play from their own devices.
 
 The first player to have **10 Renown** ⚙ (`win`, 3–20) during their own turn wins at once.
 
+**Round limit** ⚙ (`rounds`, chosen when starting a game; 0 = no limit, the default): when the last
+round ends, the most Renown wins. A tie goes to the player with more Lodges; still level, it's a
+draw. **Hand limit** ⚙ and **projects face up or hidden** ⚙ are also chosen when starting a game.
+
 | Renown from | |
 |---|---|
 | Each Hut | 1 |
@@ -31,18 +35,19 @@ island, so a good (or unfair) island can be shared and replayed.
   coastline and no lakes inside. The hexagon's coast has room for at most 7 markets.
 - **Terrain and resources:**
 
-  | Hex | Produces |
-  |---|---|
-  | Forest | Timber |
-  | Quarry | Stone |
-  | Fields | Grain |
-  | Mine | Copper |
-  | Paddy (shallow flooded fields, where bettas live) | Fish |
-  | Dunes | nothing |
+  | Hex | Produces | On the hexagon island ⚙ |
+  |---|---|---|
+  | Forest | Timber | 4 |
+  | Quarry | Stone | 3 |
+  | Fields | Grain | 4 |
+  | Mine | Copper | 3 |
+  | Paddy (shallow flooded fields, where bettas live) | Fish | 4 |
+  | Dunes | nothing | 1 |
 
-  1 ⚙ Dunes hex (`island.dunes`, 0–3) on the main island. The rest are split as evenly as possible
-  among the five producing kinds, so each appears at least 3 times (a random-shaped island needs at
-  least 15 producing hexes for that, so a small one can't have many Dunes).
+  The hexagon always has exactly these tiles (`island.forest`, `.quarry`, `.fields`, `.mine`,
+  `.paddy`, `.dunes`; they must add up to 19), shuffled into new places each game. A random-shaped
+  island has `island.dunes` Dunes and shares the rest out as evenly as possible, each kind at least 3
+  times (so it needs at least 15 producing hexes).
 - **Numbers** 2–12 (never 7) on every producing hex. The usual spread is one 2, one 12, and two each
   of 3–6 and 8–11. Smaller islands drop the rarest numbers first; bigger ones add middle numbers.
 - **Fairness checks** (the generator redraws until all hold):
@@ -97,8 +102,11 @@ your second Hut, take one resource from each producing hex around it.
 
 1. You may use one project before rolling (useful for a Pilot).
 2. **Roll two dice.** Unless it's a 7, every hex with that number produces: 1 resource for each
-   Hut and 2 for each Lodge touching it. The squall's hex produces nothing. The bank never runs
-   out ⚙.
+   Hut and 2 for each Lodge touching it. The squall's hex produces nothing.
+   **The bank is limited:** the game has 20 ⚙ cards of each resource (`bank.cards`; 0 = unlimited).
+   Cards spent, discarded or traded to the bank go back into it. If the bank can't pay everyone owed
+   a resource in full, nobody gets that resource this roll (the others pay as usual). Bank trades
+   and Good Harvest only give resources the bank still has.
 3. Then in any order: trade with the bank and markets, build, buy projects, and use one project (if
    you didn't before rolling).
 4. End your turn.
@@ -120,31 +128,44 @@ In this order:
 - **General market:** 3 of one resource for 1 of any other.
 - **Resource market:** 2 of that resource for 1 of any other.
 - You can use a market if you have a Hut or Lodge on either corner of its edge.
-- Trades between players: not in version 1. Planned, for people and bots alike.
+- **With other players** (people and bots alike): after rolling, the player whose turn it is may
+  offer cards for cards to one or more of the others, e.g. 2 Timber + 1 Fish for 1 Copper. Both
+  sides need at least one card, a resource can't be on both sides, and you must hold what you
+  offer. Everyone sees the offer and every answer. Each player offered to accepts or declines (only
+  someone holding the cards asked for can accept). The offerer then trades with one player who
+  accepted, or withdraws the offer. An offer ends when it's traded, withdrawn, or the turn ends.
+  - **Open offers:** the offerer can make an offer open: the first player to accept trades at once,
+    without the offerer choosing.
+  - **Counter-offers:** instead of accepting or declining, a player offered the trade can send back
+    a changed one (any cards they hold, for any of the offerer's). The offerer may take a
+    counter-offer, which trades at once, or ignore it. A player can't counter after accepting.
+  At most 3 ⚙ offers a turn (`trade.offers`; 0 turns trading between players off). Players can't
+  trade with each other outside the offerer's turn. Bots answer offers; they don't make them yet.
 
 ## Projects
 
-Cost: **Grain + Copper + Fish.** The deck ⚙ has 21 cards:
+Cost: **Grain + Copper + Fish.** The deck ⚙ has 25 cards:
 
 | Project | Count | Effect |
 |---|---|---|
-| Pilot | 8 | Move the squall to any land hex, then steal as after a 7 |
+| Pilot | 12 | Move the squall to any land hex, then steal as after a 7 |
 | Lighthouse | 4 | 1 Renown, counted the moment you get it |
 | Shipwright | 3 | Place 2 Paths or Boats for free, in any mix |
 | Good Harvest | 3 | Take any 2 resources from the bank |
 | Fair Winds | 3 | Until the end of your turn, trade 2:1 for one resource of your choice |
 
-- **Face up** ⚙ (`projects.faceUp`, on by default): 3 projects lie face up and you choose which
-  to buy. A new one fills the gap; when the deck is empty, the row shrinks.
-- **Off:** you draw the top card unseen. Others see how many projects you hold, not which.
-  Hidden Lighthouses still count: you can win on your turn by revealing them.
+- **Hidden** (the default): you draw the top card unseen. Others see how many projects you hold,
+  not which. Hidden Lighthouses still count: you can win on your turn by revealing them.
+- **Face up** ⚙ (`projects.faceUp`, chosen when starting a game): 3 projects lie face up and you
+  choose which to buy. A new one fills the gap; when the deck is empty, the row shrinks.
 - You can't use a project on the turn you bought it, and you can use at most one per turn.
   (A Lighthouse isn't "used": it counts as soon as you have it.)
 
 ## Titles
 
 - **Navigator** (2 Renown ⚙): the longest unbroken line of your Paths and Boats, at least 5 ⚙
-  long. Another player's building on a corner breaks the line there.
+  long, or 6 ⚙ on a map with islets (`titles.navigator.minIslets`). Another player's building on a
+  corner breaks the line there.
 - **Harbourmaster** (2 Renown ⚙): your buildings touch the most different markets, at least 2 ⚙.
 - To take a title from its holder you need strictly more. If the holder's line is broken and they
   drop below someone, it goes to whoever is now strictly ahead; if nobody is (a tie, or nobody
@@ -152,6 +173,6 @@ Cost: **Grain + Copper + Fish.** The deck ⚙ has 21 cards:
 
 ## Not in version 1 (planned)
 
-- Trades between players.
+- Bots making trade offers and counter-offers (they answer offers, including open ones).
 - A turn timer, and a bot taking over the seat of a person who leaves.
 - Illustrations (the board is plain and functional for now).

@@ -16,12 +16,18 @@
     <section id="home" hidden>
       <form id="new-game" class="panel" autocomplete="off">
         <h2>New game</h2>
-        <label>Your name <input name="name" maxlength="20" placeholder="You"></label>
+        <label>Your name <input name="name" maxlength="20" placeholder="Your name"></label>
         <fieldset>
           <legend>Other seats</legend>
           <div id="seat-rows"></div>
         </fieldset>
         <label>Renown to win <input name="win" type="number" min="3" max="20" value="10"></label>
+        <label>Hand limit on a 7 <input name="over" type="number" min="4" max="20" value="7"></label>
+        <p class="note">When a 7 is rolled, anyone holding more cards than this loses half.</p>
+        <label>Round limit <input name="rounds" type="number" min="0" max="100" value="0"></label>
+        <p class="note">0: no limit. Otherwise, after that many rounds the most Renown wins (a tie goes to more Lodges).</p>
+        <label class="open-offer"><input name="faceUp" type="checkbox"> Projects face up</label>
+        <p class="note">Off (the default): you draw projects unseen, and others don't see which ones you hold. Face up: 3 projects show and you choose.</p>
         <button type="submit">Start</button>
         <p class="note">Seat order is random. Friends get a link each to join.</p>
         <p id="home-error" class="error" role="alert"></p>
@@ -30,47 +36,94 @@
 
     <section id="game" hidden>
       <div class="table">
-        <div id="board" class="board"></div>
-        <aside class="side">
-          <p id="status" class="status" role="status"></p>
-          <div id="choices" class="choices"></div>
+        <div class="main-col">
+          <!-- The turn bar: the dice, what's happening, and the buttons for it -->
+          <div id="turnbar" class="turnbar">
+            <div id="dice" class="dice" aria-label="Last roll"></div>
+            <p id="status" class="status" role="status"></p>
+            <div id="choices" class="choices"></div>
+          </div>
           <p id="move-error" class="error" role="alert"></p>
+          <div class="board-wrap">
+            <div id="board" class="board"></div>
+            <p id="toast" class="toast" role="status" hidden></p>
+          </div>
+        </div>
+        <aside class="side">
           <ol id="players" class="players"></ol>
           <div id="hand-box" class="panel">
             <h2>Your hand</h2>
             <ul id="hand" class="hand"></ul>
+            <p id="can-build" class="note"></p>
+            <p id="hand-limit" class="note"></p>
           </div>
-          <div id="trade-box" class="panel" hidden>
-            <h2>Trade with the bank</h2>
-            <p class="pick-label">Give</p>
-            <div id="give" class="pick" role="group" aria-label="Give"></div>
-            <p class="pick-label">For 1</p>
-            <div id="get" class="pick" role="group" aria-label="For 1"></div>
-            <button type="button" id="trade" class="primary">Trade</button>
+
+          <div class="tabs" role="tablist" aria-label="Actions">
+            <button type="button" role="tab" id="tab-build" data-tab="build" aria-controls="panel-build">Build</button>
+            <button type="button" role="tab" id="tab-trade" data-tab="trade" aria-controls="panel-trade">Trade <span id="trade-badge" class="badge" hidden>!</span></button>
+            <button type="button" role="tab" id="tab-projects" data-tab="projects" aria-controls="panel-projects">Projects</button>
+            <button type="button" role="tab" id="tab-log" data-tab="log" aria-controls="panel-log">Log</button>
+            <button type="button" role="tab" id="tab-invite" data-tab="invite" aria-controls="panel-invite" hidden>Invite</button>
           </div>
-          <div id="projects-box" class="panel">
-            <h2>Projects <span class="cost">Grain + Copper + Fish</span></h2>
+
+          <div id="panel-build" class="panel tab-panel" role="tabpanel" aria-labelledby="tab-build">
+            <ul id="shop" class="shop"></ul>
+          </div>
+
+          <div id="panel-trade" class="panel tab-panel" role="tabpanel" aria-labelledby="tab-trade" hidden>
+            <p id="bank-left" class="note bank-left"></p>
+            <div id="offer-box" class="offer" hidden>
+              <h2>Trade offer</h2>
+              <p id="offer-text"></p>
+              <ul id="offer-answers" class="answers"></ul>
+              <div id="offer-buttons" class="choices"></div>
+              <div id="counter-box" hidden>
+                <p class="pick-label">Counter-offer: you give</p>
+                <div id="counter-mine" class="steppers"></div>
+                <p class="pick-label">You get</p>
+                <div id="counter-theirs" class="steppers"></div>
+                <div class="choices">
+                  <button type="button" id="send-counter" class="primary">Send counter-offer</button>
+                  <button type="button" id="cancel-counter">Cancel</button>
+                </div>
+              </div>
+            </div>
+            <div id="trade-box" hidden>
+              <h2>With the bank</h2>
+              <p class="pick-label">Give</p>
+              <div id="give" class="pick" role="group" aria-label="Give"></div>
+              <p class="pick-label">For 1</p>
+              <div id="get" class="pick" role="group" aria-label="For 1"></div>
+              <button type="button" id="trade" class="primary">Trade</button>
+            </div>
+            <div id="deal-box" hidden>
+              <h2>With players <span id="offers-left" class="cost"></span></h2>
+              <p class="pick-label">You give</p>
+              <div id="deal-give" class="steppers"></div>
+              <p class="pick-label">You get</p>
+              <div id="deal-get" class="steppers"></div>
+              <p class="pick-label">Offer to</p>
+              <div id="deal-to" class="pick" role="group" aria-label="Offer to"></div>
+              <label class="open-offer"><input type="checkbox" id="deal-open"> Open offer: the first to accept gets it, straight away</label>
+              <button type="button" id="make-offer" class="primary">Make offer</button>
+            </div>
+            <p id="trade-empty" class="note">You can trade on your turn, after rolling.</p>
+          </div>
+
+          <div id="panel-projects" class="panel tab-panel" role="tabpanel" aria-labelledby="tab-projects" hidden>
+            <p class="note">Each costs Grain + Copper + Fish. You can use one a turn, not on the turn you buy it.</p>
             <ul id="row" class="row"></ul>
             <p id="held" class="note"></p>
           </div>
-          <div id="invite-box" class="panel" hidden>
-            <h2>Invite links</h2>
-            <ul id="invites" class="invites"></ul>
-          </div>
-          <div class="panel">
-            <h2>Recent moves</h2>
+
+          <div id="panel-log" class="panel tab-panel" role="tabpanel" aria-labelledby="tab-log" hidden>
             <ol id="log" class="log" reversed></ol>
           </div>
-          <details class="panel">
-            <summary>Costs</summary>
-            <ul class="costs">
-              <li>Path: Timber + Stone</li>
-              <li>Boat: Timber + Fish</li>
-              <li>Hut (1 Renown): Timber + Stone + Grain + Fish</li>
-              <li>Lodge (2 Renown, replaces a Hut): 2 Grain + 3 Copper</li>
-              <li>Project: Grain + Copper + Fish</li>
-            </ul>
-          </details>
+
+          <div id="panel-invite" class="panel tab-panel" role="tabpanel" aria-labelledby="tab-invite" hidden>
+            <p class="note">Send each friend their own link. It opens their seat.</p>
+            <ul id="invites" class="invites"></ul>
+          </div>
         </aside>
       </div>
     </section>
