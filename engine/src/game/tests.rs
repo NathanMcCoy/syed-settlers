@@ -388,7 +388,7 @@ fn paths_join_your_network_but_not_through_another_players_building() {
     let mut g = after_setup(2);
     g.phase = Phase::Main;
     g.current = 0;
-    g.hands[0] = [5, 5, 0, 0, 5];
+    g.hands[0] = [5, 0, 0, 5, 5];
     let board = g.board.clone();
     let gr = &board.graph;
     let edges = |g: &Game| -> Vec<usize> {
@@ -512,7 +512,7 @@ fn face_up_projects_refill_and_cant_be_played_the_turn_theyre_bought() {
     g.row = vec![Project::Pilot as u8, Project::Harvest as u8, Project::Lighthouse as u8];
     let deck = g.deck.len();
     let next = *g.deck.last().unwrap();
-    g.hands[0] = [0, 0, 3, 3, 3];
+    g.hands[0] = [0, 3, 3, 0, 3];
     let renown = g.renown(0);
     g.apply(Action::Buy(2)).unwrap();
     assert_eq!(g.renown(0), renown + 1, "a Lighthouse counts at once");

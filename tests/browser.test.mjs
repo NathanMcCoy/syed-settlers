@@ -138,8 +138,8 @@ for (const [name, type] of Object.entries(BROWSERS)) {
       const card = page.locator('#shop .shop-item.project-item');
       assert.equal(await card.count(), 1);
       assert.match(await card.textContent(), /Project card.*Drawn unseen.*\d+ left/);
-      assert.deepEqual(await card.locator('.chip').allTextContents(), ['Grain', 'Copper', 'Fish']);
-      const canBuy = await page.evaluate(() => [2, 3, 4].every(r => Number(document.querySelectorAll('#hand .card')[r].dataset.count) >= 1));
+      assert.deepEqual(await card.locator('.chip').allTextContents(), ['Stone', 'Grain', 'Fish']);
+      const canBuy = await page.evaluate(() => [1, 2, 4].every(r => Number(document.querySelectorAll('#hand .card')[r].dataset.count) >= 1));
       assert.equal(await card.locator('[data-buy="buy 0"]').isEnabled(), canBuy, 'Buy is on exactly when the hand pays for it');
       const ready = page.locator('#shop [data-build]:not([disabled])');
       if (await ready.count()) {

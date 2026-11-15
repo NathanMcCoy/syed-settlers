@@ -449,9 +449,9 @@ function showBought(v, before) {
 // ---------- The Build shop ----------
 
 const SHOP = [
-  { key: 'path', name: 'Path', cost: [1, 1, 0, 0, 0], piece: 0, note: 'Joins your buildings' },
-  { key: 'hut', name: 'Hut', cost: [1, 1, 1, 0, 1], piece: 1, note: '1 Renown' },
-  { key: 'lodge', name: 'Lodge', cost: [0, 0, 2, 3, 0], piece: 2, note: '2 Renown, upgrades a Hut' },
+  { key: 'path', name: 'Path', cost: [1, 0, 0, 1, 0], piece: 0, note: 'Joins your buildings' },
+  { key: 'hut', name: 'Hut', cost: [1, 0, 1, 1, 1], piece: 1, note: '1 Renown' },
+  { key: 'lodge', name: 'Lodge', cost: [0, 3, 2, 0, 0], piece: 2, note: '2 Renown, upgrades a Hut' },
 ];
 
 // Why an item can't be built now, or null if it can
@@ -521,7 +521,7 @@ function shopRow(v, item, button, reason) {
 }
 
 // Project cards in the shop: hidden (the default), one card drawn unseen; face up, each card showing
-const PROJECT_COST = [0, 0, 1, 1, 1];   // Grain + Copper + Fish (engine: PROJECT_COST)
+const PROJECT_COST = [0, 1, 1, 0, 1];   // Stone + Grain + Fish (engine: PROJECT_COST)
 function projectItems(v) {
   const cards = v.row.length
     ? v.row.map((k, slot) => ({ key: `project-${slot}`, move: `buy ${slot}`, name: PROJECTS[k], note: PROJECT_HELP[k] }))
@@ -726,7 +726,7 @@ function drawHand(v) {
   }));
   const affordable = SHOP.filter(item => item.cost.every((n, r) => v.hand[r] >= n)).map(item => item.name);
   if (v.row.length || v.deck) {
-    if ([2, 3, 4].every(r => v.hand[r] >= 1)) affordable.push('a project');   // Grain + Copper + Fish
+    if (PROJECT_COST.every((n, r) => v.hand[r] >= n)) affordable.push('a project');
   }
   $('can-build').textContent = affordable.length ? `Enough for: ${affordable.join(', ')}` : 'Not enough for anything yet.';
   drawMyProjects(v);
