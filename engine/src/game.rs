@@ -326,13 +326,13 @@ impl Game {
         listed(&self.board.graph.corner_edges[c]).any(|e| self.edge_owner[e] == p)
     }
 
-    // An edge p could extend to: free, and one of its ends is p's building, or is free of others'
-    // buildings and touches p's Path
+    // An edge p could extend to: free, and one of its ends is p's building or touches p's Path.
+    // Paths may continue through a corner holding another player's building.
     fn edge_connected(&self, p: u8, e: usize) -> bool {
         self.edge_owner[e] == NOBODY
             && self.board.graph.edge_corners[e].iter().any(|&c| {
                 let c = c as usize;
-                self.corner_owner[c] == p || (self.corner_owner[c] == NOBODY && self.touches_own_edge(p, c))
+                self.corner_owner[c] == p || self.touches_own_edge(p, c)
             })
     }
 
@@ -789,7 +789,7 @@ impl Game {
             }
             self.phase = Phase::SetupPath { hut: c as u16 };
         }
-        // A new building can break other players' lines, and may touch a market
+        // A new building may touch a market
         self.update_titles();
     }
 
@@ -935,8 +935,7 @@ impl Game {
         self.most_markets = title(self.most_markets, &self.markets[..self.players], markets_min);
     }
 
-    // The longest unbroken line of p's Paths: no edge twice, and it can't pass through a
-    // corner holding another player's building (it may end there)
+    // The longest unbroken line of p's Paths: no edge twice. Other players' buildings don't break it.
     pub fn longest_line(&self, p: u8) -> u8 {
         let g = &self.board.graph;
         let mut used: Vec<u16> = Vec::with_capacity(32);
@@ -954,10 +953,6 @@ impl Game {
     }
 
     fn extend_line(&self, p: u8, c: usize, used: &mut Vec<u16>, len: u8) -> u8 {
-        let owner = self.corner_owner[c];
-        if len > 0 && owner != NOBODY && owner != p {
-            return len;
-        }
         let g = &self.board.graph;
         let mut best = len;
         for e in listed(&g.corner_edges[c]) {

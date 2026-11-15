@@ -1,7 +1,8 @@
 # Syed Settlers: rules
 
 Version 0.2 (draft, Nov 15 2026: sailing removed, so no Boats or islets; Shipwright, Fair Winds,
-Navigator and Harbourmaster renamed; Stone and Copper swapped in every recipe). Numbers marked ⚙ are settings in `engine/src/settings.rs`.
+Navigator and Harbourmaster renamed; Stone and Copper swapped in every recipe; Paths may pass
+through other players' buildings, which no longer break Longest Path). Numbers marked ⚙ are settings in `engine/src/settings.rs`.
 They're first guesses: playtesting and bot simulations will tune them.
 
 ## Players
@@ -72,7 +73,7 @@ island, so a good (or unfair) island can be shared and replayed.
 - **Spacing:** no building may be on a corner next to another building, anyone's. Buildings are
   at least 2 edges apart.
 - **Connection:** Huts must touch one of your own Paths (except during setup). Paths must share a
-  corner with one of your buildings or Paths, and can't continue through a corner holding another
+  corner with one of your buildings or Paths. They may continue through a corner holding another
   player's building.
 
 ## Setup
@@ -147,11 +148,10 @@ Cost: **Stone + Grain + Fish.** The deck ⚙ has 25 cards:
 ## Titles
 
 - **Longest Path** (2 Renown ⚙): the longest unbroken line of your Paths, at least 5 ⚙ long.
-  Another player's building on a corner breaks the line there.
+  Other players' buildings don't break it.
 - **Most Markets** (2 Renown ⚙): your buildings touch the most different markets, at least 2 ⚙.
-- To take a title from its holder you need strictly more. If the holder's line is broken and they
-  drop below someone, it goes to whoever is now strictly ahead; if nobody is (a tie, or nobody
-  meets the minimum), nobody holds it until someone is.
+- To take a title from its holder you need strictly more. If two or more players tie for the lead
+  when nobody holds it yet, nobody holds it until one of them is strictly ahead.
 
 ## Not in version 1 (planned)
 
