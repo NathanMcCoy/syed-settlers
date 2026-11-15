@@ -162,14 +162,21 @@ pub fn generate(settings: &Settings, seed: &str) -> Result<Island, String> {
     Err(format!("no island met the rules after {ATTEMPTS} attempts (seed {seed}); try fewer markets or islets"))
 }
 
+// The hexagon main island: every hex within this many steps of the middle (2: rows 3-4-5-4-3)
+pub const HEXAGON_RADIUS: i32 = 2;
+
+pub fn main_size(s: &Settings) -> usize {
+    if s.island_hexagon { within(Cell::new(0, 0), HEXAGON_RADIUS).len() } else { s.island_size as usize }
+}
+
 fn attempt_island(s: &Settings, rng: &mut Rng) -> Option<Island> {
-    let main = grow_main(rng, s.island_size as usize);
+    let main = if s.island_hexagon { within(Cell::new(0, 0), HEXAGON_RADIUS) } else { grow_main(rng, s.island_size as usize) };
     let main_set: HashSet<Cell> = main.iter().copied().collect();
     if has_lakes(&main, &main_set) {
         return None;
     }
     let islets = place_islets(rng, &main, s.islet_count as usize, s.islet_distance)?;
-    let mut land = dress_main(rng, &main)?;
+    let mut land = dress_main(rng, &main, s.island_dunes as usize)?;
     let main_average = land.iter().map(|h| pips(h.number)).sum::<u32>() as f64
         / land.iter().filter(|h| h.number != 0).count() as f64;
     let (islet_hexes, islet_average) = dress_islets(rng, &islets, main_average, s.islet_resources);
@@ -192,11 +199,7 @@ fn attempt_island(s: &Settings, rng: &mut Rng) -> Option<Island> {
     let graph = Graph::new(&hexes.iter().map(|h| h.cell).collect::<Vec<_>>());
 
     let markets = place_markets(rng, &hexes, &graph, s.markets_any, s.markets_each)?;
-    let dunes: Vec<u16> = (0..hexes.len())
-        .filter(|&i| hexes[i].terrain == Dunes && hexes[i].islet == MAINLAND)
-        .map(|i| i as u16)
-        .collect();
-    let squall = *rng.pick(&dunes);
+    let squall = *rng.pick(&squall_starts(&hexes));
 
     let gaps: Vec<i32> = islets.iter().map(|i| i.gap).collect();
     Some(Island {
@@ -214,6 +217,13 @@ fn attempt_island(s: &Settings, rng: &mut Rng) -> Option<Island> {
             attempts: 0,
         },
     })
+}
+
+// Where the squall may start: the main island's Dunes, or with none, its weakest hexes (fewest pips)
+fn squall_starts(hexes: &[Hex]) -> Vec<u16> {
+    let main = |i: &usize| hexes[*i].terrain != Sea && hexes[*i].islet == MAINLAND;
+    let weakest = (0..hexes.len()).filter(main).map(|i| pips(hexes[i].number)).min().unwrap();
+    (0..hexes.len()).filter(main).filter(|&i| pips(hexes[i].number) == weakest).map(|i| i as u16).collect()
 }
 
 // The main island grows from one hex. Each new hex is picked from the coast's outside neighbours,
@@ -349,8 +359,7 @@ fn place_islets(rng: &mut Rng, main: &[Cell], count: usize, average: f64) -> Opt
 }
 
 // Main island terrain and numbers, redrawn until the fairness checks pass
-fn dress_main(rng: &mut Rng, main: &[Cell]) -> Option<Vec<Hex>> {
-    let dunes = ((main.len() as f64 / 12.0).round() as usize).max(1);
+fn dress_main(rng: &mut Rng, main: &[Cell], dunes: usize) -> Option<Vec<Hex>> {
     let producing = main.len() - dunes;
     let per = producing / PRODUCING.len();
     let mut kinds = PRODUCING;
@@ -536,8 +545,15 @@ mod tests {
         let main: Vec<&Hex> = hexes.iter().filter(|h| h.terrain != Sea && h.islet == MAINLAND).collect();
         let why = format!("seed {} ({})", island.seed, s.to_text());
 
-        // The main island: its size, all one piece, no lakes
-        assert_eq!(main.len(), s.island_size as usize, "{why}");
+        // The main island: its size (or exactly the hexagon), all one piece, no lakes
+        assert_eq!(main.len(), main_size(s), "{why}");
+        if s.island_hexagon {
+            let mut cells: Vec<Cell> = main.iter().map(|h| h.cell).collect();
+            cells.sort();
+            let mut want = within(Cell::new(0, 0), HEXAGON_RADIUS);
+            want.sort();
+            assert_eq!(cells, want, "hexagon: {why}");
+        }
         let mut reached = HashSet::from([main[0].cell]);
         let mut todo = vec![main[0].cell];
         while let Some(c) = todo.pop() {
@@ -551,9 +567,9 @@ mod tests {
         let main_set: HashSet<Cell> = main.iter().map(|h| h.cell).collect();
         assert!(!has_lakes(&main.iter().map(|h| h.cell).collect::<Vec<_>>(), &main_set), "no lakes: {why}");
 
-        // Terrain: dunes about 1 in 12, at least 1; the five others as even as possible, each 3+
+        // Terrain: the set number of dunes; the five others as even as possible, each 3+
         let dunes = main.iter().filter(|h| h.terrain == Dunes).count();
-        assert_eq!(dunes, ((main.len() as f64 / 12.0).round() as usize).max(1), "{why}");
+        assert_eq!(dunes, s.island_dunes as usize, "{why}");
         let counts: Vec<usize> = PRODUCING.iter().map(|&t| main.iter().filter(|h| h.terrain == t).count()).collect();
         let (lo, hi) = (*counts.iter().min().unwrap(), *counts.iter().max().unwrap());
         assert!(lo >= 3 && hi - lo <= 1, "terrain {counts:?}: {why}");
@@ -646,9 +662,14 @@ mod tests {
             used.extend(ends.iter().map(|&c| c as usize));
         }
 
-        // The squall starts on main-island dunes
+        // The squall starts on main-island dunes, or with none, on a weakest main-island hex
         let sq = &hexes[island.squall as usize];
-        assert!(sq.terrain == Dunes && sq.islet == MAINLAND, "{why}");
+        assert!(sq.terrain != Sea && sq.islet == MAINLAND, "{why}");
+        if dunes > 0 {
+            assert_eq!(sq.terrain, Dunes, "{why}");
+        } else {
+            assert_eq!(pips(sq.number), main.iter().map(|h| pips(h.number)).min().unwrap(), "{why}");
+        }
     }
 
     #[test]
@@ -662,12 +683,18 @@ mod tests {
     #[test]
     fn every_size_and_islet_setting_works() {
         let mut n = 0;
-        for size in [16, 19, 22, 28, 34, 40] {
+        let shapes = ["island.hexagon=true".to_string()].into_iter()
+            .chain([16, 19, 22, 28, 34, 40].map(|size| format!("island.hexagon=false;island.size={size}")));
+        let shapes: Vec<String> = shapes
+            .flat_map(|shape| (0..=3).map(move |dunes| format!("{shape};island.dunes={dunes}")))
+            .filter(|shape| Settings::parse(shape).is_ok()) // a small random island with many dunes is refused (settings test)
+            .collect();
+        for shape in &shapes {
             for count in 0..=6 {
                 for distance in [1.0, 1.3, 1.5, 2.0, 2.7, 3.0] {
                     for resources in [0.0, 0.5, 1.0, 1.4] {
-                        let s = settings(&format!("island.size={size};islets.count={count};islets.distance={distance};islets.resources={resources}"));
-                        for k in 0..3 {
+                        let s = settings(&format!("{shape};islets.count={count};islets.distance={distance};islets.resources={resources}"));
+                        for k in 0..2 {
                             check(&generate(&s, &format!("grid{n}-{k}")).unwrap(), &s);
                         }
                         n += 1;
@@ -679,8 +706,9 @@ mod tests {
 
     #[test]
     fn market_settings_work() {
-        for (any, each) in [(0, 0), (0, 1), (2, 1), (4, 1), (2, 2)] {
-            let s = settings(&format!("markets.any={any};markets.each={each}"));
+        // The hexagon's coast has room for 7 spaced markets; more need a random shape
+        for (shape, any, each) in [("true", 0, 0), ("true", 0, 1), ("true", 2, 1), ("false", 4, 1), ("false", 2, 2)] {
+            let s = settings(&format!("island.hexagon={shape};markets.any={any};markets.each={each}"));
             for k in 0..50 {
                 check(&generate(&s, &format!("m{k}")).unwrap(), &s);
             }

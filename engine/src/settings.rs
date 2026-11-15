@@ -95,7 +95,9 @@ settings! {
     players_min: u8 = 2, "players.min", 2, 4, "Fewest seats in a game";
     players_max: u8 = 4, "players.max", 2, 4, "Most seats in a game";
     win: u8 = 10, "win", 3, 20, "Renown needed to win";
-    island_size: u8 = 22, "island.size", 16, 40, "Land hexes on the main island";
+    island_hexagon: bool = true, "island.hexagon", 0, 1, "Main island is a hexagon 5 hexes across, 19 hexes (off: a random shape of island.size hexes)";
+    island_size: u8 = 22, "island.size", 16, 40, "Land hexes on a random-shaped main island";
+    island_dunes: u8 = 1, "island.dunes", 0, 3, "Dunes hexes (produce nothing) on the main island";
     islet_count: u8 = 2, "islets.count", 0, 6, "How many islets";
     islet_distance: f64 = 1.5, "islets.distance", 1, 3, "Average sea hexes between an islet and the main island";
     islet_resources: f64 = 1.0, "islets.resources", 0, 1.4, "Islet productivity compared with the main island (1 = the same)";
@@ -135,6 +137,10 @@ impl Settings {
         if s.players_min > s.players_max {
             return Err("players.min is more than players.max".into());
         }
+        // Every resource on at least 3 hexes needs 15 producing hexes (the hexagon has 19)
+        if !s.island_hexagon && (s.island_size as i32 - s.island_dunes as i32) < 15 {
+            return Err("island.size minus island.dunes must be at least 15, so each resource gets 3 hexes".into());
+        }
         Ok(s)
     }
 }
@@ -162,6 +168,8 @@ mod tests {
             ("win", "name=value"),
             ("projects.faceUp=yes", "true or false"),
             ("players.min=4;players.max=3", "more than"),
+            ("island.dunes=4", "between 0 and 3"),
+            ("island.hexagon=false;island.size=16;island.dunes=2", "at least 15"),
         ] {
             let err = Settings::parse(text).unwrap_err();
             assert!(err.contains(why), "{text}: {err}");
@@ -173,6 +181,6 @@ mod tests {
         let t = Settings::table_json();
         assert!(t.starts_with("[{\"name\":\"players.min\""));
         assert!(t.contains("{\"name\":\"islets.resources\",\"kind\":\"number\",\"default\":1,\"min\":0,\"max\":1.4,"));
-        assert_eq!(t.matches("\"name\"").count(), 27);
+        assert_eq!(t.matches("\"name\"").count(), 29);
     }
 }

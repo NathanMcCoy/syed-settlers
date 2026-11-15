@@ -26,7 +26,9 @@ The first player to have **10 Renown** ⚙ (`win`, 3–20) during their own turn
 A new island every game, made from a **seed**: the same seed and settings always make the same
 island, so a good (or unfair) island can be shared and replayed.
 
-- **Main island:** 22 ⚙ land hexes (16–40), an irregular coastline, no lakes inside.
+- **Main island:** a hexagon 5 hexes across (rows of 3, 4, 5, 4, 3: 19 land hexes) ⚙
+  (`island.hexagon`). With it off, a random shape of 22 ⚙ land hexes (16–40) with an irregular
+  coastline and no lakes inside. The hexagon's coast has room for at most 7 markets.
 - **Terrain and resources:**
 
   | Hex | Produces |
@@ -38,8 +40,9 @@ island, so a good (or unfair) island can be shared and replayed.
   | Paddy (shallow flooded fields, where bettas live) | Fish |
   | Dunes | nothing |
 
-  About one Dunes hex per 12 (at least one). The rest are split as evenly as possible among the
-  five producing kinds, so each appears at least 3 times.
+  1 ⚙ Dunes hex (`island.dunes`, 0–3) on the main island. The rest are split as evenly as possible
+  among the five producing kinds, so each appears at least 3 times (a random-shaped island needs at
+  least 15 producing hexes for that, so a small one can't have many Dunes).
 - **Numbers** 2–12 (never 7) on every producing hex. The usual spread is one 2, one 12, and two each
   of 3–6 and 8–11. Smaller islands drop the rarest numbers first; bigger ones add middle numbers.
 - **Fairness checks** (the generator redraws until all hold):
@@ -49,7 +52,8 @@ island, so a good (or unfair) island can be shared and replayed.
 - **Sea** surrounds everything (every hex within 2 of land).
 - **Markets:** 7 ⚙ on the main island's coast, each on one coastal edge: 2 general markets (3:1)
   and one 2:1 market for each resource. No two markets share or neighbour a corner.
-- **The squall** starts on a Dunes hex of the main island.
+- **The squall** starts on a Dunes hex of the main island. With no Dunes, it starts on one of the
+  main island's weakest hexes (the fewest dice rolls produce there).
 
 ### Islets
 
@@ -124,7 +128,7 @@ Cost: **Grain + Copper + Fish.** The deck ⚙ has 21 cards:
 |---|---|---|
 | Pilot | 8 | Move the squall to any land hex, then steal as after a 7 |
 | Lighthouse | 4 | 1 Renown, counted the moment you get it |
-| Shipwright | 3 | Place 2 Boats for free |
+| Shipwright | 3 | Place 2 Paths or Boats for free, in any mix |
 | Good Harvest | 3 | Take any 2 resources from the bank |
 | Fair Winds | 3 | Until the end of your turn, trade 2:1 for one resource of your choice |
 

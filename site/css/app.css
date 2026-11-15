@@ -27,6 +27,8 @@ h1 { margin: 16px 0 0; font-size: 1.6rem; }
 #controls input { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 4px 6px; width: 9em; }
 #controls input[type="number"] { width: 6em; }
 #settings { display: contents; }
+#controls label.switch input { width: auto; height: 1.4em; margin: 4px 0; }
+#controls input:disabled { opacity: 0.45; }
 button { font: inherit; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--text); cursor: pointer; }
 #status { min-height: 1.4em; color: var(--muted); font-size: 0.9rem; }
 #status.error { color: var(--strong); }
