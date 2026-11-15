@@ -3,7 +3,7 @@
 // nothing else repeats them. Settings::parse() refuses values out of range and misspelt names, so a
 // typo can never quietly make a different game.
 //
-// As text: one `name=value` per line (or separated by `;`), e.g. "islets.count=3;win=8". Names not
+// As text: one `name=value` per line (or separated by `;`), e.g. "squall.range=3;win=8". Names not
 // given keep their defaults.
 use crate::json;
 
@@ -103,10 +103,6 @@ settings! {
     island_fields: u8 = 4, "island.fields", 0, 8, "Fields hexes (Grain) on the hexagon island";
     island_mine: u8 = 3, "island.mine", 0, 8, "Mine hexes (Copper) on the hexagon island";
     island_paddy: u8 = 4, "island.paddy", 0, 8, "Paddy hexes (Fish) on the hexagon island";
-    islet_count: u8 = 0, "islets.count", 0, 6, "How many islets (off for now: sailing is on hold)";
-    islet_distance: f64 = 1.5, "islets.distance", 1, 3, "Average sea hexes between an islet and the main island";
-    islet_resources: f64 = 1.0, "islets.resources", 0, 1.4, "Islet productivity compared with the main island (1 = the same)";
-    islet_bonus: u8 = 1, "islets.bonus", 0, 3, "Renown for the first Hut on each islet";
     markets_any: u8 = 2, "markets.any", 0, 6, "General markets (3:1)";
     markets_each: u8 = 1, "markets.each", 0, 2, "2:1 markets for each resource";
     squall_range: u8 = 4, "squall.range", 1, 8, "Most steps the squall moves after a 7";
@@ -117,17 +113,15 @@ settings! {
     projects_row: u8 = 3, "projects.row", 1, 6, "Face-up projects showing";
     deck_pilot: u8 = 12, "projects.deck.pilot", 0, 30, "Pilot projects in the deck";
     deck_lighthouse: u8 = 4, "projects.deck.lighthouse", 0, 10, "Lighthouse projects in the deck";
-    deck_shipwright: u8 = 3, "projects.deck.shipwright", 0, 10, "Shipwright projects in the deck";
+    deck_road_crew: u8 = 3, "projects.deck.roadCrew", 0, 10, "Road Crew projects in the deck";
     deck_harvest: u8 = 3, "projects.deck.harvest", 0, 10, "Good Harvest projects in the deck";
-    deck_winds: u8 = 3, "projects.deck.winds", 0, 10, "Fair Winds projects in the deck";
-    navigator_min: u8 = 5, "titles.navigator.min", 2, 15, "Shortest line that can hold Navigator";
-    navigator_min_islets: u8 = 6, "titles.navigator.minIslets", 2, 15, "The same, on a map with islets";
+    deck_bargain: u8 = 3, "projects.deck.bargain", 0, 10, "Good Bargain projects in the deck";
+    longest_min: u8 = 5, "titles.longestPath.min", 2, 15, "Shortest line of Paths that can hold Longest Path";
     round_limit: u8 = 0, "rounds", 0, 100, "Rounds before the most Renown wins (0: no limit)";
-    navigator_renown: u8 = 2, "titles.navigator.renown", 0, 4, "Renown for Navigator";
-    harbourmaster_min: u8 = 2, "titles.harbourmaster.min", 1, 7, "Fewest markets that can hold Harbourmaster";
-    harbourmaster_renown: u8 = 2, "titles.harbourmaster.renown", 0, 4, "Renown for Harbourmaster";
+    longest_renown: u8 = 2, "titles.longestPath.renown", 0, 4, "Renown for Longest Path";
+    most_markets_min: u8 = 2, "titles.mostMarkets.min", 1, 7, "Fewest markets that can hold Most Markets";
+    most_markets_renown: u8 = 2, "titles.mostMarkets.renown", 0, 4, "Renown for Most Markets";
     pieces_path: u8 = 15, "pieces.path", 1, 40, "Paths each player has";
-    pieces_boat: u8 = 12, "pieces.boat", 0, 40, "Boats each player has";
     pieces_hut: u8 = 5, "pieces.hut", 2, 10, "Huts each player has";
     pieces_lodge: u8 = 4, "pieces.lodge", 0, 10, "Lodges each player has";
 }
@@ -175,19 +169,18 @@ mod tests {
     #[test]
     fn defaults_and_overrides() {
         assert_eq!(Settings::parse("").unwrap(), Settings::default());
-        let s = Settings::parse("islets.count=3; win=8\nislets.distance=2.5\nprojects.faceUp=false").unwrap();
-        assert_eq!((s.islet_count, s.win, s.islet_distance, s.projects_face_up), (3, 8, 2.5, false));
+        let s = Settings::parse("squall.range=3; win=8\nbank.cards=25\nprojects.faceUp=true").unwrap();
+        assert_eq!((s.squall_range, s.win, s.bank_cards, s.projects_face_up), (3, 8, 25, true));
         assert_eq!(Settings::parse(&s.to_text()).unwrap(), s);
     }
 
     #[test]
     fn mistakes_are_refused() {
         for (text, why) in [
-            ("islets.count=7", "between 0 and 6"),
-            ("islets.distance=0.5", "between 1 and 3"),
-            ("islets.resources=1.5", "between 0 and 1.4"),
+            ("squall.range=9", "between 1 and 8"),
             ("win=9.5", "whole number"),
-            ("islet.count=2", "unknown setting"),
+            ("islets.count=2", "unknown setting"),
+            ("pieces.boat=5", "unknown setting"),
             ("win", "name=value"),
             ("projects.faceUp=yes", "true or false"),
             ("players.min=4;players.max=3", "more than"),
@@ -205,8 +198,8 @@ mod tests {
     fn the_table_lists_every_setting() {
         let t = Settings::table_json();
         assert!(t.starts_with("[{\"name\":\"players.min\""));
-        assert!(t.contains("{\"name\":\"islets.resources\",\"kind\":\"number\",\"default\":1,\"min\":0,\"max\":1.4,"));
-        assert_eq!(t.matches("\"name\"").count(), 38);
+        assert!(t.contains("{\"name\":\"squall.range\",\"kind\":\"whole\",\"default\":4,\"min\":1,\"max\":8,"));
+        assert_eq!(t.matches("\"name\"").count(), 32);
         assert!(Settings::parse("island.dunes=2;island.forest=3").is_ok(), "a Forest traded for a second Dunes");
     }
 }

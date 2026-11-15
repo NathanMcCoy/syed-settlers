@@ -4,26 +4,25 @@ use crate::game::*;
 use crate::island::generate;
 use crate::settings::Settings;
 
-// Where a player's Renown came from: Huts, Lodges, Lighthouses, islets, Navigator, Harbourmaster
-pub const SOURCES: [&str; 6] = ["huts", "lodges", "lighthouses", "islets", "navigator", "harbourmaster"];
+// Where a player's Renown came from: Huts, Lodges, Lighthouses, Longest Path, Most Markets
+pub const SOURCES: [&str; 5] = ["huts", "lodges", "lighthouses", "longest path", "most markets"];
 
 #[derive(Clone, Debug)]
 pub struct Outcome {
     pub winner: u8, // NOBODY if it hit the turn limit
     pub turns: u32,
     pub actions: u32,
-    pub sources: [[u32; 6]; MAX_PLAYERS],
+    pub sources: [[u32; 5]; MAX_PLAYERS],
 }
 
-pub fn renown_sources(g: &Game, p: usize) -> [u32; 6] {
+pub fn renown_sources(g: &Game, p: usize) -> [u32; 5] {
     let s = g.settings();
     [
         g.huts(p) as u32,
         2 * g.lodges(p) as u32,
         g.held[p][Project::Lighthouse as usize] as u32,
-        g.islet_owner.iter().filter(|&&o| o as usize == p).count() as u32 * s.islet_bonus as u32,
-        if g.navigator as usize == p { s.navigator_renown as u32 } else { 0 },
-        if g.harbourmaster as usize == p { s.harbourmaster_renown as u32 } else { 0 },
+        if g.longest as usize == p { s.longest_renown as u32 } else { 0 },
+        if g.most_markets as usize == p { s.most_markets_renown as u32 } else { 0 },
     ]
 }
 
@@ -41,7 +40,7 @@ pub fn play(settings: &Settings, seed: u32, players: usize, max_turns: u32) -> R
         g.apply_unchecked(a);
         actions += 1;
     }
-    let mut sources = [[0; 6]; MAX_PLAYERS];
+    let mut sources = [[0; 5]; MAX_PLAYERS];
     for (p, row) in sources.iter_mut().enumerate().take(players) {
         *row = renown_sources(&g, p);
     }

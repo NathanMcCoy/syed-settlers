@@ -38,15 +38,7 @@ for (const [name, type] of Object.entries(BROWSERS)) {
         const before = await page.evaluate(() => document.querySelector('#log').textContent);
         // The board first (lit corners, edges, hexes), then the buttons
         if (await page.locator('.target.corner').count()) { await page.locator('.target.corner').first().click({ force: true }); clicks.corner++; }
-        else if (await page.locator('.target.edge').count()) {
-          await page.locator('.target.edge').first().click({ force: true });
-          clicks.edge++;
-          // Where both are allowed the page asks "Path or Boat?": wait for that question or the move
-          await page.waitForFunction(b => document.querySelector('#log').textContent !== b
-            || [...document.querySelectorAll('#choices button')].some(x => x.textContent === 'Build a Path'), before, { timeout: 5000 });
-          const path = page.locator('#choices button', { hasText: 'Build a Path' });
-          if (await path.count()) await path.click();
-        }
+        else if (await page.locator('.target.edge').count()) { await page.locator('.target.edge').first().click({ force: true }); clicks.edge++; }
         else if (await page.locator('.target.hex-target').count()) { await page.locator('.target.hex-target').first().click({ force: true }); clicks.hex++; }
         else if (await page.locator('#choices button', { hasText: 'Roll' }).count()) { await page.locator('#choices button', { hasText: 'Roll' }).click(); clicks.roll++; }
         else if (clicks.trade < 2 && await page.locator('#trade-box:not([hidden]) #trade').count()) { await page.click('[data-tab="trade"]'); await page.click('#trade'); clicks.trade++; }
@@ -135,8 +127,8 @@ for (const [name, type] of Object.entries(BROWSERS)) {
       assert.equal(pips, total, 'the dice faces add up to the total shown');
       assert.equal(await page.locator('#players .bar .fill').count(), 2);
 
-      // The shop: four items; nothing lit until one is picked; each disabled one says why
-      assert.equal(await page.locator('#shop [data-build]').count(), 4);
+      // The shop: Path, Hut, Lodge; nothing lit until one is picked; each disabled one says why
+      assert.deepEqual(await page.locator('#shop [data-build]').evaluateAll(bs => bs.map(b => b.dataset.build)), ['path', 'hut', 'lodge']);
       assert.equal(await page.locator('.target').count(), 0, 'on your main turn nothing is lit until you pick');
       for (const item of await page.locator('#shop .shop-item').all()) {
         const b = item.locator('[data-build]');

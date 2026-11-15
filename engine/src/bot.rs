@@ -16,7 +16,7 @@ pub struct Greedy {
 enum Goal {
     Hut,
     Lodge,
-    Edge(usize, u8), // the next edge toward the target spot, and PATH or BOAT
+    Edge(usize), // the next Path toward the target spot
     Project,
 }
 
@@ -36,7 +36,7 @@ impl Greedy {
                 _ => f64::MIN,
             }),
             Phase::SetupPath { .. } => self.best_by(legal, |a| match a {
-                Action::Path(e) | Action::Boat(e) => best_spot_beyond(g, p, *e as usize),
+                Action::Path(e) => best_spot_beyond(g, p, *e as usize),
                 _ => f64::MIN,
             }),
             Phase::Discard => {
@@ -63,7 +63,7 @@ impl Greedy {
                     _ => f64::MIN,
                 })
             }
-            Phase::Winds => {
+            Phase::Bargain => {
                 let hand = g.hands[p as usize];
                 self.best_by(legal, |a| match a {
                     Action::Take(r) => hand[*r as usize] as f64,
@@ -71,8 +71,7 @@ impl Greedy {
                 })
             }
             Phase::FreeBuild { .. } => match self.plan(g, p).0 {
-                Goal::Edge(e, _) if legal.contains(&Action::Path(e as u16)) => Action::Path(e as u16),
-                Goal::Edge(e, _) if legal.contains(&Action::Boat(e as u16)) => Action::Boat(e as u16),
+                Goal::Edge(e) if legal.contains(&Action::Path(e as u16)) => Action::Path(e as u16),
                 _ => *self.rng.pick(legal),
             },
             Phase::PreRoll => {
@@ -104,14 +103,13 @@ impl Greedy {
             return a;
         }
         let (goal, need) = self.plan(g, p);
-        if let Goal::Edge(e, kind) = goal {
-            let a = if kind == PATH { Action::Path(e as u16) } else { Action::Boat(e as u16) };
-            if legal.contains(&a) {
-                return a;
+        if let Goal::Edge(e) = goal {
+            if legal.contains(&Action::Path(e as u16)) {
+                return Action::Path(e as u16);
             }
         }
-        for k in [Project::Harvest, Project::Shipwright] {
-            if legal.contains(&Action::Play(k)) && (k != Project::Shipwright || matches!(goal, Goal::Edge(..))) {
+        for k in [Project::Harvest, Project::RoadCrew] {
+            if legal.contains(&Action::Play(k)) && (k != Project::RoadCrew || matches!(goal, Goal::Edge(..))) {
                 return Action::Play(k);
             }
         }
@@ -178,8 +176,8 @@ impl Greedy {
         if pieces[P_LODGE] > 0 && g.huts(pu) > 0 {
             return (Goal::Lodge, LODGE_COST);
         }
-        if let Some((_, _, Some((e, kind)))) = spot {
-            return (Goal::Edge(e, kind), if kind == PATH { PATH_COST } else { BOAT_COST });
+        if let Some((_, _, Some(e))) = spot {
+            return (Goal::Edge(e), PATH_COST);
         }
         (Goal::Project, PROJECT_COST)
     }
@@ -292,12 +290,12 @@ fn best_spot_beyond(g: &Game, p: u8, e: usize) -> f64 {
 
 // The best free spot p can reach by building along free edges (a shortest route that doesn't pass
 // through other players' buildings), weighing value against distance: (corner, edges needed, the
-// first edge to build and its kind). Distance 0: buildable now.
-fn reachable_spot(g: &Game, p: u8) -> Option<(usize, u32, Option<(usize, u8)>)> {
+// first edge to build). Distance 0: buildable now.
+fn reachable_spot(g: &Game, p: u8) -> Option<(usize, u32, Option<usize>)> {
     let gr = &g.board.graph;
     let corners = gr.corners();
     let mut dist = vec![u32::MAX; corners];
-    let mut first: Vec<Option<(usize, u8)>> = vec![None; corners];
+    let mut first: Vec<Option<usize>> = vec![None; corners];
     let mut queue = std::collections::VecDeque::new();
     for c in 0..corners {
         let mine = g.corner_owner[c] == p || (g.corner_owner[c] == NOBODY && listed(&gr.corner_edges[c]).any(|e| g.edge_owner[e] == p));
@@ -306,7 +304,9 @@ fn reachable_spot(g: &Game, p: u8) -> Option<(usize, u32, Option<(usize, u8)>)> 
             queue.push_back(c);
         }
     }
-    let pieces = g.pieces[p as usize];
+    if g.pieces[p as usize][P_PATH] == 0 {
+        queue.clear(); // no Paths left: only spots already connected
+    }
     while let Some(c) = queue.pop_front() {
         if g.corner_owner[c] != NOBODY && g.corner_owner[c] != p {
             continue; // can't build through another player's building
@@ -316,24 +316,17 @@ fn reachable_spot(g: &Game, p: u8) -> Option<(usize, u32, Option<(usize, u8)>)> 
                 continue;
             }
             let e = gr.corner_edges[c][k] as usize;
-            if g.edge_owner[e] != NOBODY {
+            if g.edge_owner[e] != NOBODY || !g.board.edge_land[e] {
                 continue;
             }
-            let kind = if g.board.edge_land[e] && pieces[P_PATH] > 0 {
-                PATH
-            } else if g.board.edge_sea[e] && pieces[P_BOAT] > 0 {
-                BOAT
-            } else {
-                continue;
-            };
             dist[n] = dist[c] + 1;
-            first[n] = if dist[c] == 0 { Some((e, kind)) } else { first[c] };
+            first[n] = if dist[c] == 0 { Some(e) } else { first[c] };
             if dist[n] < 6 {
                 queue.push_back(n);
             }
         }
     }
-    let mut best: Option<(usize, u32, Option<(usize, u8)>, f64)> = None;
+    let mut best: Option<(usize, u32, Option<usize>, f64)> = None;
     for c in 0..corners {
         if dist[c] == u32::MAX || !g.spaced(c) {
             continue;

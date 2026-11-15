@@ -1,10 +1,11 @@
 # Syed Settlers
 
 Build on a hex island, trade, and race to 10 Renown, against friends and bots in any mix.
-The rules are in [RULES.md](RULES.md). Planned for settlers.pacificfish.ca.
+The rules are in [RULES.md](RULES.md). Live at https://settlers.pacificfish.ca.
 
 **Status:** playable against bots and friends (links, no accounts), plain and functional. Games are
-kept in the server's memory, so a restart ends them. Sailing is on hold (islets off by default).
+kept in the server's memory, so a restart ends them. There's no sailing: it was removed on Nov 15
+to keep the game simple.
 
 ## How it's built
 

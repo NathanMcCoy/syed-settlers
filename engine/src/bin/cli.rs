@@ -86,7 +86,7 @@ fn sim(args: &[String], settings: &Settings) {
     let fair = 1.0 / players as f64;
     let margin = 100.0 * (fair * (1.0 - fair) / finished.len() as f64).sqrt() * 2.0; // 95%
     println!("wins by seat: {} (fair: {:.1}% ± {margin:.1})", wins.join(", "), 100.0 / players as f64);
-    let mut sums = [0u32; 6];
+    let mut sums = [0u32; 5];
     for o in &finished {
         for (k, v) in o.sources[o.winner as usize].iter().enumerate() {
             sums[k] += v;

@@ -29,13 +29,12 @@ test('settlers.wasm was built from the engine source as it is now (else: npm run
 
 test('islands come out of WebAssembly with every part', () => {
   const island = engine.island('betta');
-  assert.equal(island.version, 1);
+  assert.equal(island.version, 2);
   assert.equal(island.seed, 'betta');
-  const main = island.hexes.filter(h => h.terrain !== 'sea' && h.islet === null);
+  const main = island.hexes.filter(h => h.terrain !== 'sea');
   assert.equal(main.length, 19, 'the hexagon, 5 across');
   assert.equal(island.markets.length, 7);
-  assert.equal(island.info.islets.length, 0, 'islets are off by default for now');
-  assert.equal(engine.island('betta', { 'islets.count': 2 }).info.islets.length, 2);
+  assert.ok(island.hexes.every(h => !('islet' in h)) && !('islets' in island.info), 'no islets any more');
   assert.equal(island.hexes[island.squall].terrain, 'dunes');
   assert.ok(main.some(h => h.terrain === 'paddy'));
   assert.deepEqual(engine.island('betta'), island, 'same seed, same island');
@@ -43,20 +42,21 @@ test('islands come out of WebAssembly with every part', () => {
 });
 
 test('settings reach the engine, and mistakes come back as errors', () => {
-  const island = engine.island('x', { 'islets.count': 5, 'island.hexagon': false, 'island.size': 30, 'markets.any': 3 });
-  assert.equal(island.info.islets.length, 5);
+  const island = engine.island('x', { 'island.hexagon': false, 'island.size': 30, 'markets.any': 3 });
   assert.equal(island.info.mainSize, 30);
   assert.equal(island.markets.filter(m => m.kind === 'any').length, 3);
-  assert.throws(() => engine.island('x', { 'islets.count': 7 }), /islets.count must be between 0 and 6/);
-  assert.throws(() => engine.island('x', { 'islet.count': 2 }), /unknown setting islet.count/);
+  assert.throws(() => engine.island('x', { 'island.dunes': 4 }), /island.dunes must be between 0 and 3/);
+  assert.throws(() => engine.island('x', { 'islets.count': 2 }), /unknown setting islets.count/);
   assert.throws(() => engine.island('two\nlines'), /one line/);
 });
 
 test('the settings table lists every knob with its range', () => {
   const table = engine.settingsTable();
   const byName = Object.fromEntries(table.map(s => [s.name, s]));
-  assert.deepEqual(byName['islets.distance'], { name: 'islets.distance', kind: 'number', default: 1.5, min: 1, max: 3, about: byName['islets.distance'].about });
-  assert.equal(byName['islets.resources'].max, 1.4);
+  assert.deepEqual(byName['squall.range'], { name: 'squall.range', kind: 'whole', default: 4, min: 1, max: 8, about: byName['squall.range'].about });
+  assert.equal(byName['projects.deck.roadCrew'].default, 3);
+  assert.equal(byName['titles.longestPath.min'].default, 5);
+  for (const gone of ['islets.count', 'pieces.boat', 'titles.navigator.min', 'projects.deck.winds']) assert.ok(!byName[gone], gone);
   assert.equal(byName.win.default, 10);
   assert.equal(byName['projects.faceUp'].kind, 'switch');
 });

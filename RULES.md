@@ -1,6 +1,7 @@
 # Syed Settlers: rules
 
-Version 0.1 (draft, Nov 14 2026). Numbers marked ⚙ are settings in `engine/src/settings.rs`.
+Version 0.2 (draft, Nov 15 2026: sailing removed, so no Boats or islets; Shipwright, Fair Winds,
+Navigator and Harbourmaster renamed). Numbers marked ⚙ are settings in `engine/src/settings.rs`.
 They're first guesses: playtesting and bot simulations will tune them.
 
 ## Players
@@ -21,16 +22,15 @@ draw. **Hand limit** ⚙ and **projects face up or hidden** ⚙ are also chosen 
 | Each Hut | 1 |
 | Each Lodge | 2 |
 | Each Lighthouse project | 1 |
-| The first Hut on an islet | +1 ⚙ |
-| Navigator title | 2 ⚙ |
-| Harbourmaster title | 2 ⚙ |
+| Longest Path title | 2 ⚙ |
+| Most Markets title | 2 ⚙ |
 
 ## The island
 
 A new island every game, made from a **seed**: the same seed and settings always make the same
 island, so a good (or unfair) island can be shared and replayed.
 
-- **Main island:** a hexagon 5 hexes across (rows of 3, 4, 5, 4, 3: 19 land hexes) ⚙
+- **The island:** a hexagon 5 hexes across (rows of 3, 4, 5, 4, 3: 19 land hexes) ⚙
   (`island.hexagon`). With it off, a random shape of 22 ⚙ land hexes (16–40) with an irregular
   coastline and no lakes inside. The hexagon's coast has room for at most 7 markets.
 - **Terrain and resources:**
@@ -54,49 +54,32 @@ island, so a good (or unfair) island can be shared and replayed.
   - no 6 or 8 next to another 6 or 8;
   - no two equal numbers next to each other;
   - each resource's total chance of being produced is 60%–150% of the average resource's.
-- **Sea** surrounds everything (every hex within 2 of land).
-- **Markets:** 7 ⚙ on the main island's coast, each on one coastal edge: 2 general markets (3:1)
-  and one 2:1 market for each resource. No two markets share or neighbour a corner.
-- **The squall** starts on a Dunes hex of the main island. With no Dunes, it starts on one of the
-  main island's weakest hexes (the fewest dice rolls produce there).
-
-### Islets
-
-Small islands of 1–3 hexes offshore, reachable only by Boat.
-
-- **count** ⚙ 0–6, spread around the island, at least one sea hex apart. **Default 0 for now:**
-  sailing is on hold (Nov 14) while the main game is settled; turn them on to try them.
-- **distance** ⚙ 1.0–3.0 (default 1.5): the average number of sea hexes between an islet and the
-  main island. 1 is a narrow strait (about 2 Boats). Between whole numbers, some islets are nearer
-  and some further: 1.5 with 2 islets means one at 1 and one at 2.
-- **resources** ⚙ 0–140% (default 100%): how productive islet hexes are on average, by their
-  numbers, compared with the main island's producing hexes. At 0% islets are barren Dunes (worth
-  only the Renown). The cap is 140% because no number beats a 6 or 8; on very small islands the
-  real cap is a little lower, and the generator gets as close as it can.
-- Islets have no Markets. Inside an islet, the 6/8 rule doesn't apply (with 2–3 hexes it would
-  often be impossible), but equal numbers are still kept apart.
+- **Sea** surrounds the island (every hex within 2 of land). Nobody builds on it: there's no
+  sailing (removed Nov 15 to keep the game simple).
+- **Markets:** 7 ⚙ on the coast, each on one coastal edge: 2 general markets (3:1) and one 2:1
+  market for each resource. No two markets share or neighbour a corner.
+- **The squall** starts on a Dunes hex. With no Dunes, it starts on one of the weakest hexes (the
+  fewest dice rolls produce there).
 
 ## Pieces
 
 | Piece | Where | Cost | Limit ⚙ |
 |---|---|---|---|
-| Path | an edge touching land | Timber + Stone | 15 |
-| Boat | an edge touching sea | Timber + Fish | 12 |
+| Path | an edge touching land (coastal edges too) | Timber + Stone | 15 |
 | Hut | a corner touching land | Timber + Stone + Grain + Fish | 5 |
 | Lodge | replaces your Hut (the Hut comes back to you) | 2 Grain + 3 Copper | 4 |
 
-- **Coastal edges** (land on one side, sea on the other) can take either a Path or a Boat.
 - **Spacing:** no building may be on a corner next to another building, anyone's. Buildings are
   at least 2 edges apart.
-- **Connection:** Huts must touch one of your own Paths or Boats (except during setup). Paths and
-  Boats must share a corner with one of your buildings, Paths or Boats, and can't continue through a
-  corner holding another player's building. Paths and Boats link to each other directly.
+- **Connection:** Huts must touch one of your own Paths (except during setup). Paths must share a
+  corner with one of your buildings or Paths, and can't continue through a corner holding another
+  player's building.
 
 ## Setup
 
-Seat order is random. In round 1 each player, in order, places a Hut on any free corner of the main
-island (keeping the spacing) and a Path or Boat touching it. Round 2 goes in reverse order. After
-your second Hut, take one resource from each producing hex around it.
+Seat order is random. In round 1 each player, in order, places a Hut on any free corner (keeping
+the spacing) and a Path touching it. Round 2 goes in reverse order. After your second Hut, take one
+resource from each producing hex around it.
 
 ## A turn
 
@@ -150,9 +133,9 @@ Cost: **Grain + Copper + Fish.** The deck ⚙ has 25 cards:
 |---|---|---|
 | Pilot | 12 | Move the squall to any land hex, then steal as after a 7 |
 | Lighthouse | 4 | 1 Renown, counted the moment you get it |
-| Shipwright | 3 | Place 2 Paths or Boats for free, in any mix |
+| Road Crew | 3 | Place 2 Paths for free |
 | Good Harvest | 3 | Take any 2 resources from the bank |
-| Fair Winds | 3 | Until the end of your turn, trade 2:1 for one resource of your choice |
+| Good Bargain | 3 | Until the end of your turn, trade 2:1 for one resource of your choice |
 
 - **Hidden** (the default): you draw the top card unseen. Others see how many projects you hold,
   not which. Hidden Lighthouses still count: you can win on your turn by revealing them.
@@ -163,10 +146,9 @@ Cost: **Grain + Copper + Fish.** The deck ⚙ has 25 cards:
 
 ## Titles
 
-- **Navigator** (2 Renown ⚙): the longest unbroken line of your Paths and Boats, at least 5 ⚙
-  long, or 6 ⚙ on a map with islets (`titles.navigator.minIslets`). Another player's building on a
-  corner breaks the line there.
-- **Harbourmaster** (2 Renown ⚙): your buildings touch the most different markets, at least 2 ⚙.
+- **Longest Path** (2 Renown ⚙): the longest unbroken line of your Paths, at least 5 ⚙ long.
+  Another player's building on a corner breaks the line there.
+- **Most Markets** (2 Renown ⚙): your buildings touch the most different markets, at least 2 ⚙.
 - To take a title from its holder you need strictly more. If the holder's line is broken and they
   drop below someone, it goes to whoever is now strictly ahead; if nobody is (a tie, or nobody
   meets the minimum), nobody holds it until someone is.

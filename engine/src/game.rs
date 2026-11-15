@@ -5,9 +5,9 @@
 //
 // Speed: the board (Board) is built once per game and shared, so copying a Game (bots looking ahead)
 // copies only the small changing state. Nothing here searches through lists during play except a
-// player's own Paths and Boats (Navigator), at most a few dozen.
+// player's own Paths (Longest Path), at most a few dozen.
 use crate::hex::{Graph, listed};
-use crate::island::{ANY, Island, MAINLAND, Terrain, pips};
+use crate::island::{ANY, Island, Terrain, pips};
 use crate::rng::Rng;
 use crate::settings::Settings;
 use std::sync::Arc;
@@ -18,7 +18,6 @@ pub const NOBODY: u8 = u8::MAX;
 // Resources, in this order everywhere: Timber, Stone, Grain, Copper, Fish
 pub type Hand = [u8; 5];
 pub const PATH_COST: Hand = [1, 1, 0, 0, 0];     // Timber + Stone
-pub const BOAT_COST: Hand = [1, 0, 0, 0, 1];     // Timber + Fish
 pub const HUT_COST: Hand = [1, 1, 1, 0, 1];      // Timber + Stone + Grain + Fish
 pub const LODGE_COST: Hand = [0, 0, 2, 3, 0];    // 2 Grain + 3 Copper
 pub const PROJECT_COST: Hand = [0, 0, 1, 1, 1];  // Grain + Copper + Fish
@@ -27,31 +26,28 @@ pub const PROJECT_COST: Hand = [0, 0, 1, 1, 1];  // Grain + Copper + Fish
 pub const HUT: u8 = 1;
 pub const LODGE: u8 = 2;
 pub const PATH: u8 = 1;
-pub const BOAT: u8 = 2;
 
 // A player's pieces still in hand, by this index
 pub const P_PATH: usize = 0;
-pub const P_BOAT: usize = 1;
-pub const P_HUT: usize = 2;
-pub const P_LODGE: usize = 3;
+pub const P_HUT: usize = 1;
+pub const P_LODGE: usize = 2;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 #[repr(u8)]
 pub enum Project {
     Pilot,
     Lighthouse,
-    Shipwright,
+    RoadCrew,
     Harvest,
-    Winds,
+    Bargain,
 }
-pub const PROJECTS: [Project; 5] = [Project::Pilot, Project::Lighthouse, Project::Shipwright, Project::Harvest, Project::Winds];
+pub const PROJECTS: [Project; 5] = [Project::Pilot, Project::Lighthouse, Project::RoadCrew, Project::Harvest, Project::Bargain];
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum Action {
     Hut(u16),        // build (or in setup, place) a Hut on a corner
     Lodge(u16),      // upgrade your Hut on this corner
     Path(u16),       // on an edge
-    Boat(u16),
     Roll,
     Discard(u8),     // lose one card of this resource (after a 7)
     Squall(u16),     // move the squall to this hex
@@ -59,7 +55,7 @@ pub enum Action {
     Trade(u8, u8),   // give the bank/market this resource (at your best rate) for one of that
     Buy(u8),         // a project: face up, the row's slot; hidden, always 0
     Play(Project),
-    Take(u8),        // choose a resource (Good Harvest, Fair Winds)
+    Take(u8),        // choose a resource (Good Harvest, Good Bargain)
     EndTurn,
     // Trading between players (RULES.md "Trading"): the player whose turn it is offers cards for
     // cards to some of the others (`to`: one bit per seat); each answers; the offerer completes the
@@ -84,9 +80,9 @@ pub enum Phase {
     MoveSquall { anywhere: bool },
     Steal,
     Main,
-    FreeBuild { left: u8 },     // Shipwright
+    FreeBuild { left: u8 },     // Road Crew
     Harvest { left: u8 },       // Good Harvest
-    Winds,                      // Fair Winds: choose the resource
+    Bargain,                    // Good Bargain: choose the resource
     Over,
 }
 
@@ -101,13 +97,9 @@ pub struct Board {
     pub land_hexes: Vec<u16>,
     pub by_number: [Vec<u16>; 13],    // producing hexes for each dice total
     pub corner_land: Vec<bool>,       // touches land: can hold a building
-    pub corner_main: Vec<bool>,       // touches the main island: allowed in setup
-    pub corner_islet: Vec<u8>,        // which islet it touches, or NOBODY
     pub corner_market: Vec<u8>,       // which market (index into markets), or NOBODY
     pub market_kind: Vec<u8>,         // per market: 0â€“4 (2:1) or ANY (3:1)
     pub edge_land: Vec<bool>,         // can take a Path
-    pub edge_sea: Vec<bool>,          // can take a Boat
-    pub islets: usize,
 }
 
 impl Board {
@@ -136,15 +128,9 @@ impl Board {
             land_hexes: (0..hexes.len()).filter(|&h| land(h)).map(|h| h as u16).collect(),
             by_number,
             corner_land: (0..graph.corners()).map(|c| listed(&graph.corner_hexes[c]).any(land)).collect(),
-            corner_main: (0..graph.corners()).map(|c| listed(&graph.corner_hexes[c]).any(|h| land(h) && hexes[h].islet == MAINLAND)).collect(),
-            corner_islet: (0..graph.corners())
-                .map(|c| listed(&graph.corner_hexes[c]).find(|&h| land(h) && hexes[h].islet != MAINLAND).map_or(NOBODY, |h| hexes[h].islet))
-                .collect(),
             corner_market,
             market_kind: island.markets.iter().map(|m| m.kind).collect(),
             edge_land: (0..graph.edges()).map(|e| listed(&graph.edge_hexes[e]).any(land)).collect(),
-            edge_sea: (0..graph.edges()).map(|e| listed(&graph.edge_hexes[e]).any(|h| !land(h))).collect(),
-            islets: island.info.islets.len(),
             graph,
         }
     }
@@ -168,20 +154,19 @@ pub struct Game {
     pub edge_owner: Vec<u8>,
     pub edge_kind: Vec<u8>,
     pub hands: [Hand; MAX_PLAYERS],
-    pub pieces: [[u8; 4]; MAX_PLAYERS],
+    pub pieces: [[u8; 3]; MAX_PLAYERS], // Paths, Huts, Lodges still in hand (P_PATH, P_HUT, P_LODGE)
     pub held: [[u8; 5]; MAX_PLAYERS], // projects held, by Project (Lighthouses count for Renown)
     pub bought: [u8; 5],              // projects the current player bought this turn
     pub project_used: bool,
     pub deck: Vec<u8>,                // the rest of the deck, top last
     pub row: Vec<u8>,                 // face-up projects (empty when face up is off)
-    pub islet_owner: Vec<u8>,
-    pub navigator: u8,
-    pub harbourmaster: u8,
-    pub line: [u8; MAX_PLAYERS],      // each player's longest line of Paths and Boats
+    pub longest: u8,                  // who holds Longest Path, or NOBODY
+    pub most_markets: u8,             // who holds Most Markets, or NOBODY
+    pub line: [u8; MAX_PLAYERS],      // each player's longest line of Paths
     pub markets: [u8; MAX_PLAYERS],   // how many different markets each player touches
     pub squall: u16,
     pub discards: [u8; MAX_PLAYERS],  // cards each player still has to lose
-    pub winds: u8,                    // Fair Winds' resource this turn, or NOBODY
+    pub bargain: u8,                  // Good Bargain's resource this turn, or NOBODY
     pub last_roll: u8,
     pub winner: u8,
     pub last_dice: [u8; 2],           // the last roll's two dice (0, 0 before the first)
@@ -235,7 +220,7 @@ impl Game {
         let board = Arc::new(Board::new(island, settings));
         let mut rng = Rng::new(seed);
         let s = settings;
-        let counts = [s.deck_pilot, s.deck_lighthouse, s.deck_shipwright, s.deck_harvest, s.deck_winds];
+        let counts = [s.deck_pilot, s.deck_lighthouse, s.deck_road_crew, s.deck_harvest, s.deck_bargain];
         let mut deck: Vec<u8> = (0..5u8).flat_map(|k| std::iter::repeat_n(k, counts[k as usize] as usize)).collect();
         rng.shuffle(&mut deck);
         let mut row = Vec::new();
@@ -259,20 +244,19 @@ impl Game {
             edge_owner: vec![NOBODY; g.edges()],
             edge_kind: vec![0; g.edges()],
             hands: [[0; 5]; MAX_PLAYERS],
-            pieces: [[s.pieces_path, s.pieces_boat, s.pieces_hut, s.pieces_lodge]; MAX_PLAYERS],
+            pieces: [[s.pieces_path, s.pieces_hut, s.pieces_lodge]; MAX_PLAYERS],
             held: [[0; 5]; MAX_PLAYERS],
             bought: [0; 5],
             project_used: false,
             deck,
             row,
-            islet_owner: vec![NOBODY; board.islets],
-            navigator: NOBODY,
-            harbourmaster: NOBODY,
+            longest: NOBODY,
+            most_markets: NOBODY,
             line: [0; MAX_PLAYERS],
             markets: [0; MAX_PLAYERS],
             squall: island.squall,
             discards: [0; MAX_PLAYERS],
-            winds: NOBODY,
+            bargain: NOBODY,
             last_roll: 0,
             winner: NOBODY,
             last_dice: [0, 0],
@@ -318,12 +302,11 @@ impl Game {
     pub fn renown(&self, p: usize) -> u32 {
         let s = self.settings();
         let mut r = self.huts(p) as u32 + 2 * self.lodges(p) as u32 + self.held[p][Project::Lighthouse as usize] as u32;
-        r += self.islet_owner.iter().filter(|&&o| o as usize == p).count() as u32 * s.islet_bonus as u32;
-        if self.navigator as usize == p {
-            r += s.navigator_renown as u32;
+        if self.longest as usize == p {
+            r += s.longest_renown as u32;
         }
-        if self.harbourmaster as usize == p {
-            r += s.harbourmaster_renown as u32;
+        if self.most_markets as usize == p {
+            r += s.most_markets_renown as u32;
         }
         r
     }
@@ -338,13 +321,13 @@ impl Game {
             && listed(&g.corner_corners[c]).all(|n| self.corner_owner[n] == NOBODY)
     }
 
-    // One of p's Paths or Boats touches this corner
+    // One of p's Paths touches this corner
     fn touches_own_edge(&self, p: u8, c: usize) -> bool {
         listed(&self.board.graph.corner_edges[c]).any(|e| self.edge_owner[e] == p)
     }
 
     // An edge p could extend to: free, and one of its ends is p's building, or is free of others'
-    // buildings and touches p's Path or Boat
+    // buildings and touches p's Path
     fn edge_connected(&self, p: u8, e: usize) -> bool {
         self.edge_owner[e] == NOBODY
             && self.board.graph.edge_corners[e].iter().any(|&c| {
@@ -354,9 +337,9 @@ impl Game {
     }
 
     // The bank's rate for giving this resource: 4, 3 with a general market, 2 with its own market
-    // or Fair Winds on it
+    // or Good Bargain on it
     pub fn rate(&self, p: u8, r: usize) -> u8 {
-        if self.winds as usize == r && self.current == p {
+        if self.bargain as usize == r && self.current == p {
             return 2;
         }
         let mut best = 4;
@@ -393,21 +376,15 @@ impl Game {
         match self.phase {
             Phase::SetupHut => {
                 for c in 0..g.corners() {
-                    if self.board.corner_main[c] && self.spaced(c) {
+                    if self.spaced(c) {
                         out.push(Action::Hut(c as u16));
                     }
                 }
             }
             Phase::SetupPath { hut } => {
                 for e in listed(&g.corner_edges[hut as usize]) {
-                    if self.edge_owner[e] != NOBODY {
-                        continue;
-                    }
-                    if self.board.edge_land[e] && self.pieces[pu][P_PATH] > 0 {
+                    if self.edge_owner[e] == NOBODY && self.board.edge_land[e] && self.pieces[pu][P_PATH] > 0 {
                         out.push(Action::Path(e as u16));
-                    }
-                    if self.board.edge_sea[e] && self.pieces[pu][P_BOAT] > 0 {
-                        out.push(Action::Boat(e as u16));
                     }
                 }
             }
@@ -452,10 +429,8 @@ impl Game {
                         }
                     }
                 }
-                let path = afford(hand, &PATH_COST) && pieces[P_PATH] > 0;
-                let boat = afford(hand, &BOAT_COST) && pieces[P_BOAT] > 0;
-                if path || boat {
-                    self.legal_edges(p, path, boat, out);
+                if afford(hand, &PATH_COST) && pieces[P_PATH] > 0 {
+                    self.legal_paths(p, out);
                 }
                 for give in 0..5 {
                     if hand[give] >= self.rate(p, give) {
@@ -491,7 +466,9 @@ impl Game {
             }
             Phase::FreeBuild { .. } => {
                 let p = self.current;
-                self.legal_edges(p, self.pieces[p as usize][P_PATH] > 0, self.pieces[p as usize][P_BOAT] > 0, out);
+                if self.pieces[p as usize][P_PATH] > 0 {
+                    self.legal_paths(p, out);
+                }
             }
             Phase::Harvest { .. } => {
                 for r in 0..5 {
@@ -500,7 +477,7 @@ impl Game {
                     }
                 }
             }
-            Phase::Winds => {
+            Phase::Bargain => {
                 for r in 0..5 {
                     out.push(Action::Take(r));
                 }
@@ -509,16 +486,10 @@ impl Game {
         }
     }
 
-    fn legal_edges(&self, p: u8, path: bool, boat: bool, out: &mut Vec<Action>) {
+    fn legal_paths(&self, p: u8, out: &mut Vec<Action>) {
         for e in 0..self.edge_owner.len() {
-            if !self.edge_connected(p, e) {
-                continue;
-            }
-            if path && self.board.edge_land[e] {
+            if self.board.edge_land[e] && self.edge_connected(p, e) {
                 out.push(Action::Path(e as u16));
-            }
-            if boat && self.board.edge_sea[e] {
-                out.push(Action::Boat(e as u16));
             }
         }
     }
@@ -604,7 +575,7 @@ impl Game {
     }
 
     fn legal_plays(&self, p: usize, out: &mut Vec<Action>) {
-        for k in [Project::Pilot, Project::Shipwright, Project::Harvest, Project::Winds] {
+        for k in [Project::Pilot, Project::RoadCrew, Project::Harvest, Project::Bargain] {
             if self.playable(p, k) {
                 out.push(Action::Play(k));
             }
@@ -666,8 +637,7 @@ impl Game {
                 self.pieces[pu][P_LODGE] -= 1;
                 self.pieces[pu][P_HUT] += 1;
             }
-            Action::Path(e) => self.place_edge(p, e as usize, PATH),
-            Action::Boat(e) => self.place_edge(p, e as usize, BOAT),
+            Action::Path(e) => self.place_path(p, e as usize),
             Action::Roll => self.roll(),
             Action::Discard(r) => {
                 self.hands[pu][r as usize] -= 1;
@@ -711,9 +681,9 @@ impl Game {
                 self.back = self.phase;
                 self.phase = match k {
                     Project::Pilot => Phase::MoveSquall { anywhere: true },
-                    Project::Shipwright => Phase::FreeBuild { left: 2 },
+                    Project::RoadCrew => Phase::FreeBuild { left: 2 },
                     Project::Harvest => Phase::Harvest { left: 2 },
-                    Project::Winds => Phase::Winds,
+                    Project::Bargain => Phase::Bargain,
                     Project::Lighthouse => unreachable!("Lighthouses aren't played"),
                 };
                 self.finish_free_build();
@@ -726,7 +696,7 @@ impl Game {
                     self.finish_harvest();
                 }
                 _ => {
-                    self.winds = r;
+                    self.bargain = r;
                     self.phase = self.back;
                 }
             },
@@ -764,7 +734,7 @@ impl Game {
                 self.turn += 1;
                 self.bought = [0; 5];
                 self.project_used = false;
-                self.winds = NOBODY;
+                self.bargain = NOBODY;
                 self.phase = Phase::PreRoll;
                 let limit = self.settings().round_limit as u32;
                 if limit > 0 && self.turn > limit * self.players as u32 {
@@ -807,10 +777,6 @@ impl Game {
         self.corner_owner[c] = p;
         self.corner_kind[c] = HUT;
         self.pieces[pu][P_HUT] -= 1;
-        let islet = self.board.corner_islet[c];
-        if islet != NOBODY && self.islet_owner[islet as usize] == NOBODY {
-            self.islet_owner[islet as usize] = p;
-        }
         if setup {
             // The second round's Hut collects one of each resource around it
             if self.setup_step as usize >= self.players {
@@ -827,16 +793,16 @@ impl Game {
         self.update_titles();
     }
 
-    fn place_edge(&mut self, p: u8, e: usize, kind: u8) {
+    fn place_path(&mut self, p: u8, e: usize) {
         let pu = p as usize;
         match self.phase {
-            Phase::Main => pay(&mut self.hands[pu], if kind == PATH { &PATH_COST } else { &BOAT_COST }),
+            Phase::Main => pay(&mut self.hands[pu], &PATH_COST),
             Phase::FreeBuild { left } => self.phase = Phase::FreeBuild { left: left - 1 },
             _ => {}
         }
         self.edge_owner[e] = p;
-        self.edge_kind[e] = kind;
-        self.pieces[pu][if kind == PATH { P_PATH } else { P_BOAT }] -= 1;
+        self.edge_kind[e] = PATH;
+        self.pieces[pu][P_PATH] -= 1;
         self.update_titles();
         if let Phase::SetupPath { .. } = self.phase {
             self.setup_step += 1;
@@ -853,7 +819,7 @@ impl Game {
         self.finish_free_build();
     }
 
-    // Shipwright ends when both pieces are down, or when nothing more can be placed
+    // Road Crew ends when both Paths are down, or when nothing more can be placed
     fn finish_free_build(&mut self) {
         if let Phase::FreeBuild { left } = self.phase {
             let mut list = Vec::new();
@@ -960,19 +926,16 @@ impl Game {
     // ---- Titles ----
 
     fn update_titles(&mut self) {
-        let s = self.settings();
-        // Navigator needs a longer line on a map with islets, where Boats make lines easier
-        let nav_min = if self.board.islets > 0 { s.navigator_min_islets } else { s.navigator_min };
-        let harbour_min = s.harbourmaster_min;
+        let (line_min, markets_min) = (self.settings().longest_min, self.settings().most_markets_min);
         for p in 0..self.players {
             self.line[p] = self.longest_line(p as u8);
             self.markets[p] = self.markets_touched(p as u8);
         }
-        self.navigator = title(self.navigator, &self.line[..self.players], nav_min);
-        self.harbourmaster = title(self.harbourmaster, &self.markets[..self.players], harbour_min);
+        self.longest = title(self.longest, &self.line[..self.players], line_min);
+        self.most_markets = title(self.most_markets, &self.markets[..self.players], markets_min);
     }
 
-    // The longest unbroken line of p's Paths and Boats: no edge twice, and it can't pass through a
+    // The longest unbroken line of p's Paths: no edge twice, and it can't pass through a
     // corner holding another player's building (it may end there)
     pub fn longest_line(&self, p: u8) -> u8 {
         let g = &self.board.graph;

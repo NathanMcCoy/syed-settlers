@@ -2,7 +2,7 @@
 // the row, growing downwards, and q the position along it, growing to the east. Each row is drawn
 // half a hex further right than the one above, so (q, r+1) sits just below-right of (q, r).
 //
-// Pieces sit on hex CORNERS (Huts, Lodges) and EDGES (Paths, Boats), which neighbouring hexes share.
+// Pieces sit on hex CORNERS (Huts, Lodges) and EDGES (Paths), which neighbouring hexes share.
 // To give each shared corner one identity, everything is placed on a whole-number lattice: a hex's
 // centre is (2q + r, 3r), and its corners are at fixed offsets from that, so two hexes' corners at
 // the same lattice point are the same corner. To draw, multiply x by √3/2 and y by 1/2 (times the

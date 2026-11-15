@@ -29,20 +29,15 @@ export function terrainName(t) {
 }
 
 // The island as an SVG element: hexes, numbers, markets. Layers for pieces go on top of it.
-// Which sea hexes to draw: one clean ring around all land, plus any sea hex mostly surrounded by
-// drawn hexes (the water between islets and the main island), so the sea has no holes
+// Which sea hexes to draw: one clean ring around the land, plus any sea hex mostly surrounded by
+// drawn hexes (in the bays of a random-shaped island), so the sea has no holes
 export function shownHexes(island) {
   const key = h => `${h.q},${h.r}`;
   const at = new Map(island.hexes.map((h, i) => [key(h), i]));
   const near = h => [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]].map(([dq, dr]) => at.get(`${h.q + dq},${h.r + dr}`)).filter(i => i !== undefined);
-  const land = island.hexes.filter(h => h.terrain !== 'sea');
-  const steps = (a, b) => (Math.abs(a.q - b.q) + Math.abs(a.r - b.r) + Math.abs(a.q + a.r - b.q - b.r)) / 2;
   const shown = new Set();
   island.hexes.forEach((h, i) => {
-    if (h.terrain !== 'sea' || near(h).some(n => island.hexes[n].terrain !== 'sea')) { shown.add(i); return; }
-    // The straits: within 2 of two different pieces of land (the main island, or an islet)
-    const masses = new Set(land.filter(l => steps(l, h) <= 2).map(l => l.islet ?? 'main'));
-    if (masses.size >= 2) shown.add(i);
+    if (h.terrain !== 'sea' || near(h).some(n => island.hexes[n].terrain !== 'sea')) shown.add(i);
   });
   for (let added = true; added;) {
     added = false;
@@ -70,8 +65,8 @@ export function islandSvg(island) {
     if (!shown.has(i)) return;
     const c = centre(h);
     const resource = TERRAIN_RESOURCE[h.terrain];
-    const title = h.terrain === 'sea' ? 'Sea' : `${terrainName(h.terrain)}${resource ? ` (${resource})` : ''}${h.number ? `, ${h.number}` : ''}${h.islet !== null ? `, islet ${h.islet + 1}` : ''}`;
-    const poly = el('polygon', { points: hexPoints(h), class: `hex t-${h.terrain}${h.islet !== null ? ' islet' : ''}`, 'data-terrain': h.terrain, 'data-hex': i });
+    const title = h.terrain === 'sea' ? 'Sea' : `${terrainName(h.terrain)}${resource ? ` (${resource})` : ''}${h.number ? `, ${h.number}` : ''}`;
+    const poly = el('polygon', { points: hexPoints(h), class: `hex t-${h.terrain}`, 'data-terrain': h.terrain, 'data-hex': i });
     poly.append(el('title', {}, title));
     svg.append(poly);
     if (h.number) {
