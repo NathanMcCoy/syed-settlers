@@ -17,10 +17,10 @@ pub const NOBODY: u8 = u8::MAX;
 
 // Resources, in this order everywhere: Timber, Stone, Grain, Copper, Fish
 pub type Hand = [u8; 5];
-pub const PATH_COST: Hand = [1, 1, 0, 0, 0];     // Timber + Stone
-pub const HUT_COST: Hand = [1, 1, 1, 0, 1];      // Timber + Stone + Grain + Fish
-pub const LODGE_COST: Hand = [0, 0, 2, 3, 0];    // 2 Grain + 3 Copper
-pub const PROJECT_COST: Hand = [0, 0, 1, 1, 1];  // Grain + Copper + Fish
+pub const PATH_COST: Hand = [1, 0, 0, 1, 0];     // Timber + Copper
+pub const HUT_COST: Hand = [1, 0, 1, 1, 1];      // Timber + Grain + Copper + Fish
+pub const LODGE_COST: Hand = [0, 3, 2, 0, 0];    // 3 Stone + 2 Grain
+pub const PROJECT_COST: Hand = [0, 1, 1, 0, 1];  // Stone + Grain + Fish
 
 // What stands on a corner or an edge (0: nothing)
 pub const HUT: u8 = 1;

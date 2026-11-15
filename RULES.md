@@ -1,7 +1,7 @@
 # Syed Settlers: rules
 
 Version 0.2 (draft, Nov 15 2026: sailing removed, so no Boats or islets; Shipwright, Fair Winds,
-Navigator and Harbourmaster renamed). Numbers marked ⚙ are settings in `engine/src/settings.rs`.
+Navigator and Harbourmaster renamed; Stone and Copper swapped in every recipe). Numbers marked ⚙ are settings in `engine/src/settings.rs`.
 They're first guesses: playtesting and bot simulations will tune them.
 
 ## Players
@@ -65,9 +65,9 @@ island, so a good (or unfair) island can be shared and replayed.
 
 | Piece | Where | Cost | Limit ⚙ |
 |---|---|---|---|
-| Path | an edge touching land (coastal edges too) | Timber + Stone | 15 |
-| Hut | a corner touching land | Timber + Stone + Grain + Fish | 5 |
-| Lodge | replaces your Hut (the Hut comes back to you) | 2 Grain + 3 Copper | 4 |
+| Path | an edge touching land (coastal edges too) | Timber + Copper | 15 |
+| Hut | a corner touching land | Timber + Grain + Copper + Fish | 5 |
+| Lodge | replaces your Hut (the Hut comes back to you) | 3 Stone + 2 Grain | 4 |
 
 - **Spacing:** no building may be on a corner next to another building, anyone's. Buildings are
   at least 2 edges apart.
@@ -127,7 +127,7 @@ In this order:
 
 ## Projects
 
-Cost: **Grain + Copper + Fish.** The deck ⚙ has 25 cards:
+Cost: **Stone + Grain + Fish.** The deck ⚙ has 25 cards:
 
 | Project | Count | Effect |
 |---|---|---|
