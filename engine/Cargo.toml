@@ -1,0 +1,32 @@
+[package]
+name = "settlers"
+version = "0.1.0"
+edition = "2024"
+description = "Syed Settlers' engine: the island, the rules and the bots, written once. Built for this PC for simulations and training, and to WebAssembly for the server and the browser."
+license = "MIT"
+publish = false
+
+# The engine (src/lib.rs). node tools/build-engine.mjs builds it to site/js/settlers.wasm.
+[lib]
+name = "settlers"
+path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
+
+# The command-line tool for this PC: islands, benchmarks, later simulations and training
+[[bin]]
+name = "cli"
+path = "src/bin/cli.rs"
+
+# No outside packages: everything is our own code.
+[dependencies]
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+debug = false
+
+# Tests run fast too (the island tests make thousands of islands)
+[profile.test]
+opt-level = 3

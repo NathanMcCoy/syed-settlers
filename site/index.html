@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Syed Settlers</title>
+  <link rel="stylesheet" href="/css/app.css">
+  <script type="module" src="/js/viewer.js"></script>
+</head>
+<body>
+  <header>
+    <h1>Syed Settlers</h1>
+    <p class="sub">Island viewer: the game isn't playable yet. Try seeds and settings to get a feel for the board.</p>
+  </header>
+  <main>
+    <form id="controls" autocomplete="off">
+      <label>Seed <input id="seed" name="seed" spellcheck="false"></label>
+      <button type="button" id="random">New island</button>
+      <div id="settings"></div>
+      <button type="button" id="reset">Default settings</button>
+    </form>
+    <p id="status" role="status"></p>
+    <div id="board"></div>
+    <ul id="legend"></ul>
+  </main>
+</body>
+</html>

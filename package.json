@@ -1,0 +1,12 @@
+{
+  "name": "syed-settlers",
+  "private": true,
+  "type": "module",
+  "description": "Syed Settlers: build on a hex island against friends and bots. The engine is Rust (engine/), built to WebAssembly for the server and the page; this file runs the tests and tools.",
+  "license": "MIT",
+  "scripts": {
+    "test": "cargo test --release --quiet --manifest-path engine/Cargo.toml && node --test",
+    "build": "node tools/build-engine.mjs",
+    "serve": "node server/server.mjs --port 8091"
+  }
+}

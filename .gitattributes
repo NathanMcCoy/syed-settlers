@@ -1,0 +1,7 @@
+# Text files are stored with LF line endings and checked out with LF on every computer, because
+# they're served from Linux (and the engine's source fingerprint ignores \r anyway). Binary files
+# (the engine's .wasm, pictures) are never changed.
+* text=auto eol=lf
+*.wasm binary
+*.png binary
+*.jpg binary

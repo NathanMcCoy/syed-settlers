@@ -1,0 +1,8 @@
+# Not copied into the image (the Dockerfile only takes server/ and site/; this keeps the build fast)
+.git
+.github
+node_modules
+engine
+tests
+tools
+*.log
