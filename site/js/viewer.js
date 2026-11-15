@@ -9,7 +9,7 @@ const CORNERS = [[0, -2], [1, -1], [1, 1], [0, 2], [-1, 1], [-1, -1]];   // engi
 const X = SIZE * Math.sqrt(3) / 2, Y = SIZE / 2;
 const SVG = 'http://www.w3.org/2000/svg';
 const RESOURCE = { forest: 'Timber', quarry: 'Stone', fields: 'Grain', mine: 'Copper', paddy: 'Fish' };
-const MARKET = { any: '3:1', timber: 'Tim', stone: 'Sto', grain: 'Gra', copper: 'Cop', fish: 'Fish' };
+const MARKET = { any: '3:1 any', timber: '2:1 Timber', stone: '2:1 Stone', grain: '2:1 Grain', copper: '2:1 Copper', fish: '2:1 Fish' };
 
 const $ = id => document.getElementById(id);
 const engine = await loadEngine(await (await fetch('/js/settlers.wasm')).arrayBuffer());
@@ -18,7 +18,11 @@ const table = engine.settingsTable().filter(s => SHOWN.test(s.name));
 function readAddress() {
   const params = new URLSearchParams(location.search);
   const settings = {};
-  for (const s of table) if (params.has(s.name)) settings[s.name] = Number(params.get(s.name));
+  for (const s of table) {
+    if (!params.has(s.name)) continue;
+    const text = params.get(s.name);
+    settings[s.name] = s.kind === 'switch' ? text === 'true' : Number(text);
+  }
   return { seed: params.get('seed') || randomSeed(), settings };
 }
 
@@ -41,21 +45,36 @@ function buildControls(settings) {
     label.title = s.about;
     label.textContent = s.about.replace(/ \(.*\)$/, '');
     const input = document.createElement('input');
-    input.type = 'number';
     input.name = s.name;
-    input.min = s.min;
-    input.max = s.max;
-    input.step = s.kind === 'whole' ? 1 : 0.1;
-    input.value = settings[s.name] ?? s.default;
+    if (s.kind === 'switch') {
+      input.type = 'checkbox';
+      input.checked = settings[s.name] ?? s.default;
+      label.classList.add('switch');
+    } else {
+      input.type = 'number';
+      input.min = s.min;
+      input.max = s.max;
+      input.step = s.kind === 'whole' ? 1 : 0.1;
+      input.value = settings[s.name] ?? s.default;
+    }
     label.append(input);
     box.append(label);
   }
+  syncControls();
+}
+
+// The random shape's size means nothing while the island is a hexagon
+function syncControls() {
+  const hexagon = document.querySelector('input[name="island.hexagon"]');
+  const size = document.querySelector('input[name="island.size"]');
+  if (hexagon && size) size.disabled = hexagon.checked;
 }
 
 function currentSettings() {
   const settings = {};
   for (const s of table) {
-    const value = Number(document.querySelector(`input[name="${s.name}"]`).value);
+    const input = document.querySelector(`input[name="${s.name}"]`);
+    const value = s.kind === 'switch' ? input.checked : Number(input.value);
     if (value !== s.default) settings[s.name] = value;
   }
   return settings;
@@ -101,7 +120,7 @@ function draw(island) {
     const out = { x: c.x + (mid.x - c.x) * 1.45, y: c.y + (mid.y - c.y) * 1.45 };
     svg.append(el('line', { x1: mid.x, y1: mid.y, x2: out.x, y2: out.y, stroke: '#fffaf0', 'stroke-width': 2 }));
     const g = el('g', { 'data-market': m.kind });
-    g.append(el('rect', { x: out.x - 14, y: out.y - 8, width: 28, height: 16, rx: 4, class: 'market' }));
+    g.append(el('rect', { x: out.x - 27, y: out.y - 8, width: 54, height: 16, rx: 4, class: 'market' }));
     g.append(el('text', { x: out.x, y: out.y, class: 'market-text' }, MARKET[m.kind]));
     g.append(el('title', {}, m.kind === 'any' ? 'Market: 3 of anything for 1' : `Market: 2 ${m.kind} for 1`));
     svg.append(g);
@@ -150,9 +169,14 @@ const legend = ['forest', 'quarry', 'fields', 'mine', 'paddy', 'dunes', 'sea'].m
 });
 const squallKey = document.createElement('li');
 squallKey.textContent = 'Dashed ring: the squall · dashed outline: islet · red numbers: 6 and 8';
-$('legend').replaceChildren(...legend, squallKey);
+const marketKey = document.createElement('li');
+marketKey.textContent = 'Tags on the coast: markets. "3:1 any": 3 of one resource for 1 of anything. "2:1 Stone": 2 Stone for 1 of anything. Use one with a Hut or Lodge on either corner of its edge.';
+$('legend').replaceChildren(...legend, squallKey, marketKey);
 
-const refresh = () => show($('seed').value.trim() || 'default', currentSettings());
+const refresh = () => {
+  syncControls();
+  show($('seed').value.trim() || 'default', currentSettings());
+};
 $('controls').addEventListener('change', refresh);
 $('controls').addEventListener('submit', e => { e.preventDefault(); refresh(); });
 $('random').addEventListener('click', () => { $('seed').value = randomSeed(); refresh(); });

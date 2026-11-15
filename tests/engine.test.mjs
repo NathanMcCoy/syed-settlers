@@ -32,7 +32,7 @@ test('islands come out of WebAssembly with every part', () => {
   assert.equal(island.version, 1);
   assert.equal(island.seed, 'betta');
   const main = island.hexes.filter(h => h.terrain !== 'sea' && h.islet === null);
-  assert.equal(main.length, 22);
+  assert.equal(main.length, 19, 'the hexagon, 5 across');
   assert.equal(island.markets.length, 7);
   assert.equal(island.info.islets.length, 2);
   assert.equal(island.hexes[island.squall].terrain, 'dunes');
@@ -42,7 +42,7 @@ test('islands come out of WebAssembly with every part', () => {
 });
 
 test('settings reach the engine, and mistakes come back as errors', () => {
-  const island = engine.island('x', { 'islets.count': 5, 'island.size': 30, 'markets.any': 3 });
+  const island = engine.island('x', { 'islets.count': 5, 'island.hexagon': false, 'island.size': 30, 'markets.any': 3 });
   assert.equal(island.info.islets.length, 5);
   assert.equal(island.info.mainSize, 30);
   assert.equal(island.markets.filter(m => m.kind === 'any').length, 3);
