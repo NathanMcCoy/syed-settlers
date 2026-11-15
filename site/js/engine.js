@@ -28,5 +28,28 @@ export async function loadEngine(bytes) {
     },
     settingsTable: () => JSON.parse(read(x.settings_table())),
     sourceHash: () => read(x.source_hash()),
+
+    // Games, kept inside the engine by number (engine/src/wasm.rs). The server uses these; moves
+    // are text (engine/src/protocol.rs), e.g. "hut 12", "trade 0 3", "end".
+    newGame(seed, players, settings = {}) {
+      if (String(seed).includes('\n')) throw new Error('a seed is one line');
+      const text = Object.entries(settings).map(([k, v]) => `${k}=${v}`).join('\n');
+      return Number(call(x.game_new, `${seed}\n${players}\n${text}`));
+    },
+    board: id => JSON.parse(check(read(x.game_board(id)))),
+    // seat: a number, or null for someone watching
+    view: (id, seat) => JSON.parse(check(read(x.game_view(id, seat ?? 255)))),
+    // Throws with the reason if the move isn't allowed
+    act(id, seat, move) {
+      call((p, n) => x.game_act(id, seat, p, n), move);
+    },
+    // The bot for the seat to act moves; returns its move as text
+    bot: id => check(read(x.game_bot(id))),
+    free: id => x.game_free(id),
   };
+}
+
+function check(answer) {
+  if (answer.startsWith('error ')) throw new Error(answer.slice(6));
+  return answer;
 }

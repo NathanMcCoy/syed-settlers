@@ -10,6 +10,7 @@ pub mod hex;
 pub mod sim;
 pub mod island;
 pub mod json;
+pub mod protocol;
 pub mod rng;
 pub mod settings;
 

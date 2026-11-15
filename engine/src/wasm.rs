@@ -6,12 +6,121 @@
 //     the answer is the island as JSON (island.rs to_json), or "error <why>"
 //   settings_table() -> the answer's length: every setting as JSON (Settings::table_json)
 //   source_hash() -> the answer's length: the source's fingerprint (build.rs)
-use crate::island::generate;
+// Games live in the module's memory, by number:
+//   game_new(where, n) -> the answer's length. Input "<seed>\n<players>\n<settings text>"; answer the
+//     game's number, or "error <why>". The seed makes the island and the dice.
+//   game_board(id) -> length: what never changes (protocol.rs board_json)
+//   game_view(id, seat) -> length: the game as that seat sees it (255: a watcher)
+//   game_act(id, seat, where, n) -> length: a move as text (protocol.rs) by that seat; "ok" or "error <why>"
+//   game_bot(id) -> length: the bot for the seat to act makes its move; answers the move's text
+//   game_free(id): forget the game
+use crate::bot::Greedy;
+use crate::game::Game;
+use crate::island::{Island, generate};
+use crate::protocol::{action_text, board_json, parse_action, view_json};
+use crate::rng::Rng;
 use crate::settings::Settings;
 use std::cell::RefCell;
 
+struct Live {
+    island: Island,
+    game: Game,
+    bots: Vec<Greedy>,
+}
+
 thread_local! {
     static OUT: RefCell<Vec<u8>> = const { RefCell::new(Vec::new()) };
+    static GAMES: RefCell<Vec<Option<Live>>> = const { RefCell::new(Vec::new()) };
+}
+
+fn text<'a>(p: *const u8, n: usize) -> Result<&'a str, String> {
+    let bytes = unsafe { std::slice::from_raw_parts(p, n) };
+    std::str::from_utf8(bytes).map_err(|_| "the input isn't UTF-8".to_string())
+}
+
+fn with_game<T>(id: u32, f: impl FnOnce(&mut Live) -> T) -> Result<T, String> {
+    GAMES.with(|g| match g.borrow_mut().get_mut(id as usize) {
+        Some(Some(live)) => Ok(f(live)),
+        _ => Err(format!("no game {id}")),
+    })
+}
+
+fn answer_result(r: Result<String, String>) -> usize {
+    answer(r.unwrap_or_else(|why| format!("error {why}")))
+}
+
+/// # Safety
+/// `p` must point to `n` bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn game_new(p: *const u8, n: usize) -> usize {
+    answer_result((|| {
+        let input = text(p, n)?;
+        let mut parts = input.splitn(3, '\n');
+        let seed = parts.next().unwrap_or("");
+        let players: usize = parts.next().and_then(|x| x.trim().parse().ok()).ok_or("expected the number of players")?;
+        let settings = Settings::parse(parts.next().unwrap_or(""))?;
+        if players < settings.players_min as usize || players > settings.players_max as usize {
+            return Err(format!("{players} players isn't allowed ({}-{})", settings.players_min, settings.players_max));
+        }
+        let island = generate(&settings, seed)?;
+        let mut dice = Rng::from_text(&format!("dice:{seed}"));
+        let game = Game::new(&island, &settings, players, dice.next_u32());
+        let bots = (0..players).map(|_| Greedy::new(dice.next_u32())).collect();
+        GAMES.with(|g| {
+            let mut g = g.borrow_mut();
+            g.push(Some(Live { island, game, bots }));
+            Ok((g.len() - 1).to_string())
+        })
+    })())
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn game_board(id: u32) -> usize {
+    answer_result(with_game(id, |l| board_json(&l.island, &l.game)))
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn game_view(id: u32, seat: u32) -> usize {
+    answer_result(with_game(id, |l| view_json(&l.game, seat.min(255) as u8)))
+}
+
+/// # Safety
+/// `p` must point to `n` bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn game_act(id: u32, seat: u32, p: *const u8, n: usize) -> usize {
+    answer_result((|| {
+        let action = parse_action(text(p, n)?)?;
+        with_game(id, |l| {
+            if l.game.to_act() as u32 != seat {
+                return Err("it isn't your move".to_string());
+            }
+            l.game.apply(action).map(|_| "ok".to_string())
+        })?
+    })())
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn game_bot(id: u32) -> usize {
+    answer_result(with_game(id, |l| {
+        if l.game.over() {
+            return Err("the game is over".to_string());
+        }
+        let mut list = Vec::new();
+        l.game.legal(&mut list);
+        let seat = l.game.to_act() as usize;
+        let a = l.bots[seat].choose(&l.game, &list);
+        l.game.apply_unchecked(a);
+        Ok(action_text(a))
+    }).and_then(|r| r))
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn game_free(id: u32) {
+    GAMES.with(|g| {
+        if let Some(slot) = g.borrow_mut().get_mut(id as usize) {
+            *slot = None;
+        }
+    });
 }
 
 fn answer(text: String) -> usize {
