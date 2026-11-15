@@ -396,13 +396,13 @@ function drawChoices(v) {
     if (word === 'discard') box.append(button(`Lose ${RESOURCES[n]} (${v.hand[n]})`, m));
     if (word === 'take') box.append(button(`Take ${RESOURCES[n]}`, m));
     if (word === 'steal') box.append(button(`Steal from ${nameOf(Number(n))} (${v.players[n].cards} cards)`, m));
-    if (word === 'play') box.append(button(`Play ${PROJECTS[n]}`, m));
+    // Projects are played from Your projects, under the hand (drawMyProjects)
   }
   if (moves.includes('end')) box.append(button('End turn', 'end', 'primary'));
 }
 
-// Your projects, under your hand: each one, and whether you can play it now. Projects bought this
-// turn wait for your next turn; a Lighthouse is never played, it counts at once.
+// Your projects, under your hand: each one, and a Use button on those you can play now. Projects
+// bought this turn wait for your next turn; a Lighthouse is never played, it counts at once.
 function drawMyProjects(v) {
   const held = v.players[v.you].projects;
   const any = held && held.some(n => n > 0);
@@ -418,13 +418,21 @@ function drawMyProjects(v) {
       name.textContent = PROJECTS[k];
       const when = document.createElement('span');
       const fresh = n < (v.bought?.[i] ?? 0);
+      const usable = !fresh && legal().includes(`play ${k}`);
       if (k === 'lighthouse') when.textContent = '1 Renown, counted';
-      else if (v.legal.includes(`play ${k}`)) when.textContent = 'Play now';
+      else if (usable) when.textContent = PROJECT_HELP[k];
       else if (fresh) when.textContent = 'Playable from your next turn';
       else when.textContent = 'Playable on your turn (one project a turn)';
       when.className = 'when';
       li.title = PROJECT_HELP[k];
-      li.append(name, when);
+      const text = document.createElement('div');
+      text.className = 'text';
+      text.append(name, when);
+      li.append(text);
+      if (usable) {
+        li.classList.add('usable');
+        li.append(button('Use', `play ${k}`, 'use'));
+      }
       items.push(li);
     }
   });

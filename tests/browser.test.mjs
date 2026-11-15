@@ -11,7 +11,43 @@ const server = await start({ port: 0, host: '127.0.0.1', botDelay: 20 });
 const base = `http://127.0.0.1:${server.address().port}`;
 after(() => server.close());
 
+// A second server whose bots move without a pause, for games set up through the API
+const fast = await start({ port: 0, host: '127.0.0.1', botDelay: 0 });
+const fastBase = `http://127.0.0.1:${fast.address().port}`;
+after(() => fast.close());
+
 const BROWSERS = { chromium, webkit };
+
+// A game against a bot where it's your turn and you can play a project, reached through the API:
+// buy project cards whenever possible, trade with the bank for a missing Stone, Grain or Fish, build
+// Huts and Lodges for more cards. A simple strategy that gets there in ~5 of 6 games within 6 s, so
+// start a fresh game when one doesn't (8 tries: all failing is about 1 in 1.5 million).
+// Settings: win at 20 Renown (the most allowed) and a big deck without Lighthouses (never played).
+async function gameWithPlayableProject() {
+  const settings = { win: 20, 'projects.deck.pilot': 30, 'projects.deck.lighthouse': 0, 'projects.deck.roadCrew': 10, 'projects.deck.harvest': 10, 'projects.deck.bargain': 10 };
+  const PROJECT = [1, 2, 4];
+  const tries = [];
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const { id, key } = await (await fetch(fastBase + '/api/games', { method: 'POST', body: JSON.stringify({ seats: [{ kind: 'person', name: 'Tester' }, { kind: 'bot' }], settings }) })).json();
+    assert.ok(id, 'the game was made with these settings');
+    for (const end = Date.now() + 6000; Date.now() < end; ) {
+      const v = (await (await fetch(`${fastBase}/api/games/${id}?k=${key}`)).json()).view;
+      if (v.phase === 'over') break;
+      if (v.toAct !== v.you || !v.legal.length) { await new Promise(r => setTimeout(r, 2)); continue; }
+      if (v.legal.some(m => m.startsWith('play '))) return { id, key, v };
+      const need = PROJECT.find(r => v.hand[r] === 0);
+      const spare = a => v.hand[a] - (PROJECT.includes(a) ? 1 : 0) >= 4;
+      const trade = need === undefined ? undefined
+        : v.legal.find(m => { const [w, a, b] = m.split(' '); return w === 'trade' && Number(b) === need && spare(Number(a)); });
+      const pick = v.legal.find(m => m.startsWith('buy ')) ?? trade ?? v.legal.find(m => m.startsWith('lodge ')) ?? v.legal.find(m => m.startsWith('hut '))
+        ?? v.legal.find(m => m === 'roll') ?? v.legal.find(m => m === 'end') ?? v.legal[0];
+      const res = await fetch(`${fastBase}/api/games/${id}/move`, { method: 'POST', body: JSON.stringify({ k: key, move: pick }) });
+      assert.equal(res.status, 200, `the server took the legal move ${pick}`);
+    }
+    tries.push(id);
+  }
+  assert.fail(`no playable project in ${tries.length} games`);
+}
 
 async function open(type, viewport = { width: 1200, height: 900 }) {
   const browser = await type.launch();
@@ -310,6 +346,27 @@ for (const [name, type] of Object.entries(BROWSERS)) {
       await page.waitForFunction(() => /^(15 rounds|Round \d+ of 15)$/.test(document.querySelector('#dice .round')?.textContent ?? ''));
       await page.click('[data-tab="projects"]');
       assert.equal(await page.locator('#row .project').count(), 3, 'face up: a row of 3');
+      assert.deepEqual(errors, []);
+    } finally {
+      await browser.close();
+    }
+  });
+
+  test(`${name}: a project you can play has a Use button in Your projects, not in the turn bar`, async () => {
+    const { id, key, v } = await gameWithPlayableProject();
+    const { browser, page, errors } = await open(type);
+    try {
+      await page.goto(`${fastBase}/?g=${id}#k=${key}`);
+      await page.waitForSelector('#my-projects:not([hidden])');
+      const use = page.locator('#my-projects-list .my-project .use');
+      await use.first().waitFor();
+      const playable = v.legal.filter(m => m.startsWith('play '));
+      assert.deepEqual([...new Set(await use.evaluateAll(bs => bs.map(b => b.dataset.move)))].sort(), playable.sort(), 'a Use button for each kind you can play');
+      assert.equal(await page.locator('#choices button', { hasText: 'Play' }).count(), 0, 'no Play button in the turn bar');
+      const before = await page.evaluate(() => document.querySelector('#log').textContent);
+      await use.first().click();
+      await page.waitForFunction(b => document.querySelector('#log').textContent !== b, before);
+      assert.match(await page.textContent('#log'), /You played/);
       assert.deepEqual(errors, []);
     } finally {
       await browser.close();
