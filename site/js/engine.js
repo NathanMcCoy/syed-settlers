@@ -1,7 +1,7 @@
 // The Rust engine as WebAssembly (settlers.wasm, built from engine/src by tools/build-engine.mjs),
 // the same code the server and the simulations run. Works in the browser and in Node:
 //   const engine = await loadEngine(bytes)
-//   engine.island('betta', { 'islets.count': 3 })  -> the island (engine/src/island.rs to_json)
+//   engine.island('betta', { 'island.dunes': 2 })  -> the island (engine/src/island.rs to_json)
 //   engine.settingsTable()                          -> [{name, kind, default, min, max, about}]
 // Text goes in and out through the module's memory (engine/src/wasm.rs).
 export async function loadEngine(bytes) {

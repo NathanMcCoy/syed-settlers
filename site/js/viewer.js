@@ -1,10 +1,10 @@
 // The island viewer: makes islands with the real engine (settlers.wasm) and draws them plainly. The
-// seed and any changed settings are kept in the address (?seed=...&islets.count=3), so an island can
+// seed and any changed settings are kept in the address (?seed=...&island.dunes=2), so an island can
 // be shared by link.
 import { loadEngine } from './engine.js';
 import { islandSvg, el, centre, SIZE, TERRAIN_RESOURCE as RESOURCE } from './board.js';
 
-const SHOWN = /^(island|islets|markets)\./;     // the settings that change the island
+const SHOWN = /^(island|markets)\./;     // the settings that change the island
 
 const $ = id => document.getElementById(id);
 const engine = await loadEngine(await (await fetch('/js/settlers.wasm')).arrayBuffer());
@@ -85,12 +85,7 @@ function draw(island) {
 
 function describe(island) {
   const i = island.info;
-  const parts = [`Seed ${island.seed}`, `${i.mainSize} hexes`];
-  if (i.islets.length) {
-    parts.push(`islets ${i.islets.map(x => `${x.size} hex${x.size > 1 ? 'es' : ''} at ${x.gap}`).join(', ')} (average gap ${i.averageGap})`);
-    parts.push(`islet resources ${Math.round(i.isletResources * 100)}% of the main island`);
-  } else parts.push('no islets');
-  return parts.join(' · ');
+  return [`Seed ${island.seed}`, `${i.mainSize} hexes`].join(' · ');
 }
 
 function show(seed, settings) {
@@ -119,7 +114,7 @@ const legend = ['forest', 'quarry', 'fields', 'mine', 'paddy', 'dunes', 'sea'].m
   return li;
 });
 const squallKey = document.createElement('li');
-squallKey.textContent = 'Dashed ring: the squall · dashed outline: islet · red numbers: 6 and 8';
+squallKey.textContent = 'Dashed ring: the squall · red numbers: 6 and 8';
 const marketKey = document.createElement('li');
 marketKey.textContent = 'Tags on the coast: markets. "3:1 any": 3 of one resource for 1 of anything. "2:1 Stone": 2 Stone for 1 of anything. Use one with a Hut or Lodge on either corner of its edge.';
 $('legend').replaceChildren(...legend, squallKey, marketKey);

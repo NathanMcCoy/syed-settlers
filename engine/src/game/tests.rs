@@ -40,9 +40,9 @@ fn setup_done(mut g: Game) -> Game {
     g
 }
 
-// A free corner touching the main island, with free neighbours, not on a market
+// A free corner on the island, with free neighbours, not on a market
 fn free_spot(g: &Game) -> usize {
-    (0..g.corner_owner.len()).find(|&c| g.board.corner_main[c] && g.spaced(c) && g.board.corner_market[c] == NOBODY).unwrap()
+    (0..g.corner_owner.len()).find(|&c| g.spaced(c) && g.board.corner_market[c] == NOBODY).unwrap()
 }
 
 // Everything that must always be true
@@ -53,11 +53,9 @@ fn check(g: &Game) {
         let huts = (0..gr.corners()).filter(|&c| g.corner_owner[c] == p as u8 && g.corner_kind[c] == HUT).count() as u8;
         let lodges = (0..gr.corners()).filter(|&c| g.corner_owner[c] == p as u8 && g.corner_kind[c] == LODGE).count() as u8;
         let paths = (0..gr.edges()).filter(|&e| g.edge_owner[e] == p as u8 && g.edge_kind[e] == PATH).count() as u8;
-        let boats = (0..gr.edges()).filter(|&e| g.edge_owner[e] == p as u8 && g.edge_kind[e] == BOAT).count() as u8;
         assert_eq!(huts, g.huts(p), "huts on the board match pieces used");
         assert_eq!(lodges, g.lodges(p));
         assert_eq!(paths + g.pieces[p][P_PATH], s.pieces_path);
-        assert_eq!(boats + g.pieces[p][P_BOAT], s.pieces_boat);
         assert_eq!(g.renown(p), renown_sources(g, p).iter().sum::<u32>());
         assert_eq!(g.line[p], g.longest_line(p as u8));
         for r in 0..5 {
@@ -71,7 +69,7 @@ fn check(g: &Game) {
             assert!(held <= s.bank_cards as u32, "{held} of resource {r} held, only {} exist", s.bank_cards);
         }
     }
-    // Spacing: no two buildings on neighbouring corners; Paths only on land edges, Boats on sea edges
+    // Spacing: no two buildings on neighbouring corners; Paths only on edges touching land
     for c in 0..gr.corners() {
         if g.corner_owner[c] != NOBODY {
             assert!(g.board.corner_land[c]);
@@ -81,18 +79,17 @@ fn check(g: &Game) {
     for e in 0..gr.edges() {
         match g.edge_kind[e] {
             PATH => assert!(g.board.edge_land[e]),
-            BOAT => assert!(g.board.edge_sea[e]),
             _ => assert_eq!(g.edge_owner[e], NOBODY),
         }
     }
     // Titles go only to someone at the minimum who isn't behind anyone
-    if g.navigator != NOBODY {
-        let v = g.line[g.navigator as usize];
-        assert!(v >= s.navigator_min && g.line[..g.players].iter().all(|&x| x <= v));
+    if g.longest != NOBODY {
+        let v = g.line[g.longest as usize];
+        assert!(v >= s.longest_min && g.line[..g.players].iter().all(|&x| x <= v));
     }
-    if g.harbourmaster != NOBODY {
-        let v = g.markets[g.harbourmaster as usize];
-        assert!(v >= s.harbourmaster_min && g.markets[..g.players].iter().all(|&x| x <= v));
+    if g.most_markets != NOBODY {
+        let v = g.markets[g.most_markets as usize];
+        assert!(v >= s.most_markets_min && g.markets[..g.players].iter().all(|&x| x <= v));
     }
     if g.over() && !g.by_rounds {
         assert!(g.renown(g.winner as usize) >= s.win as u32);
@@ -112,8 +109,8 @@ fn random_play_never_breaks_a_rule() {
     let mut list = Vec::new();
     let mut ended = 0;
     for seed in 0..400u32 {
-        // Every 4th game the other way: projects face up, and islets
-        let settings = if seed % 4 == 3 { Settings::parse("projects.faceUp=true;islets.count=4").unwrap() } else { Settings::default() };
+        // Every 4th game the other way: projects face up, on a random-shaped island
+        let settings = if seed % 4 == 3 { Settings::parse("projects.faceUp=true;island.hexagon=false").unwrap() } else { Settings::default() };
         let isl = generate(&settings, &format!("fuzz{seed}")).unwrap();
         let mut g = Game::new(&isl, &settings, 2 + seed as usize % 3, seed);
         let mut rng = Rng::new(seed + 1000);
@@ -207,7 +204,7 @@ fn setup_goes_round_and_back_and_the_second_hut_pays() {
             order.push(g.to_act());
         }
         let list = legal(&g);
-        assert!(list.iter().all(|a| matches!(a, Action::Hut(_) | Action::Path(_) | Action::Boat(_))));
+        assert!(list.iter().all(|a| matches!(a, Action::Hut(_) | Action::Path(_))));
         let a = bot.choose(&g, &list);
         let p = g.to_act() as usize;
         let before = g.hands[p];
@@ -228,7 +225,7 @@ fn setup_goes_round_and_back_and_the_second_hut_pays() {
     assert_eq!((g.phase, g.current, g.turn), (Phase::PreRoll, 0, 1));
     for p in 0..3 {
         assert_eq!(g.huts(p), 2);
-        assert_eq!(g.settings().pieces_path + g.settings().pieces_boat - g.pieces[p][P_PATH] - g.pieces[p][P_BOAT], 2);
+        assert_eq!(g.settings().pieces_path - g.pieces[p][P_PATH], 2);
     }
 }
 
@@ -238,7 +235,7 @@ fn setup_paths_must_touch_the_new_hut_and_huts_must_be_spaced() {
     let c = free_spot(&g);
     g.apply(Action::Hut(c as u16)).unwrap();
     for a in legal(&g) {
-        let (Action::Path(e) | Action::Boat(e)) = a else { panic!("{a:?}") };
+        let Action::Path(e) = a else { panic!("{a:?}") };
         assert!(g.board.graph.edge_corners[e as usize].contains(&(c as u16)));
     }
     let a = legal(&g)[0];
@@ -355,7 +352,7 @@ fn nobody_to_steal_from_returns_to_the_turn() {
 }
 
 #[test]
-fn trading_rates_bank_markets_and_fair_winds() {
+fn trading_rates_bank_markets_and_good_bargain() {
     let mut g = after_setup(2);
     // Clear the board's buildings so markets are controlled by the test
     g.corner_owner.fill(NOBODY);
@@ -376,7 +373,7 @@ fn trading_rates_bank_markets_and_fair_winds() {
     g.corner_kind[stone] = HUT;
     assert_eq!((g.rate(0, 1), g.rate(0, 2)), (2, 3));
     g.current = 0;
-    g.winds = 4;
+    g.bargain = 4;
     assert_eq!(g.rate(0, 4), 2);
 
     g.phase = Phase::Main;
@@ -387,7 +384,7 @@ fn trading_rates_bank_markets_and_fair_winds() {
 }
 
 #[test]
-fn paths_and_boats_join_directly_but_not_through_another_players_building() {
+fn paths_join_your_network_but_not_through_another_players_building() {
     let mut g = after_setup(2);
     g.phase = Phase::Main;
     g.current = 0;
@@ -395,8 +392,10 @@ fn paths_and_boats_join_directly_but_not_through_another_players_building() {
     let board = g.board.clone();
     let gr = &board.graph;
     let edges = |g: &Game| -> Vec<usize> {
-        legal(g).iter().filter_map(|a| match a { Action::Path(e) | Action::Boat(e) => Some(*e as usize), _ => None }).collect()
+        legal(g).iter().filter_map(|a| match a { Action::Path(e) => Some(*e as usize), _ => None }).collect()
     };
+    // Never out to sea: every offered Path touches land
+    assert!(edges(&g).iter().all(|&e| board.edge_land[e]));
     for e in edges(&g) {
         let ok = gr.edge_corners[e].iter().any(|&c| {
             let c = c as usize;
@@ -419,7 +418,7 @@ fn paths_and_boats_join_directly_but_not_through_another_players_building() {
     }
 }
 
-// A chain of `len` edges walking away from a corner, over land edges where possible
+// A chain of `len` edges walking away from a corner, over land edges
 fn chain(g: &Game, start: usize, len: usize) -> Vec<usize> {
     let gr = &g.board.graph;
     let mut seen = vec![start];
@@ -427,7 +426,7 @@ fn chain(g: &Game, start: usize, len: usize) -> Vec<usize> {
     let mut c = start;
     while out.len() < len {
         let (k, n) = listed(&gr.corner_corners[c]).enumerate()
-            .find(|&(k, n)| !seen.contains(&n) && g.board.edge_land[gr.corner_edges[c][k] as usize] && g.board.corner_main[n])
+            .find(|&(k, n)| !seen.contains(&n) && g.board.edge_land[gr.corner_edges[c][k] as usize] && g.board.corner_land[n])
             .expect("room for a chain");
         out.push(gr.corner_edges[c][k] as usize);
         seen.push(n);
@@ -438,22 +437,22 @@ fn chain(g: &Game, start: usize, len: usize) -> Vec<usize> {
 }
 
 #[test]
-fn navigator_takes_the_longest_line_and_other_buildings_break_it() {
+fn longest_path_takes_the_longest_line_and_other_buildings_break_it() {
     let mut g = game(3);
     g.turn = 1;
     g.phase = Phase::Main;
-    let start = (0..g.corner_owner.len()).find(|&c| g.board.corner_main[c] && listed(&g.board.graph.corner_hexes[c]).count() == 3).unwrap();
+    let start = (0..g.corner_owner.len()).find(|&c| g.board.corner_land[c] && listed(&g.board.graph.corner_hexes[c]).count() == 3).unwrap();
     let line = chain(&g, start, 6);
     for &e in &line[..4] {
         g.edge_owner[e] = 0;
         g.edge_kind[e] = PATH;
     }
     g.update_titles();
-    assert_eq!((g.line[0], g.navigator), (4, NOBODY), "4 is under the minimum of 5");
+    assert_eq!((g.line[0], g.longest), (4, NOBODY), "4 is under the minimum of 5");
     g.edge_owner[line[4]] = 0;
     g.edge_kind[line[4]] = PATH;
     g.update_titles();
-    assert_eq!((g.line[0], g.navigator), (5, 0));
+    assert_eq!((g.line[0], g.longest), (5, 0));
     // Another player's Hut on the corner between the 2nd and 3rd edges splits it into 2 and 3
     let gr = &g.board.graph;
     let [a, b] = gr.edge_corners[line[1]];
@@ -461,7 +460,7 @@ fn navigator_takes_the_longest_line_and_other_buildings_break_it() {
     g.corner_owner[mid] = 1;
     g.corner_kind[mid] = HUT;
     g.update_titles();
-    assert_eq!((g.line[0], g.navigator), (3, NOBODY));
+    assert_eq!((g.line[0], g.longest), (3, NOBODY));
 }
 
 #[test]
@@ -475,7 +474,7 @@ fn titles_change_hands_only_to_someone_strictly_ahead() {
 }
 
 #[test]
-fn harbourmaster_counts_different_markets() {
+fn most_markets_counts_different_markets() {
     let mut g = game(2);
     g.turn = 1;
     let corners: Vec<usize> = (0..g.board.market_kind.len())
@@ -483,37 +482,10 @@ fn harbourmaster_counts_different_markets() {
         .collect();
     g.corner_owner[corners[0]] = 0;
     g.update_titles();
-    assert_eq!((g.markets[0], g.harbourmaster), (1, NOBODY));
+    assert_eq!((g.markets[0], g.most_markets), (1, NOBODY));
     g.corner_owner[corners[1]] = 0;
     g.update_titles();
-    assert_eq!((g.markets[0], g.harbourmaster), (2, 0));
-}
-
-#[test]
-fn the_first_hut_on_an_islet_earns_the_bonus_once() {
-    let s = Settings::parse("islets.count=2").unwrap();
-    let mut g = Game::new(&generate(&s, "islets").unwrap(), &s, 2, 7);
-    let mut bot = Greedy::new(1);
-    while g.turn == 0 {
-        let list = legal(&g);
-        let a = bot.choose(&g, &list);
-        g.apply(a).unwrap();
-    }
-    let c = (0..g.corner_owner.len()).find(|&c| g.board.corner_islet[c] != NOBODY).unwrap();
-    let before = g.renown(0);
-    g.phase = Phase::FreeBuild { left: 1 }; // not setup, not paying: place_hut directly
-    g.hands[0] = HUT_COST;
-    g.phase = Phase::Main;
-    g.place_hut(0, c);
-    assert_eq!(g.renown(0), before + 1 + g.settings().islet_bonus as u32);
-    let other = listed(&g.board.graph.corner_corners[c]).flat_map(|n| listed(&g.board.graph.corner_corners[n]).collect::<Vec<_>>())
-        .find(|&x| g.board.corner_islet[x] == g.board.corner_islet[c] && g.spaced(x));
-    if let Some(x) = other {
-        g.hands[1] = HUT_COST;
-        let before1 = g.renown(1);
-        g.place_hut(1, x);
-        assert_eq!(g.renown(1), before1 + 1, "no bonus for the second Hut there");
-    }
+    assert_eq!((g.markets[0], g.most_markets), (2, 0));
 }
 
 #[test]
@@ -568,7 +540,7 @@ fn hidden_projects_are_drawn_unseen() {
     let s = Settings::parse("projects.faceUp=false").unwrap();
     let mut g = Game::new(&generate(&s, "hidden").unwrap(), &s, 2, 3);
     assert!(g.row.is_empty());
-    let total = s.deck_pilot + s.deck_lighthouse + s.deck_shipwright + s.deck_harvest + s.deck_winds;
+    let total = s.deck_pilot + s.deck_lighthouse + s.deck_road_crew + s.deck_harvest + s.deck_bargain;
     assert_eq!(g.deck.len(), total as usize);
     g.turn = 1;
     g.phase = Phase::Main;
@@ -580,21 +552,22 @@ fn hidden_projects_are_drawn_unseen() {
 }
 
 #[test]
-fn shipwright_places_two_free_and_fair_winds_trades_two_for_one() {
+fn road_crew_places_two_free_paths_and_good_bargain_trades_two_for_one() {
     let mut g = after_setup(2);
     g.phase = Phase::Main;
     g.current = 0;
-    g.held[0][Project::Shipwright as usize] = 1;
+    g.held[0][Project::RoadCrew as usize] = 1;
     g.hands[0] = [0; 5];
-    let (paths, boats) = (g.pieces[0][P_PATH], g.pieces[0][P_BOAT]);
-    g.apply(Action::Play(Project::Shipwright)).unwrap();
+    let paths = g.pieces[0][P_PATH];
+    g.apply(Action::Play(Project::RoadCrew)).unwrap();
     for _ in 0..2 {
         assert!(matches!(g.phase, Phase::FreeBuild { .. }));
-        let a = legal(&g)[0];
-        g.apply(a).unwrap();
+        let list = legal(&g);
+        assert!(list.iter().all(|a| matches!(a, Action::Path(_))), "only Paths");
+        g.apply(list[0]).unwrap();
     }
     assert_eq!(g.phase, Phase::Main);
-    assert_eq!(paths + boats - g.pieces[0][P_PATH] - g.pieces[0][P_BOAT], 2);
+    assert_eq!(paths - g.pieces[0][P_PATH], 2);
     assert_eq!(g.hands[0], [0; 5], "free");
 
     g.apply(Action::EndTurn).unwrap();
@@ -602,10 +575,10 @@ fn shipwright_places_two_free_and_fair_winds_trades_two_for_one() {
     g.apply(Action::EndTurn).unwrap();
     g.phase = Phase::Main;
     g.corner_owner.iter_mut().for_each(|o| if *o == 0 { *o = NOBODY });
-    g.held[0][Project::Winds as usize] = 1;
+    g.held[0][Project::Bargain as usize] = 1;
     g.hands[0] = [0, 0, 2, 0, 0];
     assert!(!legal(&g).contains(&Action::Trade(2, 0)));
-    g.apply(Action::Play(Project::Winds)).unwrap();
+    g.apply(Action::Play(Project::Bargain)).unwrap();
     g.apply(Action::Take(2)).unwrap();
     g.apply(Action::Trade(2, 0)).unwrap();
     assert_eq!(g.hands[0], [1, 0, 0, 0, 0]);
@@ -821,25 +794,6 @@ fn the_bank_holds_what_players_dont_and_pays_a_roll_in_full_or_not_at_all() {
     let s = Settings::parse("bank.cards=0").unwrap();
     let g = Game::new(&generate(&s, "rules").unwrap(), &s, 2, 1);
     assert_eq!(g.bank(0), u32::MAX);
-}
-
-#[test]
-fn navigator_needs_6_on_a_map_with_islets() {
-    let s = Settings::parse("islets.count=2").unwrap();
-    let mut g = Game::new(&generate(&s, "rules").unwrap(), &s, 3, 7);
-    g.turn = 1;
-    let start = (0..g.corner_owner.len()).find(|&c| g.board.corner_main[c] && listed(&g.board.graph.corner_hexes[c]).count() == 3).unwrap();
-    let line = chain(&g, start, 6);
-    for &e in &line[..5] {
-        g.edge_owner[e] = 0;
-        g.edge_kind[e] = PATH;
-    }
-    g.update_titles();
-    assert_eq!((g.line[0], g.navigator), (5, NOBODY), "5 isn't enough with islets");
-    g.edge_owner[line[5]] = 0;
-    g.edge_kind[line[5]] = PATH;
-    g.update_titles();
-    assert_eq!((g.line[0], g.navigator), (6, 0));
 }
 
 #[test]

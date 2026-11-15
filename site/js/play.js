@@ -8,13 +8,13 @@ import { islandSvg, el, centre, point, hexPoints, RESOURCES, SIZE } from './boar
 
 const $ = id => document.getElementById(id);
 const COLOURS = ['Red', 'Blue', 'Orange', 'Purple'];
-const PROJECTS = { pilot: 'Pilot', lighthouse: 'Lighthouse', shipwright: 'Shipwright', harvest: 'Good Harvest', winds: 'Fair Winds' };
+const PROJECTS = { pilot: 'Pilot', lighthouse: 'Lighthouse', roadCrew: 'Road Crew', harvest: 'Good Harvest', bargain: 'Good Bargain' };
 const PROJECT_HELP = {
   pilot: 'Move the squall to any land hex, then steal',
   lighthouse: '1 Renown, counted at once',
-  shipwright: '2 free Paths or Boats',
+  roadCrew: '2 free Paths',
   harvest: 'Take any 2 resources',
-  winds: 'This turn, trade 2:1 for one resource',
+  bargain: 'This turn, trade 2:1 for one resource',
 };
 
 const store = {
@@ -96,8 +96,8 @@ function home() {
 
 // ---------- The game ----------
 
-let id, key, board, snap, layers, pendingEdge = null, sending = false;
-// What the player picked in the Build shop ('path', 'boat', 'hut', 'lodge'): only those spots light up
+let id, key, board, snap, layers, sending = false;
+// What the player picked in the Build shop ('path', 'hut', 'lodge'): only those spots light up
 let mode = null;
 
 async function game(gameId) {
@@ -189,8 +189,7 @@ async function send(move) {
   try {
     const res = await fetch(`/api/games/${id}/move`, { method: 'POST', body: JSON.stringify({ k: key, move }) });
     if (!res.ok) $('move-error').textContent = (await res.json()).error;
-    pendingEdge = null;
-    if (res.ok && /^(hut|lodge|path|boat) /.test(move)) mode = null;
+    if (res.ok && /^(hut|lodge|path) /.test(move)) mode = null;
   } catch {
     $('move-error').textContent = 'Couldn\'t reach the server. Check your connection and try again.';
   } finally {
@@ -239,7 +238,7 @@ function drawPieces(v, before) {
   layers.roads.replaceChildren();
   for (const [e, p, kind] of v.roads) {
     const [a, b] = edgeEnds(e);
-    layers.roads.append(el('line', { x1: a.x, y1: a.y, x2: b.x, y2: b.y, class: `road p${p}${kind === 2 ? ' boat' : ''}${glow(`e${e}:${kind}`)}`, 'data-edge': e }));
+    layers.roads.append(el('line', { x1: a.x, y1: a.y, x2: b.x, y2: b.y, class: `road p${p}${glow(`e${e}:${kind}`)}`, 'data-edge': e }));
   }
   layers.buildings.replaceChildren();
   for (const [c, p, kind] of v.buildings) {
@@ -324,10 +323,9 @@ function toast(text) {
 // Clickable spots for the legal moves that are places on the board
 function drawTargets(v) {
   layers.targets.replaceChildren();
-  // On your main turn, only what you picked in the shop lights up; in setup, Shipwright's free
-  // pieces and squall moves, every spot does
+  // On your main turn, only what you picked in the shop lights up; in setup, Road Crew's free
+  // Paths and squall moves, every spot does
   const moves = v.phase === 'main' ? legal().filter(m => mode && m.startsWith(`${mode} `)) : legal();
-  const edges = new Map();   // edge -> ['path', 'boat']
   for (const m of moves) {
     const [word, n] = m.split(' ');
     if (word === 'hut' || word === 'lodge') {
@@ -336,26 +334,17 @@ function drawTargets(v) {
       const t = el('circle', { cx: x, cy: y, r: word === 'lodge' ? 13 : 9, class: `target corner ${word}`, 'data-move': m, tabindex: 0 });
       t.append(el('title', {}, word === 'hut' ? 'Build a Hut here' : 'Upgrade to a Lodge'));
       layers.targets.append(t);
-    } else if (word === 'path' || word === 'boat') {
-      if (!edges.has(n)) edges.set(n, []);
-      edges.get(n).push(word);
+    } else if (word === 'path') {
+      const [a, b] = edgeEnds(Number(n));
+      const t = el('line', { x1: a.x, y1: a.y, x2: b.x, y2: b.y, class: 'target edge', 'data-move': m, 'data-edge-target': n, tabindex: 0 });
+      t.append(el('title', {}, 'Build a Path here'));
+      layers.targets.append(t);
     } else if (word === 'squall') {
       const h = board.island.hexes[Number(n)];
       const t = el('polygon', { points: hexPoints(h), class: 'target hex-target', 'data-move': m, tabindex: 0 });
       t.append(el('title', {}, 'Move the squall here'));
       layers.targets.append(t);
     }
-  }
-  for (const [e, kinds] of edges) {
-    const [a, b] = edgeEnds(Number(e));
-    const t = el('line', { x1: a.x, y1: a.y, x2: b.x, y2: b.y, class: `target edge${pendingEdge === e ? ' chosen' : ''}`, 'data-edge-target': e, tabindex: 0 });
-    t.append(el('title', {}, kinds.length > 1 ? 'Build a Path or a Boat here' : `Build a ${kinds[0] === 'path' ? 'Path' : 'Boat'} here`));
-    t.addEventListener('click', () => {
-      if (kinds.length === 1) return send(`${kinds[0]} ${e}`);
-      pendingEdge = e;   // both possible: ask which
-      render(snap);
-    });
-    layers.targets.append(t);
   }
   for (const t of layers.targets.querySelectorAll('[data-move]')) {
     t.addEventListener('click', () => send(t.dataset.move));
@@ -373,15 +362,15 @@ function status(v) {
   const mine = v.toAct === v.you;
   switch (v.phase) {
     case 'setupHut': return mine ? 'Setup: place a Hut on a lit corner.' : `Setup: ${who} is placing a Hut.`;
-    case 'setupPath': return mine ? 'Setup: place a Path or Boat next to your new Hut.' : `Setup: ${who} is placing a Path.`;
+    case 'setupPath': return mine ? 'Setup: place a Path next to your new Hut.' : `Setup: ${who} is placing a Path.`;
     case 'preRoll': return mine ? 'Your turn: roll the dice (or play a project first).' : `${who}'s turn.`;
     case 'discard': return mine ? `A 7! You hold too many cards: choose ${v.players[v.you].discard} more to lose.` : `A 7: ${who} is choosing cards to lose.`;
     case 'moveSquall': return mine ? 'Move the squall: click a lit hex.' : `${who} is moving the squall.`;
     case 'steal': return mine ? 'Choose who to steal a card from.' : `${who} is choosing who to steal from.`;
     case 'main': return mine ? `You rolled ${v.lastRoll}. Pick something to build, trade or buy, then end your turn.` : `${who} rolled ${v.lastRoll}.`;
-    case 'freeBuild': return mine ? 'Shipwright: place a free Path or Boat.' : `${who} is placing free Paths.`;
+    case 'freeBuild': return mine ? 'Road Crew: place a free Path.' : `${who} is placing free Paths.`;
     case 'harvest': return mine ? 'Good Harvest: take a resource.' : `${who} is taking resources.`;
-    case 'winds': return mine ? 'Fair Winds: choose the resource you\'ll trade 2:1.' : `${who} is choosing a wind.`;
+    case 'bargain': return mine ? 'Good Bargain: choose the resource you\'ll trade 2:1.' : `${who} is choosing a bargain.`;
     default: return '';
   }
 }
@@ -401,9 +390,6 @@ function drawChoices(v) {
   const box = $('choices');
   box.replaceChildren();
   const moves = legal();
-  if (pendingEdge !== null && moves.includes(`path ${pendingEdge}`)) {
-    box.append(button('Build a Path', `path ${pendingEdge}`), button('Build a Boat', `boat ${pendingEdge}`));
-  }
   for (const m of moves) {
     const [word, n] = m.split(' ');
     if (word === 'roll') box.append(button('Roll the dice', m, 'primary'));
@@ -457,16 +443,15 @@ function showBought(v, before) {
   const k = Object.keys(PROJECTS)[i];
   toast(k === 'lighthouse'
     ? 'You drew a Lighthouse: +1 Renown, counted now.'
-    : `You drew ${k === 'harvest' ? 'a Good Harvest' : k === 'winds' ? 'Fair Winds' : `a ${PROJECTS[k]}`}: ${PROJECT_HELP[k].toLowerCase()}. Playable from your next turn.`);
+    : `You drew a ${PROJECTS[k]}: ${PROJECT_HELP[k].toLowerCase()}. Playable from your next turn.`);
 }
 
 // ---------- The Build shop ----------
 
 const SHOP = [
   { key: 'path', name: 'Path', cost: [1, 1, 0, 0, 0], piece: 0, note: 'Joins your buildings' },
-  { key: 'boat', name: 'Boat', cost: [1, 0, 0, 0, 1], piece: 1, note: 'A path over water' },
-  { key: 'hut', name: 'Hut', cost: [1, 1, 1, 0, 1], piece: 2, note: '1 Renown' },
-  { key: 'lodge', name: 'Lodge', cost: [0, 0, 2, 3, 0], piece: 3, note: '2 Renown, upgrades a Hut' },
+  { key: 'hut', name: 'Hut', cost: [1, 1, 1, 0, 1], piece: 1, note: '1 Renown' },
+  { key: 'lodge', name: 'Lodge', cost: [0, 0, 2, 3, 0], piece: 2, note: '2 Renown, upgrades a Hut' },
 ];
 
 // Why an item can't be built now, or null if it can
@@ -676,7 +661,7 @@ function drawPlayers(v) {
     const facts = [`${p.cards} card${p.cards === 1 ? '' : 's'}`];
     if (p.projectCount) facts.push(`${p.projectCount} project${p.projectCount === 1 ? '' : 's'}`);
     info.append(facts.join(' · '));
-    for (const [holder, title] of [[v.navigator, 'Navigator'], [v.harbourmaster, 'Harbourmaster']]) {
+    for (const [holder, title] of [[v.longestPath, 'Longest Path'], [v.mostMarkets, 'Most Markets']]) {
       if (holder !== s) continue;
       const badge = document.createElement('span');
       badge.className = 'title-badge';
@@ -769,7 +754,6 @@ function describe(entry) {
     case 'hut': return `${who} built a Hut`;
     case 'lodge': return `${who} built a Lodge`;
     case 'path': return `${who} built a Path`;
-    case 'boat': return `${who} built a Boat`;
     case 'roll': return `${who} rolled ${entry.roll}`;
     case 'discard': return `${who} lost a ${RESOURCES[a]}`;
     case 'squall': return `${who} moved the squall`;

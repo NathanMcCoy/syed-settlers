@@ -40,7 +40,6 @@ button { font: inherit; padding: 6px 12px; border-radius: 6px; border: 1px solid
 .t-sea { fill: var(--sea); stroke: none; }
 .t-forest { fill: var(--forest); } .t-quarry { fill: var(--quarry); } .t-fields { fill: var(--fields); }
 .t-mine { fill: var(--mine); } .t-paddy { fill: var(--paddy); } .t-dunes { fill: var(--dunes); }
-.islet { stroke: #fff; stroke-width: 2; stroke-dasharray: 4 3; }
 .token { fill: #fffaf0; stroke: rgba(0, 0, 0, 0.3); }
 .number { font: 700 15px system-ui, sans-serif; fill: #1d2228; text-anchor: middle; dominant-baseline: central; }
 .number.strong { fill: #b3261e; }
@@ -189,7 +188,6 @@ body.in-game h1 { font-size: 1.2rem; margin: 8px 0 6px; }
 
 /* Pieces and targets on the board */
 .road { stroke-width: 7; stroke-linecap: round; }
-.road.boat { stroke-dasharray: 2 9; }
 .road.p0, .building.p0 { stroke: var(--p0); } .road.p1, .building.p1 { stroke: var(--p1); }
 .road.p2, .building.p2 { stroke: var(--p2); } .road.p3, .building.p3 { stroke: var(--p3); }
 .building { stroke: #fff !important; stroke-width: 2; }
@@ -206,7 +204,6 @@ body.in-game h1 { font-size: 1.2rem; margin: 8px 0 6px; }
 .target.corner { fill: #fff; fill-opacity: 0.85; stroke: #1d2228; stroke-width: 2; }
 .target.corner.lodge { fill: #ffd400; fill-opacity: 0.15; stroke: #fff; stroke-width: 3; stroke-dasharray: 3 2; }
 .target.edge { stroke: #fff; stroke-opacity: 0.75; stroke-width: 9; stroke-linecap: round; }
-.target.edge.chosen { stroke: #ffd400; stroke-opacity: 1; }
 .target.hex-target { fill: #fff; fill-opacity: 0.18; stroke: #fff; stroke-width: 3; }
 .target:hover, .target:focus { stroke: #ffd400; outline: none; }
 
