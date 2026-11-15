@@ -226,7 +226,7 @@ pub fn view_json(g: &Game, seat: u8) -> String {
             "{{\"phase\":\"{}\",\"current\":{},\"toAct\":{},\"turn\":{},\"lastRoll\":{},\"squall\":{},\"winner\":{},",
             "\"buildings\":[{}],\"roads\":[{}],\"players\":[{}],\"navigator\":{},\"harbourmaster\":{},",
             "\"row\":{},\"deck\":{},\"winds\":{},\"win\":{},\"you\":{},\"hand\":{},\"rates\":{},\"legal\":{},",
-            "\"offer\":{},\"canOffer\":{},\"offersLeft\":{},\"dice\":{},\"bank\":{},\"short\":{},\"handLimit\":{},\"round\":{},\"roundLimit\":{},\"byRounds\":{}}}"
+            "\"offer\":{},\"canOffer\":{},\"offersLeft\":{},\"dice\":{},\"bank\":{},\"short\":{},\"handLimit\":{},\"round\":{},\"roundLimit\":{},\"byRounds\":{},\"bought\":{}}}"
         ),
         phase_name(g.phase), g.current, g.to_act(), g.turn,
         if g.last_roll == 0 { "null".into() } else { g.last_roll.to_string() },
@@ -245,6 +245,8 @@ pub fn view_json(g: &Game, seat: u8) -> String {
         list((0..5).filter(|r| g.short & (1 << r) != 0)),
         s.discard_over,
         g.round(), s.round_limit, g.by_rounds,
+        // Projects this seat bought this turn (they can't be played until its next turn)
+        if mine && seat == g.current && g.turn > 0 { list(g.bought) } else { list([0u8; 5]) },
     )
 }
 
@@ -319,6 +321,28 @@ mod tests {
         assert!(v1.contains("\"hand\":[9,0,0,0,0]") && v1.contains("\"legal\":[]"));
         let watcher = view_json(&g, NOBODY);
         assert!(watcher.contains("\"you\":null,\"hand\":null") && !watcher.contains("[1,2,3,4,5]"));
+    }
+
+    #[test]
+    fn a_buyer_sees_what_they_drew_and_others_only_a_count() {
+        let s = Settings::default();   // projects hidden
+        let island = generate(&s, "view").unwrap();
+        let mut g = Game::new(&island, &s, 2, 1);
+        g.turn = 1;
+        g.phase = Phase::Main;
+        g.hands[0] = PROJECT_COST;
+        let top = *g.deck.last().unwrap() as usize;
+        g.apply(Action::Buy(0)).unwrap();
+        let mut want = [0u8; 5];
+        want[top] = 1;
+        let mine = view_json(&g, 0);
+        assert!(mine.contains(&format!("\"bought\":{}", list(want))), "the buyer's view says what was bought this turn");
+        assert!(mine.contains(&format!("\"projects\":{}", list(want))));
+        let theirs = view_json(&g, 1);
+        assert!(theirs.contains("\"bought\":[0,0,0,0,0]") && theirs.contains("\"projectCount\":1"));
+        if top != Project::Lighthouse as usize {
+            assert!(theirs.contains("\"projects\":null"), "others don't see which");
+        }
     }
 
     #[test]

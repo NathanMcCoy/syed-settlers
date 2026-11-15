@@ -217,6 +217,7 @@ function render(data) {
   $('trade-badge').hidden = !offered;
   drawDice(v);
   showRoll(v, before);
+  showBought(v, before);
   drawChoices(v);
   drawPlayers(v);
   drawHand(v);
@@ -412,6 +413,51 @@ function drawChoices(v) {
     if (word === 'play') box.append(button(`Play ${PROJECTS[n]}`, m));
   }
   if (moves.includes('end')) box.append(button('End turn', 'end', 'primary'));
+}
+
+// Your projects, under your hand: each one, and whether you can play it now. Projects bought this
+// turn wait for your next turn; a Lighthouse is never played, it counts at once.
+function drawMyProjects(v) {
+  const held = v.players[v.you].projects;
+  const any = held && held.some(n => n > 0);
+  $('my-projects').hidden = !any;
+  if (!any) return;
+  const keys = Object.keys(PROJECTS);
+  const items = [];
+  keys.forEach((k, i) => {
+    for (let n = 0; n < held[i]; n++) {
+      const li = document.createElement('li');
+      li.className = `my-project ${k}`;
+      const name = document.createElement('strong');
+      name.textContent = PROJECTS[k];
+      const when = document.createElement('span');
+      const fresh = n < (v.bought?.[i] ?? 0);
+      if (k === 'lighthouse') when.textContent = '1 Renown, counted';
+      else if (v.legal.includes(`play ${k}`)) when.textContent = 'Play now';
+      else if (fresh) when.textContent = 'Playable from your next turn';
+      else when.textContent = 'Playable on your turn (one project a turn)';
+      when.className = 'when';
+      li.title = PROJECT_HELP[k];
+      li.append(name, when);
+      items.push(li);
+    }
+  });
+  $('my-projects-list').replaceChildren(...items);
+}
+
+// Right after you buy a project: what you drew
+function showBought(v, before) {
+  if (!before || v.you === null) return;
+  const now = v.players[v.you].projects, was = before.view.players[v.you]?.projects;
+  if (!now || !was) return;
+  const last = snap.log[snap.log.length - 1];
+  if (!last || last.seat !== v.you || !last.move.startsWith('buy ')) return;
+  const i = now.findIndex((n, r) => n > was[r]);
+  if (i < 0) return;
+  const k = Object.keys(PROJECTS)[i];
+  toast(k === 'lighthouse'
+    ? 'You drew a Lighthouse: +1 Renown, counted now.'
+    : `You drew ${k === 'harvest' ? 'a Good Harvest' : k === 'winds' ? 'Fair Winds' : `a ${PROJECTS[k]}`}: ${PROJECT_HELP[k].toLowerCase()}. Playable from your next turn.`);
 }
 
 // ---------- The Build shop ----------
@@ -663,6 +709,7 @@ function drawHand(v) {
     if ([2, 3, 4].every(r => v.hand[r] >= 1)) affordable.push('a project');   // Grain + Copper + Fish
   }
   $('can-build').textContent = affordable.length ? `Enough for: ${affordable.join(', ')}` : 'Not enough for anything yet.';
+  drawMyProjects(v);
   const held = v.hand.reduce((a, b) => a + b, 0);
   $('hand-limit').textContent = `On a 7, holding more than ${v.handLimit} cards loses half${held > v.handLimit ? ` (you hold ${held})` : ''}.`;
   $('hand-limit').classList.toggle('warn', held > v.handLimit);
