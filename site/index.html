@@ -5,23 +5,75 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Syed Settlers</title>
   <link rel="stylesheet" href="/css/app.css">
-  <script type="module" src="/js/viewer.js"></script>
+  <script type="module" src="/js/play.js"></script>
 </head>
 <body>
   <header>
-    <h1>Syed Settlers</h1>
-    <p class="sub">Island viewer: the game isn't playable yet. Try seeds and settings to get a feel for the board.</p>
+    <h1><a href="/">Syed Settlers</a></h1>
+    <p class="sub">Build on the island, trade, race to Renown. <a href="/viewer.html">Island viewer</a></p>
   </header>
   <main>
-    <form id="controls" autocomplete="off">
-      <label>Seed <input id="seed" name="seed" spellcheck="false"></label>
-      <button type="button" id="random">New island</button>
-      <div id="settings"></div>
-      <button type="button" id="reset">Default settings</button>
-    </form>
-    <p id="status" role="status"></p>
-    <div id="board"></div>
-    <ul id="legend"></ul>
+    <section id="home" hidden>
+      <form id="new-game" class="panel" autocomplete="off">
+        <h2>New game</h2>
+        <label>Your name <input name="name" maxlength="20" placeholder="You"></label>
+        <fieldset>
+          <legend>Other seats</legend>
+          <div id="seat-rows"></div>
+        </fieldset>
+        <label>Renown to win <input name="win" type="number" min="3" max="20" value="10"></label>
+        <button type="submit">Start</button>
+        <p class="note">Seat order is random. Friends get a link each to join.</p>
+        <p id="home-error" class="error" role="alert"></p>
+      </form>
+    </section>
+
+    <section id="game" hidden>
+      <div class="table">
+        <div id="board" class="board"></div>
+        <aside class="side">
+          <p id="status" class="status" role="status"></p>
+          <div id="choices" class="choices"></div>
+          <p id="move-error" class="error" role="alert"></p>
+          <ol id="players" class="players"></ol>
+          <div id="hand-box" class="panel">
+            <h2>Your hand</h2>
+            <ul id="hand" class="hand"></ul>
+          </div>
+          <div id="trade-box" class="panel" hidden>
+            <h2>Trade with the bank</h2>
+            <p class="pick-label">Give</p>
+            <div id="give" class="pick" role="group" aria-label="Give"></div>
+            <p class="pick-label">For 1</p>
+            <div id="get" class="pick" role="group" aria-label="For 1"></div>
+            <button type="button" id="trade" class="primary">Trade</button>
+          </div>
+          <div id="projects-box" class="panel">
+            <h2>Projects <span class="cost">Grain + Copper + Fish</span></h2>
+            <ul id="row" class="row"></ul>
+            <p id="held" class="note"></p>
+          </div>
+          <div id="invite-box" class="panel" hidden>
+            <h2>Invite links</h2>
+            <ul id="invites" class="invites"></ul>
+          </div>
+          <div class="panel">
+            <h2>Recent moves</h2>
+            <ol id="log" class="log" reversed></ol>
+          </div>
+          <details class="panel">
+            <summary>Costs</summary>
+            <ul class="costs">
+              <li>Path: Timber + Stone</li>
+              <li>Boat: Timber + Fish</li>
+              <li>Hut (1 Renown): Timber + Stone + Grain + Fish</li>
+              <li>Lodge (2 Renown, replaces a Hut): 2 Grain + 3 Copper</li>
+              <li>Project: Grain + Copper + Fish</li>
+            </ul>
+          </details>
+        </aside>
+      </div>
+    </section>
   </main>
 </body>
 </html>

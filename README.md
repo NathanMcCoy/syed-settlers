@@ -3,7 +3,8 @@
 Build on a hex island, trade, and race to 10 Renown, against friends and bots in any mix.
 The rules are in [RULES.md](RULES.md). Planned for settlers.pacificfish.ca.
 
-**Status:** the island generator and a plain island viewer. The game itself isn't playable yet.
+**Status:** playable against bots and friends (links, no accounts), plain and functional. Games are
+kept in the server's memory, so a restart ends them. Sailing is on hold (islets off by default).
 
 ## How it's built
 
@@ -29,7 +30,9 @@ Needs Node 24+ and Rust with the WebAssembly target (`rustup target add wasm32-u
 
 | Command | What it does |
 |---|---|
-| `npm test` | The engine's Rust tests, then the Node tests (WebAssembly, server) |
+| `npm install` | Once: Playwright, for the browser tests (uses Chromium and WebKit) |
+| `npm test` | The engine's Rust tests, then the Node tests (WebAssembly, server, game API, browsers) |
+| `cargo run --release --bin cli -- sim --games 10000` | Bots play each other: game length, seat fairness, Renown sources (in `engine/`) |
 | `npm run build` | Rebuilds `site/js/settlers.wasm` after a change in `engine/src` (a test fails if you forget) |
 | `npm run serve` | The site on http://localhost:8091/ |
 | `cargo run --release --bin cli -- island --seed betta` | One island as JSON (in `engine/`) |
