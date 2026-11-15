@@ -176,7 +176,8 @@ fn attempt_island(s: &Settings, rng: &mut Rng) -> Option<Island> {
         return None;
     }
     let islets = place_islets(rng, &main, s.islet_count as usize, s.islet_distance)?;
-    let mut land = dress_main(rng, &main, s.island_dunes as usize)?;
+    let counts = if s.island_hexagon { Some(s.tile_counts()) } else { None };
+    let mut land = dress_main(rng, &main, s.island_dunes as usize, counts)?;
     let main_average = land.iter().map(|h| pips(h.number)).sum::<u32>() as f64
         / land.iter().filter(|h| h.number != 0).count() as f64;
     let (islet_hexes, islet_average) = dress_islets(rng, &islets, main_average, s.islet_resources);
@@ -359,14 +360,23 @@ fn place_islets(rng: &mut Rng, main: &[Cell], count: usize, average: f64) -> Opt
 }
 
 // Main island terrain and numbers, redrawn until the fairness checks pass
-fn dress_main(rng: &mut Rng, main: &[Cell], dunes: usize) -> Option<Vec<Hex>> {
+// The hexagon island uses the set number of each tile (`counts`, in PRODUCING's order); a random-
+// shaped one shares its hexes out as evenly as possible
+fn dress_main(rng: &mut Rng, main: &[Cell], dunes: usize, counts: Option<[u8; 5]>) -> Option<Vec<Hex>> {
     let producing = main.len() - dunes;
-    let per = producing / PRODUCING.len();
-    let mut kinds = PRODUCING;
-    rng.shuffle(&mut kinds);
-    let mut terrains: Vec<Terrain> = PRODUCING.iter().flat_map(|&t| std::iter::repeat_n(t, per)).collect();
-    terrains.extend(&kinds[..producing - per * PRODUCING.len()]);
+    let mut terrains: Vec<Terrain> = match counts {
+        Some(c) => PRODUCING.iter().zip(c).flat_map(|(&t, n)| std::iter::repeat_n(t, n as usize)).collect(),
+        None => {
+            let per = producing / PRODUCING.len();
+            let mut kinds = PRODUCING;
+            rng.shuffle(&mut kinds);
+            let mut list: Vec<Terrain> = PRODUCING.iter().flat_map(|&t| std::iter::repeat_n(t, per)).collect();
+            list.extend(&kinds[..producing - per * PRODUCING.len()]);
+            list
+        }
+    };
     terrains.extend(std::iter::repeat_n(Dunes, dunes));
+    debug_assert_eq!(terrains.len(), main.len());
     let mut tokens = number_tokens(producing);
     let index: HashMap<Cell, usize> = main.iter().enumerate().map(|(i, &c)| (c, i)).collect();
     let near: Vec<Vec<usize>> = main.iter().map(|c| c.neighbors().iter().filter_map(|n| index.get(n).copied()).collect()).collect();
@@ -567,12 +577,17 @@ mod tests {
         let main_set: HashSet<Cell> = main.iter().map(|h| h.cell).collect();
         assert!(!has_lakes(&main.iter().map(|h| h.cell).collect::<Vec<_>>(), &main_set), "no lakes: {why}");
 
-        // Terrain: the set number of dunes; the five others as even as possible, each 3+
+        // Terrain: the set number of dunes; on the hexagon exactly the set tiles, otherwise the five
+        // others as even as possible, each 3+
         let dunes = main.iter().filter(|h| h.terrain == Dunes).count();
         assert_eq!(dunes, s.island_dunes as usize, "{why}");
         let counts: Vec<usize> = PRODUCING.iter().map(|&t| main.iter().filter(|h| h.terrain == t).count()).collect();
-        let (lo, hi) = (*counts.iter().min().unwrap(), *counts.iter().max().unwrap());
-        assert!(lo >= 3 && hi - lo <= 1, "terrain {counts:?}: {why}");
+        if s.island_hexagon {
+            assert_eq!(counts, s.tile_counts().map(|n| n as usize).to_vec(), "hexagon tiles: {why}");
+        } else {
+            let (lo, hi) = (*counts.iter().min().unwrap(), *counts.iter().max().unwrap());
+            assert!(lo >= 3 && hi - lo <= 1, "terrain {counts:?}: {why}");
+        }
 
         // Numbers: exactly the tokens, never 7, none on dunes or sea
         let mut numbers: Vec<u8> = main.iter().filter(|h| h.number != 0).map(|h| h.number).collect();
@@ -683,7 +698,13 @@ mod tests {
     #[test]
     fn every_size_and_islet_setting_works() {
         let mut n = 0;
-        let shapes = ["island.hexagon=true".to_string()].into_iter()
+        // The hexagon with its default tiles, and with other mixes (Dunes counts traded for tiles)
+        let shapes = [
+            "island.hexagon=true".to_string(),
+            "island.hexagon=true;island.forest=3;island.dunes=2".to_string(),
+            "island.hexagon=true;island.paddy=5;island.dunes=0".to_string(),
+            "island.hexagon=true;island.forest=3;island.fields=3;island.quarry=5;island.dunes=1".to_string(),
+        ].into_iter()
             .chain([16, 19, 22, 28, 34, 40].map(|size| format!("island.hexagon=false;island.size={size}")));
         let shapes: Vec<String> = shapes
             .flat_map(|shape| (0..=3).map(move |dunes| format!("{shape};island.dunes={dunes}")))

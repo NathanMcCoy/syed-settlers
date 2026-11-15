@@ -147,6 +147,26 @@ impl Greedy {
         Action::EndTurn
     }
 
+    // Answer the open offer made to `seat`: yes if it gets cards this bot is short of for its goal
+    // without giving away ones it needs, and never help someone within 2 Renown of winning
+    pub fn answer(&self, g: &Game, seat: u8) -> bool {
+        let Some(o) = g.offer else { return false };
+        let s = seat as usize;
+        if !afford(&g.hands[s], &o.get) || g.renown(g.current as usize) + 2 >= g.settings().win as u32 {
+            return false;
+        }
+        let need = self.plan(g, seat).1;
+        let hand = g.hands[s];
+        let mut score = 0.0;
+        for r in 0..5 {
+            let (short, spare) = (need[r].saturating_sub(hand[r]) as f64, hand[r].saturating_sub(need[r]) as f64);
+            let (gain, loss) = (o.give[r] as f64, o.get[r] as f64);
+            score += gain.min(short) * 2.0 + (gain - gain.min(short)) * 0.3;
+            score -= loss.min(spare) * 0.5 + (loss - loss.min(spare)) * 2.0;
+        }
+        score > 0.4
+    }
+
     // What to work toward, and what it costs
     fn plan(&self, g: &Game, p: u8) -> (Goal, Hand) {
         let pu = p as usize;

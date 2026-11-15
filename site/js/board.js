@@ -75,7 +75,7 @@ export function islandSvg(island) {
     poly.append(el('title', {}, title));
     svg.append(poly);
     if (h.number) {
-      svg.append(el('circle', { cx: c.x, cy: c.y, r: SIZE * 0.42, class: 'token' }));
+      svg.append(el('circle', { cx: c.x, cy: c.y, r: SIZE * 0.42, class: 'token', 'data-number': h.number, 'data-token': i }));
       svg.append(el('text', { x: c.x, y: c.y - 2, class: `number${pips(h.number) === 5 ? ' strong' : ''}` }, h.number));
       svg.append(el('text', { x: c.x, y: c.y + 12, class: 'pips' }, '•'.repeat(pips(h.number))));
     }

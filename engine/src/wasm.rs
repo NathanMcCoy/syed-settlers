@@ -13,6 +13,7 @@
 //   game_view(id, seat) -> length: the game as that seat sees it (255: a watcher)
 //   game_act(id, seat, where, n) -> length: a move as text (protocol.rs) by that seat; "ok" or "error <why>"
 //   game_bot(id) -> length: the bot for the seat to act makes its move; answers the move's text
+//   game_bot_answer(id, seat) -> length: that seat's bot answers an open offer ("answer S yes|no"), or "none"
 //   game_free(id): forget the game
 use crate::bot::Greedy;
 use crate::game::Game;
@@ -91,10 +92,13 @@ pub unsafe extern "C" fn game_act(id: u32, seat: u32, p: *const u8, n: usize) ->
     answer_result((|| {
         let action = parse_action(text(p, n)?)?;
         with_game(id, |l| {
-            if l.game.to_act() as u32 != seat {
+            let seat = seat.min(255) as u8;
+            // Answers and counter-offers come from players offered a trade, on someone else's turn
+            let answering = matches!(action, crate::game::Action::Answer(s, _) | crate::game::Action::Counter { seat: s, .. } if s == seat);
+            if l.game.to_act() != seat && !answering {
                 return Err("it isn't your move".to_string());
             }
-            l.game.apply(action).map(|_| "ok".to_string())
+            l.game.apply_as(seat, action).map(|_| "ok".to_string())
         })?
     })())
 }
@@ -110,6 +114,24 @@ pub extern "C" fn game_bot(id: u32) -> usize {
         let seat = l.game.to_act() as usize;
         let a = l.bots[seat].choose(&l.game, &list);
         l.game.apply_unchecked(a);
+        Ok(action_text(a))
+    }).and_then(|r| r))
+}
+
+// The bot in `seat` answers the open offer made to it; answers the move's text, or "none" when it
+// has nothing to answer
+#[unsafe(no_mangle)]
+pub extern "C" fn game_bot_answer(id: u32, seat: u32) -> usize {
+    answer_result(with_game(id, |l| {
+        let seat = seat.min(255) as u8;
+        let mut list = Vec::new();
+        l.game.legal_for(seat, &mut list);
+        if !list.iter().any(|a| matches!(a, crate::game::Action::Answer(..))) {
+            return Ok("none".to_string());
+        }
+        let yes = l.bots[seat as usize].answer(&l.game, seat) && list.contains(&crate::game::Action::Answer(seat, true));
+        let a = crate::game::Action::Answer(seat, yes);
+        l.game.apply_as(seat, a)?;
         Ok(action_text(a))
     }).and_then(|r| r))
 }

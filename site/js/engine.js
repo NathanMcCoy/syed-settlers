@@ -45,6 +45,11 @@ export async function loadEngine(bytes) {
     },
     // The bot for the seat to act moves; returns its move as text
     bot: id => check(read(x.game_bot(id))),
+    // The bot in `seat` answers an open offer made to it: its move as text, or null if nothing to answer
+    botAnswer(id, seat) {
+      const move = check(read(x.game_bot_answer(id, seat)));
+      return move === 'none' ? null : move;
+    },
     free: id => x.game_free(id),
   };
 }
