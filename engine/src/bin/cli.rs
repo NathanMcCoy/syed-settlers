@@ -1,8 +1,9 @@
-﻿// The engine's command-line tool, for this PC (run from engine/ after cargo build --release):
+// The engine's command-line tool, for this PC (run from engine/ after cargo build --release):
 //   target/release/cli island [--seed S] [--set "name=value;..."]   one island, as JSON
 //   target/release/cli bench-island [--count N] [--set ...]        how fast islands are made
 //   target/release/cli settings                                     every setting, as JSON
-// Simulations and bot training will be added here.
+//   target/release/cli sim [--games N] [--players P] [--max-turns T] [--set ...]  bots play each other
+// Bot training will be added here.
 use settlers::island::generate;
 use settlers::settings::Settings;
 use std::time::Instant;
@@ -40,8 +41,60 @@ fn main() {
                 s * 1e6 / count as f64, attempts as f64 / count as f64);
         }
         Some("settings") => println!("{}", Settings::table_json()),
+        Some("sim") => sim(&args, &settings),
         _ => fail("usage: cli island|bench-island|settings [--seed S] [--count N] [--set \"name=value;...\"]"),
     }
+}
+
+// Greedy bots play each other: how long games last, whether seat order matters, where Renown comes
+// from, and how fast it all runs. Games are spread over every CPU thread.
+fn sim(args: &[String], settings: &Settings) {
+    use settlers::game::NOBODY;
+    use settlers::sim::{SOURCES, play};
+    let games: u32 = flag(args, "--games").and_then(|c| c.parse().ok()).unwrap_or(1000);
+    let players: usize = flag(args, "--players").and_then(|c| c.parse().ok()).unwrap_or(4);
+    let max_turns: u32 = flag(args, "--max-turns").and_then(|c| c.parse().ok()).unwrap_or(400);
+    let threads = std::thread::available_parallelism().map_or(4, |n| n.get()).min(games as usize).max(1);
+    let started = Instant::now();
+    let outcomes: Vec<_> = std::thread::scope(|scope| {
+        let handles: Vec<_> = (0..threads)
+            .map(|t| scope.spawn(move || {
+                (t as u32..games).step_by(threads).map(|seed| play(settings, seed, players, max_turns)).collect::<Vec<_>>()
+            }))
+            .collect();
+        handles.into_iter().flat_map(|h| h.join().unwrap()).collect()
+    });
+    let secs = started.elapsed().as_secs_f64();
+    let outcomes: Vec<_> = outcomes.into_iter().map(|o| o.unwrap_or_else(|e| fail(&e))).collect();
+    let n = outcomes.len() as f64;
+    let finished: Vec<_> = outcomes.iter().filter(|o| o.winner != NOBODY).collect();
+    let actions: u64 = outcomes.iter().map(|o| o.actions as u64).sum();
+    println!("{games} games, {players} players, on {threads} threads: {secs:.2} s ({:.0} games/s, {:.1} M actions/s)",
+        n / secs, actions as f64 / secs / 1e6);
+    println!("finished: {} ({:.1}%); the rest hit {max_turns} turns", finished.len(), 100.0 * finished.len() as f64 / n);
+    if finished.is_empty() {
+        return;
+    }
+    let mut turns: Vec<u32> = finished.iter().map(|o| o.turns).collect();
+    turns.sort();
+    let avg = turns.iter().sum::<u32>() as f64 / turns.len() as f64;
+    println!("turns to win: average {avg:.1} ({:.1} rounds), median {}, 10%-90% {}-{}",
+        avg / players as f64, turns[turns.len() / 2], turns[turns.len() / 10], turns[turns.len() * 9 / 10]);
+    let wins: Vec<String> = (0..players)
+        .map(|p| format!("seat {} {:.1}%", p + 1, 100.0 * finished.iter().filter(|o| o.winner as usize == p).count() as f64 / finished.len() as f64))
+        .collect();
+    let fair = 1.0 / players as f64;
+    let margin = 100.0 * (fair * (1.0 - fair) / finished.len() as f64).sqrt() * 2.0; // 95%
+    println!("wins by seat: {} (fair: {:.1}% ± {margin:.1})", wins.join(", "), 100.0 / players as f64);
+    let mut sums = [0u32; 6];
+    for o in &finished {
+        for (k, v) in o.sources[o.winner as usize].iter().enumerate() {
+            sums[k] += v;
+        }
+    }
+    let total: u32 = sums.iter().sum();
+    let parts: Vec<String> = SOURCES.iter().zip(sums).map(|(name, v)| format!("{name} {:.0}%", 100.0 * v as f64 / total as f64)).collect();
+    println!("winners' Renown from: {}", parts.join(", "));
 }
 
 fn fail(why: &str) -> ! {

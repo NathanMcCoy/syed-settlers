@@ -27,6 +27,8 @@ codegen-units = 1
 panic = "abort"
 debug = false
 
-# Tests run fast too (the island tests make thousands of islands)
+# Tests run fast too (they make thousands of islands and play hundreds of games), and keep Rust's
+# overflow checks, so a count going below zero fails a test instead of wrapping around
 [profile.test]
 opt-level = 3
+overflow-checks = true

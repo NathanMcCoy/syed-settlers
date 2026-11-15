@@ -98,7 +98,7 @@ settings! {
     island_hexagon: bool = true, "island.hexagon", 0, 1, "Main island is a hexagon 5 hexes across, 19 hexes (off: a random shape of island.size hexes)";
     island_size: u8 = 22, "island.size", 16, 40, "Land hexes on a random-shaped main island";
     island_dunes: u8 = 1, "island.dunes", 0, 3, "Dunes hexes (produce nothing) on the main island";
-    islet_count: u8 = 2, "islets.count", 0, 6, "How many islets";
+    islet_count: u8 = 0, "islets.count", 0, 6, "How many islets (off for now: sailing is on hold)";
     islet_distance: f64 = 1.5, "islets.distance", 1, 3, "Average sea hexes between an islet and the main island";
     islet_resources: f64 = 1.0, "islets.resources", 0, 1.4, "Islet productivity compared with the main island (1 = the same)";
     islet_bonus: u8 = 1, "islets.bonus", 0, 3, "Renown for the first Hut on each islet";

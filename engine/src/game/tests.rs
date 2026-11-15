@@ -1,0 +1,567 @@
+﻿// The game rules (RULES.md), one test per rule where possible, plus random play that checks the whole
+// state after every action.
+use super::*;
+use crate::bot::Greedy;
+use crate::island::{Island, generate};
+use crate::sim::{play, renown_sources};
+
+fn island(seed: &str) -> Island {
+    generate(&Settings::default(), seed).unwrap()
+}
+
+fn game(players: usize) -> Game {
+    Game::new(&island("rules"), &Settings::default(), players, 7)
+}
+
+fn legal(g: &Game) -> Vec<Action> {
+    let mut v = Vec::new();
+    g.legal(&mut v);
+    v
+}
+
+// Greedy bots place everything in setup
+fn after_setup(players: usize) -> Game {
+    let mut g = game(players);
+    let mut bot = Greedy::new(1);
+    while g.turn == 0 {
+        let list = legal(&g);
+        let a = bot.choose(&g, &list);
+        g.apply(a).unwrap();
+    }
+    g
+}
+
+// A free corner touching the main island, with free neighbours, not on a market
+fn free_spot(g: &Game) -> usize {
+    (0..g.corner_owner.len()).find(|&c| g.board.corner_main[c] && g.spaced(c) && g.board.corner_market[c] == NOBODY).unwrap()
+}
+
+// Everything that must always be true
+fn check(g: &Game) {
+    let s = g.settings();
+    let gr = &g.board.graph;
+    for p in 0..g.players {
+        let huts = (0..gr.corners()).filter(|&c| g.corner_owner[c] == p as u8 && g.corner_kind[c] == HUT).count() as u8;
+        let lodges = (0..gr.corners()).filter(|&c| g.corner_owner[c] == p as u8 && g.corner_kind[c] == LODGE).count() as u8;
+        let paths = (0..gr.edges()).filter(|&e| g.edge_owner[e] == p as u8 && g.edge_kind[e] == PATH).count() as u8;
+        let boats = (0..gr.edges()).filter(|&e| g.edge_owner[e] == p as u8 && g.edge_kind[e] == BOAT).count() as u8;
+        assert_eq!(huts, g.huts(p), "huts on the board match pieces used");
+        assert_eq!(lodges, g.lodges(p));
+        assert_eq!(paths + g.pieces[p][P_PATH], s.pieces_path);
+        assert_eq!(boats + g.pieces[p][P_BOAT], s.pieces_boat);
+        assert_eq!(g.renown(p), renown_sources(g, p).iter().sum::<u32>());
+        assert_eq!(g.line[p], g.longest_line(p as u8));
+        for r in 0..5 {
+            assert!(g.hands[p][r] < 200, "a hand ran away (or wrapped below zero)");
+        }
+    }
+    // Spacing: no two buildings on neighbouring corners; Paths only on land edges, Boats on sea edges
+    for c in 0..gr.corners() {
+        if g.corner_owner[c] != NOBODY {
+            assert!(g.board.corner_land[c]);
+            assert!(listed(&gr.corner_corners[c]).all(|n| g.corner_owner[n] == NOBODY), "buildings too close");
+        }
+    }
+    for e in 0..gr.edges() {
+        match g.edge_kind[e] {
+            PATH => assert!(g.board.edge_land[e]),
+            BOAT => assert!(g.board.edge_sea[e]),
+            _ => assert_eq!(g.edge_owner[e], NOBODY),
+        }
+    }
+    // Titles go only to someone at the minimum who isn't behind anyone
+    if g.navigator != NOBODY {
+        let v = g.line[g.navigator as usize];
+        assert!(v >= s.navigator_min && g.line[..g.players].iter().all(|&x| x <= v));
+    }
+    if g.harbourmaster != NOBODY {
+        let v = g.markets[g.harbourmaster as usize];
+        assert!(v >= s.harbourmaster_min && g.markets[..g.players].iter().all(|&x| x <= v));
+    }
+    if g.over() {
+        assert!(g.renown(g.winner as usize) >= s.win as u32);
+    }
+    assert!(g.board.terrain[g.squall as usize] != Terrain::Sea, "the squall is on land");
+}
+
+#[test]
+fn random_play_never_breaks_a_rule() {
+    // Completely random legal actions: odd games, but every state must still be valid
+    let mut list = Vec::new();
+    let mut ended = 0;
+    for seed in 0..400u32 {
+        let settings = if seed % 4 == 3 { Settings::parse("projects.faceUp=false;islets.count=4").unwrap() } else { Settings::default() };
+        let isl = generate(&settings, &format!("fuzz{seed}")).unwrap();
+        let mut g = Game::new(&isl, &settings, 2 + seed as usize % 3, seed);
+        let mut rng = Rng::new(seed + 1000);
+        for step in 0..3000 {
+            g.legal(&mut list);
+            if g.over() {
+                assert!(list.is_empty());
+                ended += 1;
+                break;
+            }
+            assert!(!list.is_empty(), "nothing to do in {:?}", g.phase);
+            // Mostly random, but end turns often enough for games to move on
+            let a = if list.contains(&Action::EndTurn) && rng.below(3) == 0 { Action::EndTurn } else { *rng.pick(&list) };
+            if step % 7 == 0 {
+                g.apply(a).unwrap();
+            } else {
+                g.apply_unchecked(a);
+            }
+            check(&g);
+        }
+    }
+    assert!(ended > 50, "only {ended} random games ended");
+}
+
+#[test]
+fn illegal_actions_are_refused_and_change_nothing() {
+    let mut g = after_setup(3);
+    let before = (g.hands, g.corner_owner.clone(), g.phase);
+    assert!(g.apply(Action::EndTurn).is_err(), "can't end the turn before rolling");
+    let taken = (0..g.corner_owner.len()).find(|&c| g.corner_owner[c] != NOBODY).unwrap();
+    assert!(g.apply(Action::Hut(taken as u16)).is_err());
+    assert!(g.apply(Action::Trade(0, 1)).is_err());
+    assert_eq!(before, (g.hands, g.corner_owner.clone(), g.phase));
+}
+
+#[test]
+fn setup_goes_round_and_back_and_the_second_hut_pays() {
+    let mut g = game(3);
+    let mut bot = Greedy::new(3);
+    let mut order = Vec::new();
+    while g.turn == 0 {
+        if g.phase == Phase::SetupHut {
+            order.push(g.to_act());
+        }
+        let list = legal(&g);
+        assert!(list.iter().all(|a| matches!(a, Action::Hut(_) | Action::Path(_) | Action::Boat(_))));
+        let a = bot.choose(&g, &list);
+        let p = g.to_act() as usize;
+        let before = g.hands[p];
+        g.apply(a).unwrap();
+        if let Action::Hut(c) = a {
+            let mut want = before;
+            if order.len() > 3 {
+                for h in listed(&g.board.graph.corner_hexes[c as usize]) {
+                    if g.board.resource[h] != NOBODY {
+                        want[g.board.resource[h] as usize] += 1;
+                    }
+                }
+            }
+            assert_eq!(g.hands[p], want, "second-round Hut collects one of each around it, first round nothing");
+        }
+    }
+    assert_eq!(order, vec![0, 1, 2, 2, 1, 0]);
+    assert_eq!((g.phase, g.current, g.turn), (Phase::PreRoll, 0, 1));
+    for p in 0..3 {
+        assert_eq!(g.huts(p), 2);
+        assert_eq!(g.settings().pieces_path + g.settings().pieces_boat - g.pieces[p][P_PATH] - g.pieces[p][P_BOAT], 2);
+    }
+}
+
+#[test]
+fn setup_paths_must_touch_the_new_hut_and_huts_must_be_spaced() {
+    let mut g = game(2);
+    let c = free_spot(&g);
+    g.apply(Action::Hut(c as u16)).unwrap();
+    for a in legal(&g) {
+        let (Action::Path(e) | Action::Boat(e)) = a else { panic!("{a:?}") };
+        assert!(g.board.graph.edge_corners[e as usize].contains(&(c as u16)));
+    }
+    let a = legal(&g)[0];
+    g.apply(a).unwrap();
+    let huts: Vec<usize> = legal(&g).iter().map(|a| match a { Action::Hut(c) => *c as usize, _ => panic!() }).collect();
+    assert!(!huts.contains(&c));
+    for n in listed(&g.board.graph.corner_corners[c]) {
+        assert!(!huts.contains(&n), "a neighbour of a building isn't allowed");
+    }
+}
+
+#[test]
+fn rolling_pays_huts_one_and_lodges_two_except_under_the_squall() {
+    let mut g = after_setup(3);
+    let gr = &g.board.graph;
+    // A producing hex with a building on it, not under the squall
+    let h = (0..gr.hexes())
+        .find(|&h| g.board.resource[h] != NOBODY && h != g.squall as usize && gr.hex_corners[h].iter().any(|&c| g.corner_owner[c as usize] != NOBODY))
+        .unwrap();
+    let c = *gr.hex_corners[h].iter().find(|&&c| g.corner_owner[c as usize] != NOBODY).unwrap() as usize;
+    let p = g.corner_owner[c] as usize;
+    let r = g.board.resource[h] as usize;
+    let n = g.board.number[h];
+    let count_here = |g: &Game| -> u8 {
+        g.board.graph.hex_corners[h].iter().filter(|&&x| g.corner_owner[x as usize] == p as u8).map(|&x| g.corner_kind[x as usize]).sum()
+    };
+    let before = g.hands[p][r];
+    let others: u8 = g.board.by_number[n as usize].iter().filter(|&&x| x as usize != h && x != g.squall && g.board.resource[x as usize] as usize == r)
+        .map(|&x| g.board.graph.hex_corners[x as usize].iter().filter(|&&k| g.corner_owner[k as usize] == p as u8).map(|&k| g.corner_kind[k as usize]).sum::<u8>())
+        .sum();
+    g.produce(n);
+    assert_eq!(g.hands[p][r], before + count_here(&g) + others);
+
+    g.corner_kind[c] = LODGE;
+    g.pieces[p][P_LODGE] -= 1;
+    g.pieces[p][P_HUT] += 1;
+    let before = g.hands[p][r];
+    g.produce(n);
+    assert_eq!(g.hands[p][r], before + count_here(&g) + others + 0, "a Lodge pays 2");
+
+    g.squall = h as u16;
+    let before = g.hands[p][r];
+    g.produce(n);
+    assert_eq!(g.hands[p][r], before + others, "nothing under the squall");
+}
+
+#[test]
+fn a_seven_halves_big_hands_then_moves_the_squall_then_steals() {
+    let mut g = after_setup(3);
+    g.hands = [[3, 3, 3, 0, 0], [2, 2, 2, 1, 0], [5, 0, 0, 0, 3], [0; 5]];
+    g.phase = Phase::PreRoll;
+    g.rolled(7);
+    assert_eq!(g.phase, Phase::Discard);
+    assert_eq!(&g.discards[..3], &[4, 0, 4], "9 cards lose 4, 7 lose none, 8 lose 4");
+    assert_eq!(g.to_act(), 0);
+    for r in [0, 0, 0, 1] {
+        g.apply(Action::Discard(r)).unwrap();
+    }
+    assert_eq!(g.to_act(), 2);
+    assert!(g.apply(Action::Discard(1)).is_err(), "player 3 has no Stone");
+    for _ in 0..4 {
+        let a = legal(&g)[0];
+        g.apply(a).unwrap();
+    }
+    assert_eq!(g.hands[0].iter().sum::<u8>(), 5);
+    assert_eq!(g.hands[2].iter().sum::<u8>(), 4);
+    assert_eq!(g.phase, Phase::MoveSquall { anywhere: false });
+
+    // The squall moves 1 to 4 steps, onto land
+    let range = g.settings().squall_range as i32;
+    let moves: Vec<u16> = legal(&g).iter().map(|a| match a { Action::Squall(h) => *h, _ => panic!() }).collect();
+    let want: Vec<u16> = g.board.land_hexes.iter().copied().filter(|&h| h != g.squall && g.board.hex_distance(h, g.squall) <= range).collect();
+    assert_eq!(moves, want);
+
+    // Onto a hex with another player's building: one card moves to the roller
+    let target = moves.iter().copied().find(|&h| g.board.graph.hex_corners[h as usize].iter().any(|&c| {
+        let o = g.corner_owner[c as usize];
+        o != NOBODY && o != 0
+    }));
+    if let Some(h) = target {
+        let total = |g: &Game| (0..3).map(|p| g.cards(p)).sum::<u32>();
+        let (all, mine) = (total(&g), g.cards(0));
+        g.apply(Action::Squall(h)).unwrap();
+        if g.phase == Phase::Steal {
+            let v = legal(&g)[0];
+            g.apply(v).unwrap();
+        }
+        assert_eq!(total(&g), all);
+        assert_eq!(g.cards(0), mine + 1);
+        assert_eq!(g.phase, Phase::Main);
+    }
+}
+
+#[test]
+fn small_hands_keep_everything_on_a_seven() {
+    let mut g = after_setup(2);
+    g.hands = [[1, 1, 1, 1, 1], [7, 0, 0, 0, 0], [0; 5], [0; 5]];
+    g.phase = Phase::PreRoll;
+    g.rolled(7);
+    assert_eq!(g.phase, Phase::MoveSquall { anywhere: false });
+}
+
+#[test]
+fn nobody_to_steal_from_returns_to_the_turn() {
+    let mut g = after_setup(2);
+    g.hands = [[0; 5]; 4];
+    g.hands[0] = [1, 0, 0, 0, 0];
+    g.phase = Phase::MoveSquall { anywhere: true };
+    g.back = Phase::Main;
+    let h = legal(&g).iter().find_map(|a| match a { Action::Squall(h) => Some(*h), _ => None }).unwrap();
+    g.apply(Action::Squall(h)).unwrap();
+    assert_eq!(g.phase, Phase::Main, "others have no cards, so nothing to steal");
+    assert_eq!(g.hands[0], [1, 0, 0, 0, 0]);
+}
+
+#[test]
+fn trading_rates_bank_markets_and_fair_winds() {
+    let mut g = after_setup(2);
+    // Clear the board's buildings so markets are controlled by the test
+    g.corner_owner.fill(NOBODY);
+    g.corner_kind.fill(0);
+    assert_eq!(g.rate(0, 0), 4);
+    let board = g.board.clone();
+    let market_corner = |kind: u8| (0..board.graph.corners()).find(|&c| {
+        let m = board.corner_market[c];
+        m != NOBODY && board.market_kind[m as usize] == kind
+    }).unwrap();
+    let general = market_corner(ANY);
+    g.corner_owner[general] = 0;
+    g.corner_kind[general] = HUT;
+    assert_eq!(g.rate(0, 0), 3);
+    assert_eq!(g.rate(1, 0), 4, "only for the owner");
+    let stone = market_corner(1);
+    g.corner_owner[stone] = 0;
+    g.corner_kind[stone] = HUT;
+    assert_eq!((g.rate(0, 1), g.rate(0, 2)), (2, 3));
+    g.current = 0;
+    g.winds = 4;
+    assert_eq!(g.rate(0, 4), 2);
+
+    g.phase = Phase::Main;
+    g.hands[0] = [0, 2, 0, 0, 0];
+    g.apply(Action::Trade(1, 3)).unwrap();
+    assert_eq!(g.hands[0], [0, 0, 0, 1, 0]);
+    assert!(g.apply(Action::Trade(1, 3)).is_err());
+}
+
+#[test]
+fn paths_and_boats_join_directly_but_not_through_another_players_building() {
+    let mut g = after_setup(2);
+    g.phase = Phase::Main;
+    g.current = 0;
+    g.hands[0] = [5, 5, 0, 0, 5];
+    let board = g.board.clone();
+    let gr = &board.graph;
+    let edges = |g: &Game| -> Vec<usize> {
+        legal(g).iter().filter_map(|a| match a { Action::Path(e) | Action::Boat(e) => Some(*e as usize), _ => None }).collect()
+    };
+    for e in edges(&g) {
+        let ok = gr.edge_corners[e].iter().any(|&c| {
+            let c = c as usize;
+            g.corner_owner[c] == 0 || (g.corner_owner[c] == NOBODY && listed(&gr.corner_edges[c]).any(|x| g.edge_owner[x] == 0))
+        });
+        assert!(ok, "every offered edge joins player 1's network");
+    }
+    // Put player 2's Hut at the far end of one of player 1's edges: edges beyond it are cut off
+    let mine = (0..gr.edges()).find(|&e| g.edge_owner[e] == 0 && gr.edge_corners[e].iter().any(|&c| g.corner_owner[c as usize] == NOBODY)).unwrap();
+    let end = gr.edge_corners[mine].iter().map(|&c| c as usize).find(|&c| g.corner_owner[c] == NOBODY).unwrap();
+    g.corner_owner[end] = 1;
+    g.corner_kind[end] = HUT;
+    for e in listed(&gr.corner_edges[end]) {
+        if e == mine || g.edge_owner[e] != NOBODY {
+            continue;
+        }
+        let other = gr.edge_corners[e].iter().map(|&c| c as usize).find(|&c| c != end).unwrap();
+        let reachable_otherwise = g.corner_owner[other] == 0 || listed(&gr.corner_edges[other]).any(|x| g.edge_owner[x] == 0);
+        assert_eq!(edges(&g).contains(&e), reachable_otherwise, "edge {e} past another player's Hut");
+    }
+}
+
+// A chain of `len` edges walking away from a corner, over land edges where possible
+fn chain(g: &Game, start: usize, len: usize) -> Vec<usize> {
+    let gr = &g.board.graph;
+    let mut seen = vec![start];
+    let mut out = Vec::new();
+    let mut c = start;
+    while out.len() < len {
+        let (k, n) = listed(&gr.corner_corners[c]).enumerate()
+            .find(|&(k, n)| !seen.contains(&n) && g.board.edge_land[gr.corner_edges[c][k] as usize] && g.board.corner_main[n])
+            .expect("room for a chain");
+        out.push(gr.corner_edges[c][k] as usize);
+        seen.push(n);
+        c = n;
+        let _ = k;
+    }
+    out
+}
+
+#[test]
+fn navigator_takes_the_longest_line_and_other_buildings_break_it() {
+    let mut g = game(3);
+    g.turn = 1;
+    g.phase = Phase::Main;
+    let start = (0..g.corner_owner.len()).find(|&c| g.board.corner_main[c] && listed(&g.board.graph.corner_hexes[c]).count() == 3).unwrap();
+    let line = chain(&g, start, 6);
+    for &e in &line[..4] {
+        g.edge_owner[e] = 0;
+        g.edge_kind[e] = PATH;
+    }
+    g.update_titles();
+    assert_eq!((g.line[0], g.navigator), (4, NOBODY), "4 is under the minimum of 5");
+    g.edge_owner[line[4]] = 0;
+    g.edge_kind[line[4]] = PATH;
+    g.update_titles();
+    assert_eq!((g.line[0], g.navigator), (5, 0));
+    // Another player's Hut on the corner between the 2nd and 3rd edges splits it into 2 and 3
+    let gr = &g.board.graph;
+    let [a, b] = gr.edge_corners[line[1]];
+    let mid = if gr.edge_corners[line[2]].contains(&a) { a } else { b } as usize;
+    g.corner_owner[mid] = 1;
+    g.corner_kind[mid] = HUT;
+    g.update_titles();
+    assert_eq!((g.line[0], g.navigator), (3, NOBODY));
+}
+
+#[test]
+fn titles_change_hands_only_to_someone_strictly_ahead() {
+    assert_eq!(title(NOBODY, &[5, 4, 3], 5), 0);
+    assert_eq!(title(0, &[5, 5, 3], 5), 0, "a tie doesn't take it");
+    assert_eq!(title(0, &[5, 6, 3], 5), 1);
+    assert_eq!(title(0, &[4, 6, 6], 5), NOBODY, "the holder fell behind a tie: nobody");
+    assert_eq!(title(0, &[4, 3, 2], 5), NOBODY, "nobody at the minimum");
+    assert_eq!(title(NOBODY, &[6, 6, 2], 5), NOBODY);
+}
+
+#[test]
+fn harbourmaster_counts_different_markets() {
+    let mut g = game(2);
+    g.turn = 1;
+    let corners: Vec<usize> = (0..g.board.market_kind.len())
+        .map(|m| (0..g.corner_owner.len()).find(|&c| g.board.corner_market[c] == m as u8).unwrap())
+        .collect();
+    g.corner_owner[corners[0]] = 0;
+    g.update_titles();
+    assert_eq!((g.markets[0], g.harbourmaster), (1, NOBODY));
+    g.corner_owner[corners[1]] = 0;
+    g.update_titles();
+    assert_eq!((g.markets[0], g.harbourmaster), (2, 0));
+}
+
+#[test]
+fn the_first_hut_on_an_islet_earns_the_bonus_once() {
+    let s = Settings::parse("islets.count=2").unwrap();
+    let mut g = Game::new(&generate(&s, "islets").unwrap(), &s, 2, 7);
+    let mut bot = Greedy::new(1);
+    while g.turn == 0 {
+        let list = legal(&g);
+        let a = bot.choose(&g, &list);
+        g.apply(a).unwrap();
+    }
+    let c = (0..g.corner_owner.len()).find(|&c| g.board.corner_islet[c] != NOBODY).unwrap();
+    let before = g.renown(0);
+    g.phase = Phase::FreeBuild { left: 1 }; // not setup, not paying: place_hut directly
+    g.hands[0] = HUT_COST;
+    g.phase = Phase::Main;
+    g.place_hut(0, c);
+    assert_eq!(g.renown(0), before + 1 + g.settings().islet_bonus as u32);
+    let other = listed(&g.board.graph.corner_corners[c]).flat_map(|n| listed(&g.board.graph.corner_corners[n]).collect::<Vec<_>>())
+        .find(|&x| g.board.corner_islet[x] == g.board.corner_islet[c] && g.spaced(x));
+    if let Some(x) = other {
+        g.hands[1] = HUT_COST;
+        let before1 = g.renown(1);
+        g.place_hut(1, x);
+        assert_eq!(g.renown(1), before1 + 1, "no bonus for the second Hut there");
+    }
+}
+
+#[test]
+fn a_lodge_replaces_a_hut_and_returns_it() {
+    let mut g = after_setup(2);
+    g.phase = Phase::Main;
+    g.current = 0;
+    g.hands[0] = LODGE_COST;
+    let c = (0..g.corner_owner.len()).find(|&c| g.corner_owner[c] == 0).unwrap();
+    let (huts, renown) = (g.pieces[0][P_HUT], g.renown(0));
+    g.apply(Action::Lodge(c as u16)).unwrap();
+    assert_eq!(g.corner_kind[c], LODGE);
+    assert_eq!(g.pieces[0][P_HUT], huts + 1);
+    assert_eq!(g.renown(0), renown + 1);
+    assert_eq!(g.hands[0], [0; 5]);
+}
+
+#[test]
+fn face_up_projects_refill_and_cant_be_played_the_turn_theyre_bought() {
+    let mut g = after_setup(2);
+    g.phase = Phase::Main;
+    g.current = 0;
+    // A known row: Pilot, Harvest, Lighthouse
+    g.row = vec![Project::Pilot as u8, Project::Harvest as u8, Project::Lighthouse as u8];
+    let deck = g.deck.len();
+    let next = *g.deck.last().unwrap();
+    g.hands[0] = [0, 0, 3, 3, 3];
+    let renown = g.renown(0);
+    g.apply(Action::Buy(2)).unwrap();
+    assert_eq!(g.renown(0), renown + 1, "a Lighthouse counts at once");
+    assert_eq!(g.row, vec![Project::Pilot as u8, Project::Harvest as u8, next]);
+    assert_eq!(g.deck.len(), deck - 1);
+    g.apply(Action::Buy(1)).unwrap();
+    assert!(!legal(&g).contains(&Action::Play(Project::Harvest)), "not on the turn it was bought");
+    g.apply(Action::EndTurn).unwrap();
+    // Player 2's turn, then back to player 1
+    g.phase = Phase::Main;
+    g.apply(Action::EndTurn).unwrap();
+    assert!(legal(&g).contains(&Action::Play(Project::Harvest)), "playable before rolling next turn");
+    g.held[0][Project::Pilot as usize] = 1;
+    let copper = g.hands[0][3];
+    g.apply(Action::Play(Project::Harvest)).unwrap();
+    g.apply(Action::Take(3)).unwrap();
+    g.apply(Action::Take(3)).unwrap();
+    assert_eq!(g.hands[0][3], copper + 2);
+    assert_eq!(g.phase, Phase::PreRoll, "back to before the roll");
+    assert!(!legal(&g).iter().any(|a| matches!(a, Action::Play(_))), "one project a turn");
+}
+
+#[test]
+fn hidden_projects_are_drawn_unseen() {
+    let s = Settings::parse("projects.faceUp=false").unwrap();
+    let mut g = Game::new(&generate(&s, "hidden").unwrap(), &s, 2, 3);
+    assert!(g.row.is_empty());
+    let total = s.deck_pilot + s.deck_lighthouse + s.deck_shipwright + s.deck_harvest + s.deck_winds;
+    assert_eq!(g.deck.len(), total as usize);
+    g.turn = 1;
+    g.phase = Phase::Main;
+    g.hands[0] = PROJECT_COST;
+    let top = *g.deck.last().unwrap();
+    assert!(legal(&g).contains(&Action::Buy(0)));
+    g.apply(Action::Buy(0)).unwrap();
+    assert_eq!(g.held[0][top as usize], 1);
+}
+
+#[test]
+fn shipwright_places_two_free_and_fair_winds_trades_two_for_one() {
+    let mut g = after_setup(2);
+    g.phase = Phase::Main;
+    g.current = 0;
+    g.held[0][Project::Shipwright as usize] = 1;
+    g.hands[0] = [0; 5];
+    let (paths, boats) = (g.pieces[0][P_PATH], g.pieces[0][P_BOAT]);
+    g.apply(Action::Play(Project::Shipwright)).unwrap();
+    for _ in 0..2 {
+        assert!(matches!(g.phase, Phase::FreeBuild { .. }));
+        let a = legal(&g)[0];
+        g.apply(a).unwrap();
+    }
+    assert_eq!(g.phase, Phase::Main);
+    assert_eq!(paths + boats - g.pieces[0][P_PATH] - g.pieces[0][P_BOAT], 2);
+    assert_eq!(g.hands[0], [0; 5], "free");
+
+    g.apply(Action::EndTurn).unwrap();
+    g.phase = Phase::Main;
+    g.apply(Action::EndTurn).unwrap();
+    g.phase = Phase::Main;
+    g.corner_owner.iter_mut().for_each(|o| if *o == 0 { *o = NOBODY });
+    g.held[0][Project::Winds as usize] = 1;
+    g.hands[0] = [0, 0, 2, 0, 0];
+    assert!(!legal(&g).contains(&Action::Trade(2, 0)));
+    g.apply(Action::Play(Project::Winds)).unwrap();
+    g.apply(Action::Take(2)).unwrap();
+    g.apply(Action::Trade(2, 0)).unwrap();
+    assert_eq!(g.hands[0], [1, 0, 0, 0, 0]);
+}
+
+#[test]
+fn you_only_win_on_your_own_turn() {
+    let mut g = after_setup(2);
+    g.phase = Phase::Main;
+    g.current = 0;
+    g.held[1][Project::Lighthouse as usize] = 10;
+    g.hands[0] = [4, 0, 0, 0, 0];
+    g.apply(Action::Trade(0, 1)).unwrap();
+    assert!(!g.over(), "player 2 has 10+ Renown, but it's player 1's turn");
+    g.apply(Action::EndTurn).unwrap();
+    assert!(g.over());
+    assert_eq!(g.winner, 1);
+}
+
+#[test]
+fn bot_games_finish_and_are_repeatable() {
+    let s = Settings::default();
+    for seed in 0..200 {
+        let o = play(&s, seed, 2 + seed as usize % 3, 400).unwrap();
+        assert_ne!(o.winner, NOBODY, "game {seed} didn't finish");
+    }
+    let a = play(&s, 5, 4, 400).unwrap();
+    let b = play(&s, 5, 4, 400).unwrap();
+    assert_eq!((a.winner, a.turns, a.actions), (b.winner, b.turns, b.actions));
+}
