@@ -475,25 +475,7 @@ function drawShop(v) {
     $('shop').replaceChildren(li);
     return;
   }
-  $('shop').replaceChildren(...SHOP.map(item => {
-    const li = document.createElement('li');
-    li.className = `shop-item${mode === item.key ? ' picked' : ''}`;
-    li.dataset.item = item.key;
-    const name = document.createElement('strong');
-    name.textContent = item.name;
-    const note = document.createElement('span');
-    note.className = 'note';
-    note.textContent = item.note;
-    const cost = document.createElement('span');
-    cost.className = 'cost-chips';
-    item.cost.forEach((n, r) => {
-      for (let i = 0; i < n; i++) {
-        const chip = document.createElement('span');
-        chip.className = `chip r${r}${(v.hand?.[r] ?? 0) > i ? '' : ' short'}`;
-        chip.textContent = RESOURCES[r];
-        cost.append(chip);
-      }
-    });
+  const pieces = SHOP.map(item => {
     const reason = shopReason(v, item);
     const b = document.createElement('button');
     b.type = 'button';
@@ -506,12 +488,65 @@ function drawShop(v) {
       b.disabled = reason !== null;
       b.addEventListener('click', () => { mode = item.key; render(snap); });
     }
-    const why = document.createElement('span');
-    why.className = 'why';
-    why.textContent = reason && v.toAct === v.you && v.phase === 'main' ? reason : '';
-    li.append(name, note, cost, b, why);
-    return li;
-  }));
+    return shopRow(v, { key: item.key, name: item.name, note: item.note, cost: item.cost, picked: mode === item.key }, b, reason);
+  });
+  $('shop').replaceChildren(...pieces, ...projectItems(v));
+}
+
+// One row of the shop: name, note, cost chips (greyed where you're short), its button, and why not
+function shopRow(v, item, button, reason) {
+  const li = document.createElement('li');
+  li.className = `shop-item${item.picked ? ' picked' : ''}${item.project ? ' project-item' : ''}`;
+  li.dataset.item = item.key;
+  const name = document.createElement('strong');
+  name.textContent = item.name;
+  const note = document.createElement('span');
+  note.className = 'note';
+  note.textContent = item.note;
+  const cost = document.createElement('span');
+  cost.className = 'cost-chips';
+  item.cost.forEach((n, r) => {
+    for (let i = 0; i < n; i++) {
+      const chip = document.createElement('span');
+      chip.className = `chip r${r}${(v.hand?.[r] ?? 0) > i ? '' : ' short'}`;
+      chip.textContent = RESOURCES[r];
+      cost.append(chip);
+    }
+  });
+  const why = document.createElement('span');
+  why.className = 'why';
+  why.textContent = reason && v.toAct === v.you && v.phase === 'main' ? reason : '';
+  li.append(name, note, cost, button, why);
+  return li;
+}
+
+// Project cards in the shop: hidden (the default), one card drawn unseen; face up, each card showing
+const PROJECT_COST = [0, 0, 1, 1, 1];   // Grain + Copper + Fish (engine: PROJECT_COST)
+function projectItems(v) {
+  const cards = v.row.length
+    ? v.row.map((k, slot) => ({ key: `project-${slot}`, move: `buy ${slot}`, name: PROJECTS[k], note: PROJECT_HELP[k] }))
+    : [{
+        key: 'project', move: 'buy 0', name: 'Project card',
+        note: `Drawn unseen: Pilot, Lighthouse, Road Crew, Good Harvest or Good Bargain · ${v.deck} left`,
+      }];
+  return cards.map(card => {
+    const reason = projectReason(v, card.move);
+    const b = button('Buy', card.move);
+    b.dataset.buy = card.move;
+    b.disabled = reason !== null;
+    return shopRow(v, { ...card, cost: PROJECT_COST, project: true }, b, reason);
+  });
+}
+
+function projectReason(v, move) {
+  if (legal().includes(move)) return null;
+  if (v.toAct !== v.you || v.phase === 'over') return 'Not your turn';
+  if (v.phase === 'preRoll') return 'After you roll';
+  if (v.phase !== 'main') return 'Not now';
+  if (!v.deck && !v.row.length) return 'None left';
+  const short = PROJECT_COST.map((n, r) => Math.max(0, n - v.hand[r]));
+  if (short.some(n => n)) return `Need ${short.map((n, r) => (n ? `${n} ${RESOURCES[r]}` : null)).filter(Boolean).join(', ')}`;
+  return 'Not now';
 }
 
 // ---------- Trading with players ----------
