@@ -256,6 +256,12 @@ Each map is made from the seed to the scenario's rules and tile counts; the layo
 - **4 Through the Desert** (14 Renown): the main island with a desert of 2 more Dunes along its east side, a strip of
   4 hexes beyond it (Forest, Paddy, Fields, Mine; numbers 3, 5, 9, 11) and two small islands of 2 hexes holding the
   2 Gold, a Quarry and a Paddy (4, 6, 8, 10). Set up on the main island; the strip and each small island are a bonus (2).
+- **5 The Forgotten Tribe** (13 Renown): New Shores' map (no island bonus). 8 Renown tokens, 4 face-down projects and
+  3 markets (one general, two of random resources) lie on sea edges touching the small islands, no two sharing a
+  corner. The first ship built or moved onto such an edge takes it: a Renown token; a project, as if bought this turn;
+  a market, placed (a move in the main phase) on a coastal edge at one of your buildings with no market on it or on an
+  edge sharing a corner with it, and kept until there is one. Huts only next to a numbered hex; the squall only on
+  numbered hexes.
 - **6 Cloth** (14 Renown): two large islands of 12 (2 Gold, 3 Mine, 4 Forest, 4 Paddy, 5 Fields, 4 Quarry, 2 Dunes) and
   four small islands of two **villages** each (numbers 3-11, 5 cloth each; 10 more in a general supply). No Huts on
   the small islands; the squall never goes there. Three setup Huts each (forward, back, forward; only the third
@@ -276,7 +282,7 @@ Each map is made from the seed to the scenario's rules and tile counts; the layo
 - **9 New World** (12 Renown): the rulebook's 23 tiles (4 Mine, 5 Forest, 5 Paddy, 5 Fields, 4 Quarry; 2 more of
   each with 5-6 players) on 3 to 5 random islands; 10 markets (5 general) on any coast. Set up anywhere; every island
   beyond your home islands is a bonus of 1.
-- Still to come: 5 The Forgotten Tribe, 7 The Pirate Islands.
+- Still to come: 7 The Pirate Islands.
 
 ## Not in version 1 (planned)
 
