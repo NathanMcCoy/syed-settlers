@@ -16,7 +16,7 @@
 //   game_bot_answer(id, seat) -> length: that seat's bot answers an open offer ("answer S yes|no"), or "none"
 //   game_free(id): forget the game
 use crate::bot::Greedy;
-use crate::game::Game;
+use crate::game::{Action, Game};
 use crate::island::{Island, generate};
 use crate::protocol::{action_text, board_json, parse_action, view_json};
 use crate::rng::Rng;
@@ -27,6 +27,10 @@ struct Live {
     island: Island,
     game: Game,
     bots: Vec<Greedy>,
+    // How the game started and every move since: enough to rebuild it exactly (Game::replay), for
+    // saved games and the post-game review later
+    seed: u32,
+    moves: Vec<(u8, Action)>,
 }
 
 thread_local! {
@@ -66,11 +70,12 @@ pub unsafe extern "C" fn game_new(p: *const u8, n: usize) -> usize {
         }
         let island = generate(&settings, seed)?;
         let mut dice = Rng::from_text(&format!("dice:{seed}"));
-        let game = Game::new(&island, &settings, players, dice.next_u32());
+        let seed = dice.next_u32();
+        let game = Game::new(&island, &settings, players, seed);
         let bots = (0..players).map(|_| Greedy::new(dice.next_u32())).collect();
         GAMES.with(|g| {
             let mut g = g.borrow_mut();
-            g.push(Some(Live { island, game, bots }));
+            g.push(Some(Live { island, game, bots, seed, moves: Vec::new() }));
             Ok((g.len() - 1).to_string())
         })
     })())
@@ -99,7 +104,9 @@ pub unsafe extern "C" fn game_act(id: u32, seat: u32, p: *const u8, n: usize) ->
             if l.game.to_act() != seat && !answering {
                 return Err("it isn't your move".to_string());
             }
-            l.game.apply_as(seat, action).map(|_| "ok".to_string())
+            l.game.apply_as(seat, action)?;
+            l.moves.push((seat, action));
+            Ok("ok".to_string())
         })?
     })())
 }
@@ -115,6 +122,7 @@ pub extern "C" fn game_bot(id: u32) -> usize {
         let seat = l.game.to_act() as usize;
         let a = l.bots[seat].choose(&l.game, &list);
         l.game.apply_unchecked(a);
+        l.moves.push((seat as u8, a));
         Ok(action_text(a))
     }).and_then(|r| r))
 }
@@ -131,8 +139,9 @@ pub extern "C" fn game_bot_answer(id: u32, seat: u32) -> usize {
             return Ok("none".to_string());
         }
         let yes = l.bots[seat as usize].answer(&l.game, seat) && list.contains(&crate::game::Action::Answer(seat, true));
-        let a = crate::game::Action::Answer(seat, yes);
+        let a = Action::Answer(seat, yes);
         l.game.apply_as(seat, a)?;
+        l.moves.push((seat, a));
         Ok(action_text(a))
     }).and_then(|r| r))
 }

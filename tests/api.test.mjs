@@ -353,3 +353,28 @@ test('6 seats: the large island, extra build phases, and a game that finishes; 7
   assert.equal(pairedSeen.phase, 'main');
   assert.ok(end.view.players[end.view.winner].renown >= end.view.win);
 });
+
+test('a sea game of bots finishes through the server, with gold, ships and the island bonus in the view', async () => {
+  const seats = [{ kind: 'person' }, { kind: 'bot' }, { kind: 'bot' }, { kind: 'bot' }];
+  const { id, key } = await (await post('/api/games', { seats, settings: { sea: true } })).json();
+  const first = await getJson(`/api/games/${id}?k=${key}`);
+  assert.equal(first.view.win, 14, 'New Shores is played to 14');
+  assert.ok(first.board.island.hexes.some(h => h.terrain === 'gold'));
+  assert.equal(typeof first.view.pirate, 'number');
+  let ships = 0, tokens = 0;
+  const end = await until(async () => {
+    const g = await getJson(`/api/games/${id}?k=${key}`);
+    const v = g.view;
+    ships = Math.max(ships, v.roads.filter(r => r[2] === 2).length);
+    tokens = Math.max(tokens, ...v.players.map(p => p.tokens.renown));
+    if (v.phase === 'over') return g;
+    if (v.toAct === v.you && v.legal.length) {
+      const pick = v.legal.find(m => m === 'roll') ?? v.legal.find(m => m === 'end') ?? v.legal[0];
+      await post(`/api/games/${id}/move`, { k: key, move: pick });
+    }
+    return null;
+  }, 90_000);
+  assert.ok(ships > 0, 'ships were built');
+  assert.ok(end.view.players[end.view.winner].renown >= 14);
+  console.log(`sea game: ${ships} ships at most, island-bonus tokens up to ${tokens}`);
+});

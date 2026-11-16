@@ -253,3 +253,35 @@ not a special case of Main. Per expansion, the 5–6 additions are:
 **Effect on the plan:** none on the order. F7 (decisions by other seats) and F8 (turn steps) must treat "acting player"
 and "whose turn" separately from day one (`owner` vs `current` as built here), and F2 map files need a 5–6 version of
 every scenario map. All seat arrays are `MAX_PLAYERS = 6` already.
+
+## Progress
+
+- **Nov 16, the groundwork (branch `groundwork`):** built, base game unchanged (pinned by `base_game_fingerprint`: 500 bot
+  games, 2–6 players, hashed; any change to how the base game plays fails it).
+  - F11 titles: `engine/src/game/titles.rs` (a `Title` row each: value, min, Renown; `holder()`, `refresh_title()`).
+  - F6 tokens: `game/tokens.rs` (`Token::Renown`, `Token::Trade`; per kind: Renown, hand limit, stealable, tradeable).
+  - F10 winning: `Game::win_target(p)`, `Game::has_won(p)` (the one place rulesets change).
+  - F7 decisions queue: `game/pending.rs` (`Phase::Decide`, `pending`, `after`, `decide_then()`, `decided()`); a 7's
+    discards are its first kind. The view names the phase after the decision ("discard").
+  - F8 turn steps: `game/turns.rs` (`production_roll`, `rolled`, `end_phase`, `start_extra_phase`, `start_turn`).
+  - F13 bots: `bot::Bot` trait, `RandomBot`, `sim::play_with` + `BotKind`, `cli sim --bots greedy,random`; a game that
+    isn't over must always have a legal action (checked every step). Gate test: random bots never stuck (2–6 players),
+    Greedy beats random ≥ 95%.
+  - F14 replays: `Game::replay(island, settings, players, seed, moves)`; the wasm wrapper records every move.
+  - F12 view: `titles` [{name, holder, min, renown}], players' `tokens` and `target`, `deciding` {seat, decision}; the
+    page draws title badges and token counts from these.
+  - Not yet: F1 (rulesets: lands with the first variant, as there's nothing to choose yet); F2–F5, F9 (with the sea
+    expansion, as planned).
+- **Nov 16, the sea expansion, milestone 1 (branch `groundwork`, after the groundwork commit):** the sea rules and
+  scenario 1, New Shores (RULES.md v0.6). `sea=true` (+ `sea.scenario`, `sea.islandBonus`, `pieces.ship`); its own
+  defaults via `Settings::parse_for` (win 14) = the start of F1. Map: main island + small islands (`island.rs`
+  `small_islands`, `pirate_start`; hexes carry a `region`; `Terrain::Gold`). Rules in `engine/src/game/sea.rs`: ships
+  (`Action::Ship`, connect to ships/buildings only, never past others' buildings or by the pirate), one ship move a turn
+  (`Action::MoveShip`, open end, not built this phase; the closed-line rule is implied by the open-end rule), Longest
+  Path joins Paths and ships only at own buildings, gold as a queued decision (`Decision::Gold`), the pirate
+  (`Action::Pirate`, robs ship owners), Road Crew ships, island bonus (Renown tokens). Bot: gold choices, pirate vs
+  squall, sailing toward island spots (`reachable_by_sea`). Page: striped gold, dashed ships, the pirate, Ship and
+  Move a ship in the shop. Sim (20,000 games): 3p 36 rounds, 4p 28, 6p 17; seats fair; winners get ~11% of their
+  Renown from island bonuses. Tests: 10 sea rules tests (5 of 6 deliberate breaks caught; the 6th was the redundant
+  rule, removed), a browser test (setup ship by clicking, both browsers) and an API game. Next milestones: Four Islands,
+  Fog Islands (F9 hidden hexes), Through the Desert, then 5–8 and New World.

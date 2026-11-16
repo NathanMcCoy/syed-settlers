@@ -2,7 +2,8 @@
 //   target/release/cli island [--seed S] [--set "name=value;..."]   one island, as JSON
 //   target/release/cli bench-island [--count N] [--set ...]        how fast islands are made
 //   target/release/cli settings                                     every setting, as JSON
-//   target/release/cli sim [--games N] [--players P] [--max-turns T] [--set ...]  bots play each other
+//   target/release/cli sim [--games N] [--players P] [--max-turns T] [--bots greedy,random] [--set ...]
+//                                                                    bots play each other (--bots: by seat, repeated)
 // Bot training will be added here.
 use settlers::island::generate;
 use settlers::settings::Settings;
@@ -52,7 +53,9 @@ fn main() {
 // from, and how fast it all runs. Games are spread over every CPU thread.
 fn sim(args: &[String], settings: &Settings) {
     use settlers::game::NOBODY;
-    use settlers::sim::{SOURCES, play};
+    use settlers::sim::{BotKind, SOURCES, play_with};
+    let kinds: Vec<BotKind> = flag(args, "--bots").unwrap_or_else(|| "greedy".into()).split(',')
+        .map(|k| BotKind::parse(k.trim()).unwrap_or_else(|e| fail(&e))).collect();
     let games: u32 = flag(args, "--games").and_then(|c| c.parse().ok()).unwrap_or(1000);
     let players: usize = flag(args, "--players").and_then(|c| c.parse().ok()).unwrap_or(4);
     let max_turns: u32 = flag(args, "--max-turns").and_then(|c| c.parse().ok()).unwrap_or(400);
@@ -60,9 +63,9 @@ fn sim(args: &[String], settings: &Settings) {
     let started = Instant::now();
     let outcomes: Vec<_> = std::thread::scope(|scope| {
         let handles: Vec<_> = (0..threads)
-            .map(|t| scope.spawn(move || {
-                (t as u32..games).step_by(threads).map(|seed| play(settings, seed, players, max_turns)).collect::<Vec<_>>()
-            }))
+            .map(|t| { let kinds = &kinds; scope.spawn(move || {
+                (t as u32..games).step_by(threads).map(|seed| play_with(settings, seed, players, max_turns, &kinds)).collect::<Vec<_>>()
+            }) })
             .collect();
         handles.into_iter().flat_map(|h| h.join().unwrap()).collect()
     });
@@ -97,6 +100,12 @@ fn sim(args: &[String], settings: &Settings) {
     let total: u32 = sums.iter().sum();
     let parts: Vec<String> = SOURCES.iter().zip(sums).map(|(name, v)| format!("{name} {:.0}%", 100.0 * v as f64 / total as f64)).collect();
     println!("winners' Renown from: {}", parts.join(", "));
+    // Tokens (e.g. the sea expansion's island bonus), when any were won
+    let tokens: u32 = finished.iter().map(|o| o.token_renown[o.winner as usize]).sum();
+    if tokens > 0 {
+        println!("winners' Renown from tokens: {:.1} a game ({:.0}% of their Renown)",
+            tokens as f64 / finished.len() as f64, 100.0 * tokens as f64 / (total + tokens) as f64);
+    }
 }
 
 fn fail(why: &str) -> ! {
