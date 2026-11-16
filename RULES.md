@@ -362,6 +362,43 @@ Played on their own: not with the sea, the city expansion, event cards or the tw
   Pilot slot: move a raider), Path Builders 3 (Road Crew), Swift Journey 3 (the Good Harvest slot: the wagon moves
   twice), Renown 3 (Lighthouses). Coins as in Rivers. (Ours: works reached at any corner; random raider starts.)
 
+## The exploration expansion ⚙ (`explore` 1-5, chosen when starting a game)
+
+Its own game, 2-4 players, not combined with anything else. Scenarios (each adds to the one before): 1 Land Ho! (8),
+2 Pirate lairs (12), 3 Fish (15), 4 Spices (15), 5 the full game (17).
+
+- **Map:** a start island of 15 hexes (2 Mine, 4 Forest, 3 Paddy, 3 Fields, 3 Quarry; numbers 3 3 4 4 5 6 6 8 8 9 10
+  10 11 11 12, 6s and 8s apart), the Council hex out to sea, and two hidden regions (north-east, south-east). Each
+  region: 6 land hexes (parrot: 2 Quarry, Fields, Paddy, Forest, Mine; goose: Quarry, 2 Fields, Paddy, Forest, Mine)
+  with their own number stacks (3 4 5 6 9 10 / 4 5 8 9 10 11), 2 seas (1 in the full game), plus 3 gold fields
+  (scenarios 2, 5), 3 shoals (3, 5; numbered 1-3 and 4-6) and 3 spice farms (4, 5; one of each ability).
+- **Setup:** round 1 a harbour on an east-coast corner of the start island with a free ship carrying a settler;
+  round 2 a Hut on the start island and a Path. 2 coins each.
+- **Pieces and costs:** harbours (the 4 Lodge pieces; 2 Grain + 2 Stone; replace a coastal Hut; 2 Renown; produce 1),
+  ships (3; Timber + Fish; a free sea edge by your harbour), settlers (2; Timber + Grain + Copper + Fish) and crews
+  (9; Fish + Stone) built onto your ship by a harbour (capacity: 1 settler/haul or 2 crews/sacks; cargo may be sent
+  home from a ship by a harbour). No Lodges, projects, Longest Path or markets.
+- **Production:** no resource for you on a roll (not a 7): 1 coin. Captured gold fields: 2 coins per building. Bank
+  trades 3:1 for anything or a coin; 2 coins buy a resource, twice a turn.
+- **Building:** only on explored land; not by hidden hexes, gold fields still held, spice farms without your crew,
+  or the Council.
+- **Movement phase** (after the action phase): each ship once, up to 4 sea edges (6 for a Fish; +1/+2 with Swift
+  Voyage farms), at most 2 ships ending on an edge; a ship reaching a hidden hex's corner explores it and stops
+  (land: its region's next number and 1 of its resource, or 2 coins with none; gold: a lair number; sea: 2 coins).
+  Ships act where they are: settle (a Hut on a free land corner at an end; the ship and settler go home), crews
+  ashore (lair or farm by it), take a haul or your sack, deliver at the Council. The fish die once a phase.
+- **Missions:** tracks of 7 spaces worth 1, 1, 2, 2, 2, 3, 3 Renown, +1 for the one furthest along (a tie keeps the
+  holder). Lairs: the third crew captures; each player there 2 coins and a step, the hero (a die + crews; ties more
+  crews) one more; every crew goes home. Fish: a die picks a shoal for a haul (none if one waits or a pirate ship
+  sits there; 6 hauls); delivering: a step. Spices: a crew stays on a farm (its ability; one sack per player there);
+  delivering a sack: a step. Pirate Bonus: chasing on 5-6 (both farms: 4-6). Fast Gold: a resource for a coin once a
+  turn (twice with both).
+- **Pirate ships** (scenario 2 up): a 7, after discards: the roller's pirate ship to a sea hex not next to the start
+  island (anyone else's goes home); rob a player with a ship on that hex (a card, or a coin). Moving a ship from or to
+  an edge of its hex costs a coin. An unmoved ship by another's pirate ship may roll to chase it (6), then place yours.
+- **Ours:** no harbour storage; one-go ship moves; tribute at the start or end only; the map; lair numbers 3 4 5 9 10
+  11; 5-6 players not in yet.
+
 ## The city expansion ⚙ (`city`, chosen when starting a game)
 
 From the classic game's cities-and-knights expansion, with our own names. 13 Renown to win (with the sea: only

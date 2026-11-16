@@ -21,7 +21,7 @@
         <li><a href="#variants">The variants box: variants</a> <span class="badge ready" id="variants-badge">Playable</span></li>
         <li><a href="#city">The city expansion</a> <span class="badge ready" id="city-badge">Playable</span></li>
         <li><a href="#variant-scenarios">The variants box: scenarios</a> <span class="badge ready" id="tb-badge">Playable: all 5 scenarios</span></li>
-        <li><a href="#exploration">The exploration expansion</a> <span class="badge soon" id="ep-badge">Coming</span></li>
+        <li><a href="#exploration">The exploration expansion</a> <span class="badge ready" id="ep-badge">Playable</span></li>
       </ol>
       <p class="note">Every seat can be a person or a bot, in any mix. Settings marked with ⚙ can be changed when you start a game.</p>
     </nav>
@@ -238,15 +238,29 @@
     </section>
 
     <section id="exploration" class="panel">
-      <h2>The exploration expansion</h2>
-      <p>Explore a hidden sea with ships carrying settlers and crews, and race through missions. Played to 17 Renown.</p>
+      <h2>The exploration expansion <span class="badge ready">Playable</span></h2>
+      <p>Its own game for 2 to 4 players: a known start island, the <strong>Council</strong> out to sea, and two hidden regions beyond. Pick a scenario on the New Game screen; each adds to the one before: <strong>1 Land Ho!</strong> (8 Renown), <strong>2 Pirate lairs</strong> (12), <strong>3 Fish</strong> (15), <strong>4 Spices</strong> (15), <strong>5 the full game</strong> (17, every mission).</p>
+      <h3>Setup and building</h3>
       <ul>
-        <li><strong>A movement phase</strong> after building: each ship sails 4 edges (6 for a Fish), revealing hidden hexes it touches.</li>
-        <li><strong>Harbour buildings</strong> (2 Grain + 2 Stone) launch ships and hold cargo. Settlers (Copper + Timber + Fish + Grain) found Huts from a ship; crews (Fish + Stone) work missions.</li>
-        <li><strong>Coins</strong> come from exploring and from turns with no production; 2 coins buy a resource.</li>
-        <li><strong>Pirate ships:</strong> each player has one; a 7 places yours and robs a ship owner there. Moving past someone's pirate costs a coin.</li>
-        <li><strong>Missions:</strong> capture pirate lairs with crews, bring fish hauls and spice sacks to the council island.</li>
+        <li>First a <strong>harbour</strong> on the start island's east coast, with a free <strong>ship</strong> carrying a <strong>settler</strong> beside it; then a Hut on the start island and a Path (your starting resources come from the Hut). You start with 2 coins.</li>
+        <li><strong>Harbours</strong> (2 Grain + 2 Stone; replace a coastal Hut; 4 at most) are worth 2 Renown and produce like a Hut. <strong>Ships</strong> (Timber + Fish; 3 at most) are built on a sea edge by your harbour. <strong>Settlers</strong> (Timber + Grain + Copper + Fish) and <strong>crews</strong> (Fish + Stone) are built onto your ship by a harbour. A ship carries 1 settler or fish haul, or 2 crews or spice sacks; you may send cargo home to make room.</li>
+        <li>Build only on explored land, never on a corner or edge by a hidden hex, a gold field still held by pirates, or a spice farm without your crew. No Lodges, no projects, no Longest Path.</li>
+        <li>Turns with no production pay 1 coin. Bank trades are <strong>3:1</strong> (for a resource or a coin); 2 coins buy a resource, twice a turn.</li>
       </ul>
+      <h3>The movement phase (after your action phase)</h3>
+      <ul>
+        <li>Each ship may sail once, up to <strong>4 sea edges</strong> (6 for a Fish), ending on an edge with at most one other ship. A ship that reaches a corner of a hidden hex <strong>explores</strong> it and stops: land takes a number from its region's stack and pays you 1 of its resource; sea pays 2 coins.</li>
+        <li>Ships act where they are, before or after moving: a settler founds a Hut on a free land corner at either end (the ship and settler go home); crews go ashore; hauls and sacks are taken on; cargo is delivered at the Council's corners.</li>
+      </ul>
+      <h3>Missions and pirates</h3>
+      <ul>
+        <li>Each mission has a track of 7 spaces worth <strong>1, 1, 2, 2, 2, 3, 3 Renown</strong>, plus 1 for whoever is furthest along.</li>
+        <li><strong>Pirate lairs</strong> (scenarios 2, 5): gold fields are held by pirates. When the third crew lands on one, everyone with a crew there gets 2 coins and a step; the hero (a die plus their crews) gets another. The field then pays 2 coins for each building on its number.</li>
+        <li><strong>Fish</strong> (3, 5): once in each movement phase, roll a die; the shoal with that number gets a haul. Deliver hauls to the Council for a step each.</li>
+        <li><strong>Spices</strong> (4, 5): a crew on a spice farm stays there and gives its ability (Swift Voyage: +1 move; Pirate Bonus: chase pirates more easily; Fast Gold: a resource for a coin, once a turn), and one sack per player to deliver to the Council.</li>
+        <li><strong>Pirate ships</strong> (2 and up): on a 7, after discards, you put your pirate ship on a sea hex away from the start island (removing anyone else's) and rob a ship owner there (a card, or a coin). Moving a ship from or to its hex costs a coin. An unmoved ship by another player's pirate ship may try to chase it off (a 6; 5–6 or 4–6 with Pirate Bonus farms) and put your own there.</li>
+      </ul>
+      <p class="note">Ours: no storage in harbours (pieces are built straight onto ships), a ship moves in one go, tribute only at the start or end of a move, captured lairs send every crew home, and the map is our own. 5–6 players aren't in yet.</p>
     </section>
   </main>
 </body>

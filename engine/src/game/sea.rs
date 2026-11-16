@@ -111,6 +111,9 @@ impl Game {
 
     // May a setup Hut go on corner c? On the main island, or in scenarios that allow it, anywhere
     pub(super) fn setup_spot(&self, c: usize) -> bool {
+        if self.explore() {
+            return self.explore_setup_spot(c);
+        }
         self.board.corner_marker[c] == 0 && self.hut_spot(c) && (!self.sea() || crate::sea_maps::setup_anywhere(self.settings().sea_scenario) || self.board.corner_region[c] == 0)
     }
 
@@ -130,6 +133,22 @@ impl Game {
     // The Pirate Islands: Huts on the main island, or on p's own beachhead
     pub(super) fn pirate_hut_ok(&self, p: u8, c: usize) -> bool {
         !self.pirate_islands() || self.board.corner_region[c] == 0 || c as u16 == self.beach_corner[p as usize]
+    }
+
+    // The exploration expansion's setup: the first round a harbour on the start island's east coast,
+    // the second a Hut on the start island
+    pub(super) fn explore_setup_spot(&self, c: usize) -> bool {
+        let g = &self.board.graph;
+        let start = |h: usize| self.ex.start_hexes[h];
+        let hexes: Vec<usize> = listed(&g.corner_hexes[c]).collect();
+        if !hexes.iter().any(|&h| start(h)) || hexes.iter().any(|&h| !start(h) && self.board.terrain[h] != Terrain::Sea) {
+            return false;
+        }
+        if (self.setup_step as usize) < self.players {
+            hexes.iter().any(|&h| self.board.terrain[h] == Terrain::Sea) && g.corner_xy[c].0 > 0
+        } else {
+            true
+        }
     }
 
     // Setup rounds: 2, or 3 in Cloth (only the last round's Hut collects)

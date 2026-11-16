@@ -304,3 +304,13 @@ every scenario map. All seat arrays are `MAX_PLAYERS = 6` already.
     trades and in offers to players (move text stays 5 counts when no commodity is in it).
   - Tests: 15 rules tests (3 deliberate breaks, all caught after strengthening two tests), browser games (city alone,
     city + New Shores) in Chromium and WebKit.
+- **Nov 16, the variants box's five scenarios (PRs #20-#24, merged):** `box.scenario` 1-5, each its own module in
+  `engine/src/game/` (`fishing`, `rivers`, `merchant`, `raiders`, `traders`) with tests, bot rules, page, rules page and
+  RULES.md. New queue-end phases `VoteDone`, `TurnEnd`, `ExpelDone` (pending.rs `settle`). Wagon board values read
+  off the rendered page (move points 4 5 6 7 7, drive-off 6/5/4/3, coins 1-5, upgrade costs). Coins are 16-bit.
+- **Nov 16, the exploration expansion (branch `explore`):** `explore` 1-5 (`engine/src/game/explore.rs`, its own
+  map generator in island.rs, `bot_explore.rs` planning ship moves by sailing distance). Mission track values read
+  off the Mission Guide (1 1 2 2 2 3 3). Every scenario's Greedy games finish (2-4 players), seats fair. 2-4 players
+  only (the 5-6 map isn't built).
+- **Still open across the expansions:** 5-6 player versions of exploration; the sea + city combination beyond
+  scenarios 1, 4, 9; the two-player variants of the box scenarios; better bots (all are Greedy rules).

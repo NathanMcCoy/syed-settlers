@@ -144,6 +144,8 @@ function home() {
     if (Number(f.over.value) !== 7) settings['discard.over'] = Number(f.over.value);
     if (Number(f.rounds.value) !== 0) settings.rounds = Number(f.rounds.value);
     if (f.faceUp.checked) settings['projects.faceUp'] = true;
+    const explore = new FormData(e.target).get('explore');
+    if (explore && explore !== '0') settings.explore = Number(explore);
     const box = new FormData(e.target).get('box');
     if (box && box !== '0') settings['box.scenario'] = Number(box);
     const sea = new FormData(e.target).get('sea');
@@ -404,6 +406,37 @@ function drawPieces(v, before) {
       layers.squall.append(k);
     }
   }
+  // The exploration expansion: ships (cargo letters), pirate ships, lairs, farms, shoals, hauls, the Council
+  if (v.explore) {
+    const x = v.explore;
+    const perEdge = {};
+    x.ships.forEach(([owner, e, cargo], i) => {
+      const [a, b] = edgeEnds(e);
+      const k = (perEdge[e] = (perEdge[e] ?? -1) + 1);
+      const mx = (a.x + b.x) / 2 + (k ? 7 : -3), my = (a.y + b.y) / 2 + (k ? 5 : -3);
+      const g = el('g', { class: `boat p${owner}`, 'data-boat': i });
+      const letters = cargo.filter(c => c).map(c => ' SCFP'[c]).join('');
+      g.append(el('rect', { x: mx - 9, y: my - 6, width: 18, height: 12, rx: 5 }), el('text', { x: mx, y: my + 4 }, letters));
+      g.append(el('title', {}, `${nameOf(owner)}'s ship${letters ? ` carrying ${cargo.filter(c => c).map(c => ['', 'a settler', 'a crew', 'a fish haul', 'a spice sack'][c]).join(' and ')}` : ''}`));
+      layers.squall.append(g);
+    });
+    for (const [owner, h] of x.pirates) {
+      const c = centre(board.island.hexes[h]);
+      const t = el('text', { x: c.x, y: c.y + 6, class: `marker pirate-ship p${owner}`, 'data-pirate-ship': h }, '☠');
+      t.append(el('title', {}, `${nameOf(owner)}'s pirate ship: moving a ship from or to its hex costs a coin`));
+      layers.squall.append(t);
+    }
+    const label = (h, text, title, cls = '') => {
+      const c = centre(board.island.hexes[h]);
+      const t = el('text', { x: c.x, y: c.y - SIZE * 0.45, class: `marker ${cls}` }, text);
+      t.append(el('title', {}, title));
+      layers.squall.append(t);
+    };
+    for (const [h, crews, taken] of x.lairs) label(h, taken ? '' : `⚔${crews.length}/3`, taken ? 'A captured gold field: 2 coins a building on its number' : `A pirate lair: ${crews.length} of 3 crews to capture it`);
+    for (const [h, kind, crews] of x.farms) label(h, ['Swift', 'Bonus', 'Gold'][kind], `A spice farm (${['Swift Voyage: +1 move for your ships', 'Pirate Bonus: chase pirates on a 5 or 6', 'Fast Gold: a resource for a coin each turn'][kind]})${crews.length ? `; crews: ${crews.map(nameOf).join(', ')}` : ''}`);
+    for (const [h, n] of x.shoals) label(h, x.hauls.includes(h) ? `≋${n}` : `${n}`, x.hauls.includes(h) ? `A fish haul waiting (shoal ${n})` : `Fish shoal ${n}: a fish die of ${n} brings a haul`);
+    label(x.council, 'Council', 'The Council: deliver fish hauls and spice sacks at its corners');
+  }
   // Traders and raiders: raiders on edges, and each wagon (its cargo's first letter)
   if (v.traders) {
     for (const e of v.traders.barbarians) {
@@ -638,6 +671,49 @@ function drawTargets(v) {
   const moves = v.phase === 'main' ? legal().filter(m => (mode && m.startsWith(`${mode} `)) || m.startsWith('placemarket ')) : legal();
   // Two-step moves: first what moves (a ship, a knight, a number), then where it goes. A decision with
   // only one starting point (a displaced knight) skips the first step.
+  // The exploration expansion's movement phase: pick a ship, then its edge; settling, crews and pickups
+  if (v.explore && moves.some(m => m.startsWith('sail '))) {
+    const sails = moves.filter(m => m.startsWith('sail ')).map(m => m.split(' ').slice(1).map(Number));
+    if (moveFrom !== null && !sails.some(([i]) => i === moveFrom)) moveFrom = null; // (that ship has sailed)
+    if (moveFrom === null) {
+      for (const i of [...new Set(sails.map(([i]) => i))]) {
+        const t = targetShape('edge', v.explore.ships[i][1], ' from', true);
+        t.dataset.sail = i;
+        t.append(el('title', {}, 'Move this ship'));
+        t.addEventListener('click', () => { moveFrom = i; render(snap); });
+        layers.targets.append(t);
+      }
+    } else {
+      for (const [, e] of sails.filter(([i]) => i === moveFrom)) {
+        const t = targetShape('edge', e, '', true);
+        t.dataset.move = `sail ${moveFrom} ${e}`;
+        t.append(el('title', {}, 'Sail here'));
+        layers.targets.append(t);
+      }
+    }
+  }
+  if (v.explore) {
+    for (const m of moves) {
+      const [w, a, b] = m.split(' ');
+      if (w === 'settle') {
+        const t = targetShape('corner', Number(b));
+        t.dataset.move = m;
+        t.append(el('title', {}, 'Found a Hut here (the settler and ship go home)'));
+        layers.targets.append(t);
+      } else if (w === 'crewashore' || w === 'takehaul' || w === 'takesack' || w === 'pirateplace') {
+        const t = targetShape('hex', Number(w === 'pirateplace' ? a : b));
+        t.dataset.move = m;
+        t.append(el('title', {}, { crewashore: 'Put a crew ashore here', takehaul: 'Take the fish haul', takesack: 'Take your spice sack', pirateplace: 'Put your pirate ship here' }[w]));
+        layers.targets.append(t);
+      } else if (w === 'buildship' || w === 'harbour') {
+        const t = w === 'harbour' ? targetShape('corner', Number(a)) : targetShape('edge', Number(a), '', true);
+        if (v.phase === 'main' && mode !== w) continue;
+        t.dataset.move = m;
+        t.append(el('title', {}, w === 'harbour' ? 'A harbour here' : 'A ship here'));
+        layers.targets.append(t);
+      }
+    }
+  }
   // (A knight's Grain run counts as the same move; Skip isn't a place)
   const fam = w => (w === 'guardrun' ? 'guardmove' : w);
   const placed = moves.filter(m => m !== 'skip');
@@ -849,6 +925,8 @@ function status(v) {
     case 'capture': return mine ? 'Capture: click a coastal hex to take a raider prisoner.' : `${who} is capturing a raider.`;
     case 'placeGuard': return mine ? 'Click an edge for your new knight.' : `${who} is placing a knight.`;
     case 'moveRaider': return mine ? 'Turncoat: move a raider from one coastal hex to another (click the two hexes).' : `${who} is moving raiders.`;
+    case 'sail': return mine ? 'Movement phase: click a ship, then where it sails (4 edges; a ship by a hidden hex explores it). Ships act where they are: settle, crews ashore, take or deliver cargo. Then end the phase.' : `${who} is sailing.`;
+    case 'piratePlace': return mine ? 'Put your pirate ship on a sea hex (not by the start island); you rob a ship owner there.' : `${who} is placing their pirate ship.`;
     case 'drive': return mine ? `End of turn: move your wagon (click a lit corner; ${v.traders.mp} move points left). A works ends the move: deliver what it wants, take one of its goods.` : `${who} is moving their wagon.`;
     case 'moveBarbarian': return mine ? 'Move a raider: click it, then a free edge (landing on a Path robs its owner, unless you drove it off).' : `${who} is moving a raider.`;
     case 'moveGuards': return mine ? 'End of turn: move your knights (click one, then where it goes), then Done. Knights on the Keep must move.' : `${who} is moving knights.`;
@@ -881,7 +959,18 @@ function drawChoices(v) {
     if (word === 'takecard') box.append(button(`Take a ${CARD_NAMES[m.split(' ')[2]]}`, m));
     if (word === 'takeprogress') box.append(button(`Take ${cardName(m.split(' ')[2])}`, m));
     if (word === 'dropcard' && v.phase !== 'main') box.append(button(`Drop ${cardName(n)}`, m));
-    if (word === 'skip') box.append(button(v.phase === 'treasonKnight' ? 'Place no knight' : v.phase === 'spy' ? 'Take nothing' : v.phase === 'moveGuards' ? 'Done moving knights' : v.phase === 'drive' ? 'Stop the wagon' : 'Done', m));
+    if (word === 'skip') box.append(button(v.phase === 'treasonKnight' ? 'Place no knight' : v.phase === 'spy' ? 'Take nothing' : v.phase === 'moveGuards' ? 'Done moving knights' : v.phase === 'drive' ? 'Stop the wagon' : v.phase === 'sail' ? 'End the movement phase' : 'Done', m));
+    // The exploration expansion
+    if (word === 'cargo') {
+      const [, i, k] = m.split(' ').map(Number);
+      box.append(button(`${k === 1 ? 'Settler (Timber, Grain, Copper, Fish)' : 'Crew (Fish, Stone)'} onto ship ${i + 1}`, m));
+    }
+    if (word === 'fastgold') box.append(button(`Fast Gold: a ${RESOURCES[n]} for a coin`, m));
+    if (word === 'dropcargo') box.append(button(`Send ship ${Number(n) + 1}'s cargo home`, m));
+    if (word === 'deliver') box.append(button(`Deliver at the Council (ship ${Number(n) + 1})`, m, 'primary'));
+    if (word === 'fishdie') box.append(button('Roll for a fish haul', m));
+    if (word === 'sailfar') box.append(button(`A Fish: ship ${Number(n) + 1} sails 6`, m));
+    if (word === 'chase-pirate') box.append(button(`Ship ${Number(n) + 1}: try to chase the pirate ship (a 6)`, m));
     // Traders and raiders: the wagon
     if (word === 'driveoff') box.append(button(`Try to drive off the raider (a die of ${DRIVE_FROM[v.traders.wagons[v.you][1]]} or more)`, m));
     if (word === 'boost') box.append(button('Spend a Grain: 2 more move points', m));
@@ -1015,6 +1104,9 @@ const SHOP = [
   { key: 'repair', name: 'Repair a Path', cost: [1, 0, 0, 1, 0], piece: 0, note: 'An earthquake damaged it: no new Paths until it\'s repaired', repair: true },
   { key: 'ship', name: 'Ship', cost: [1, 0, 0, 0, 1], piece: 3, note: 'Sails on from your buildings and ships', sea: true },
   { key: 'moveship', name: 'Move a ship', cost: [0, 0, 0, 0, 0], piece: 3, note: 'Once a turn: a ship with an open end, not built this turn', sea: true, free: true },
+  // The exploration expansion only
+  { key: 'harbour', name: 'Harbour', cost: [0, 2, 2, 0, 0], note: 'Replaces your coastal Hut: 2 Renown, ships are built by it (4 at most)', explore: true, why: 'No coastal Hut of yours, or no harbour left' },
+  { key: 'buildship', name: 'Ship', cost: [1, 0, 0, 0, 1], note: 'On a sea edge by your harbour; carries settlers, crews, hauls and sacks (3 at most)', explore: true, why: 'No free sea edge by your harbours, or 3 ships out' },
   // Rivers only
   { key: 'bridge', name: 'Bridge', cost: [1, 0, 0, 2, 0], note: 'On a bridge site where a river crosses: 3 coins, counts as a Path', rivers: true, why: 'No bridge site by your Paths, or no bridge left' },
   // The city expansion only
@@ -1051,7 +1143,7 @@ function drawShop(v) {
     return;
   }
   const myDamaged = (v.damaged ?? []).some(e => v.roads.some(([re, p]) => re === e && p === v.you));
-  const pieces = SHOP.filter(item => (!item.sea || seaGame()) && (!item.city || v.city) && (!item.rivers || v.rivers) && (!item.repair || myDamaged)).map(item => {
+  const pieces = SHOP.filter(item => (!item.sea || seaGame()) && (!item.city || v.city) && (!item.rivers || v.rivers) && (!item.explore || v.explore) && !(v.explore && item.key === 'lodge') && (!item.repair || myDamaged)).map(item => {
     const reason = shopReason(v, item);
     const b = document.createElement('button');
     b.type = 'button';
@@ -1126,7 +1218,7 @@ function shopRow(v, item, button, reason) {
 // Project cards in the shop: hidden (the default), one card drawn unseen; face up, each card showing
 const PROJECT_COST = [0, 1, 1, 0, 1];   // Stone + Grain + Fish (engine: PROJECT_COST)
 function projectItems(v) {
-  if (v.city) return []; // no projects in the city expansion
+  if (v.city || v.explore) return []; // no projects in the city or exploration expansions
   // Raider attack: the order deck, used as soon as it's bought
   if (v.raiders) {
     const card = { key: 'order', move: 'buy 0', name: 'Order', note: `Used at once: Knighthood (a knight on the Keep), Swift Knight (a knight anywhere), Capture or Turncoat${v.raiders.lastOrder ? ` · last: ${ORDER_NAMES[v.raiders.lastOrder]}` : ''}` };
@@ -1319,6 +1411,16 @@ function drawPlayers(v) {
       facts.push(`knights ${v.city.defence[s]} active`);
       if (v.city.progressCounts[s]) facts.push(`${v.city.progressCounts[s]} progress`);
     }
+    // The exploration expansion: coins, ships, mission tracks
+    if (v.explore) {
+      const x = v.explore;
+      const ships = x.ships.filter(([o]) => o === s).length;
+      facts.push(`${x.coins[s]} coins`, `${ships} ship${ships === 1 ? '' : 's'}`);
+      const names = ['lairs', 'fish', 'spices'];
+      const on = [x.scenario === 2 || x.scenario === 5, x.scenario === 3 || x.scenario === 5, x.scenario === 4 || x.scenario === 5];
+      const t = names.map((n, m) => (on[m] ? `${n} ${x.tracks[m][s]}${x.leaders[m] === s && x.tracks[m][s] ? '★' : ''}` : null)).filter(Boolean);
+      if (t.length) facts.push(t.join(' · '));
+    }
     // Traders and raiders: the wagon and its deliveries, coins
     if (v.traders) {
       const [, level, cargo, delivered] = v.traders.wagons[s];
@@ -1446,7 +1548,7 @@ function drawProjects(v) {
 
 // Rivers' coins, in the Trade tab: buy one with a resource (at your rate), or spend 2 for a resource
 function drawCoins(v) {
-  const r = v.rivers ?? v.raiders ?? v.traders;
+  const r = v.rivers ?? v.raiders ?? v.traders ?? v.explore;
   $('coin-box').hidden = !r || v.you === null;
   if (!r || v.you === null) return;
   const standing = r.wealthiest === v.you ? ' You are the Wealthiest (+1 Renown).' : (r.poor ?? []).includes(v.you) ? ' You are Poor (−2 Renown): get more coins than someone.' : '';
@@ -1461,7 +1563,7 @@ function drawCoins(v) {
 let fixed = [1, 1];
 function drawCity(v) {
   $('tab-city').hidden = !v.city;
-  $('tab-projects').hidden = !!v.city; // no projects in the city expansion
+  $('tab-projects').hidden = !!(v.city || v.explore); // no projects in the city or exploration expansions
   if (!v.city) return;
   const c = v.city;
   const raid = c.lastRaid ? ` Last landing: ${c.lastRaid[0]} against ${c.lastRaid[1]}, ${c.lastRaid[2] ? 'the raiders won' : 'driven off'}.` : '';
@@ -1577,6 +1679,21 @@ function describe(entry) {
     case 'wagon': return `${who} placed a wagon`;
     case 'capture': return `${who} took a raider prisoner`;
     case 'wagonstep': return `${who} moved their wagon`;
+    case 'harbour': return `${who} built a harbour`;
+    case 'buildship': return `${who} built a ship`;
+    case 'cargo': return `${who} loaded a ${b === '1' ? 'settler' : 'crew'}`;
+    case 'sail': return `${who} sailed a ship`;
+    case 'sailfar': return `${who} paid a Fish to sail further`;
+    case 'settle': return `${who}'s settler founded a Hut`;
+    case 'crewashore': return `${who} put a crew ashore`;
+    case 'takehaul': return `${who} took a fish haul`;
+    case 'takesack': return `${who} took a spice sack`;
+    case 'deliver': return `${who} delivered at the Council`;
+    case 'fishdie': return `${who} rolled for fish`;
+    case 'pirateplace': return `${who} placed their pirate ship`;
+    case 'chase-pirate': return `${who} tried to chase a pirate ship`;
+    case 'dropcargo': return `${who} sent cargo home`;
+    case 'fastgold': return `${who} used Fast Gold`;
     case 'driveoff': return `${who} tried to drive off a raider`;
     case 'boost': return `${who} spent a Grain on the wagon`;
     case 'barbarianto': return `${who} moved a raider`;
