@@ -310,3 +310,81 @@ fn sea_games_never_get_stuck_and_greedy_finishes_them() {
         }
     }
 }
+
+#[test]
+fn the_other_scenarios_keep_their_map_rules() {
+    for players in [3, 4, 6] {
+        for (scenario, win) in [(2u8, 13u8), (4, 14), (9, 12)] {
+            let s = Settings::parse_for(&format!("sea=true;sea.scenario={scenario}"), players).unwrap();
+            assert_eq!(s.win, win, "scenario {scenario}");
+            for k in 0..100 {
+                let island = generate(&s, &format!("sc{scenario}-{players}-{k}")).unwrap();
+                let land: Vec<&crate::island::Hex> = island.hexes.iter().filter(|h| h.terrain != Terrain::Sea).collect();
+                // Different islands never touch
+                for a in &land {
+                    for b in &land {
+                        if a.region != b.region {
+                            assert!(a.cell.distance(b.cell) >= 2 || (scenario == 4 && (a.region <= 1 && b.region <= 1)), "scenario {scenario}: islands touch");
+                        }
+                    }
+                }
+                let regions: std::collections::HashSet<u8> = land.iter().map(|h| h.region).collect();
+                match scenario {
+                    2 => assert_eq!(regions.len(), if players >= 5 { 6 } else { 4 }),
+                    4 => {
+                        assert_eq!(land.iter().filter(|h| h.terrain == Terrain::Dunes).count(), s.island_dunes as usize + 2, "the main island's Dunes and the 2-hex desert");
+                        assert!(land.iter().all(|h| h.terrain != Terrain::Gold || h.region >= 2), "gold only on the small islands");
+                    }
+                    _ => assert!((3..=5).contains(&regions.len())),
+                }
+                assert_eq!(island.hexes[island.squall as usize].terrain != Terrain::Sea, true);
+            }
+        }
+    }
+}
+
+#[test]
+fn home_islands_are_where_you_set_up_and_every_other_island_is_a_bonus() {
+    let s = Settings::parse_for("sea=true;sea.scenario=2", 3).unwrap();
+    let mut g = Game::new(&generate(&s, "home").unwrap(), &s, 3, 7);
+    // Setup may go on any island
+    let regions: std::collections::HashSet<u8> = legal(&g).iter().filter_map(|a| if let Action::Hut(c) = a { Some(g.board.corner_region[*c as usize]) } else { None }).collect();
+    assert_eq!(regions.len(), 4, "every island is open in setup");
+    // Seat 1 sets up on island 0
+    let c = (0..g.corner_owner.len()).find(|&c| g.board.corner_region[c] == 0 && g.spaced(c)).unwrap();
+    g.apply(Action::Hut(c as u16)).unwrap();
+    assert_eq!(g.tokens_of(0, Token::Renown), 0, "no bonus for a home island");
+    g.turn = 1;
+    g.phase = Phase::Main;
+    g.current = 0;
+    let at = |g: &Game, r: u8| (0..g.corner_owner.len()).find(|&c| g.board.corner_region[c] == r && g.spaced(c) && g.corner_owner.iter().all(|&o| o == NOBODY || o == 0)).unwrap();
+    for (region, bonus) in [(0u8, 0u16), (1, 2), (1, 2)] {
+        let c = at(&g, region);
+        let e = listed(&g.board.graph.corner_edges[c]).next().unwrap();
+        g.edge_owner[e] = 0;
+        g.edge_kind[e] = if g.board.edge_land[e] { PATH } else { SHIP };
+        g.hands[0] = HUT_COST;
+        g.apply(Action::Hut(c as u16)).unwrap();
+        assert_eq!(g.tokens_of(0, Token::Renown), bonus, "a Hut on island {region}");
+    }
+    // Through the Desert: setup on the main island only
+    let s = Settings::parse_for("sea=true;sea.scenario=4", 3).unwrap();
+    let g = Game::new(&generate(&s, "desert").unwrap(), &s, 3, 7);
+    assert!(legal(&g).iter().all(|a| matches!(a, Action::Hut(c) if g.board.corner_region[*c as usize] == 0)));
+    assert!(Settings::parse_for("sea=true;sea.scenario=5", 3).unwrap_err().contains("isn't ready"));
+}
+
+#[test]
+fn the_other_scenarios_never_get_stuck_and_greedy_finishes_them() {
+    use crate::sim::{BotKind, play_with};
+    for scenario in [2, 4, 9] {
+        for players in [2, 4, 6] {
+            let s = Settings::parse_for(&format!("sea=true;sea.scenario={scenario}"), players).unwrap();
+            for seed in 0..12 {
+                play_with(&s, seed, players, 300, &[BotKind::Random]).unwrap();
+                let o = play_with(&s, seed, players, 400, &[BotKind::Greedy]).unwrap();
+                assert_ne!(o.winner, NOBODY, "scenario {scenario}, {players} players, game {seed} didn't finish");
+            }
+        }
+    }
+}

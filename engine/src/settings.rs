@@ -135,7 +135,7 @@ settings! {
     variant_two: bool = false, "variant.two", 0, 1, "The two-player variant: two neutral colours, two rolls a turn, trade tokens (2 players only)";
     variant_ports: bool = false, "variant.ports", 0, 1, "Strongest Ports: 2 Renown for the most Renown in buildings on markets (at least 3); 1 more Renown to win";
     sea: bool = false, "sea", 0, 1, "The sea expansion: ships, the pirate, gold fields and small islands to sail to (sea.scenario picks the map)";
-    sea_scenario: u8 = 1, "sea.scenario", 1, 1, "Sea scenario: 1 New Shores (a main island and small islands; more to come)";
+    sea_scenario: u8 = 1, "sea.scenario", 1, 9, "Sea scenario: 1 New Shores, 2 Four Islands, 4 Through the Desert, 9 New World (3 and 5-8 to come)";
     sea_island_bonus: u8 = 2, "sea.islandBonus", 0, 4, "Renown tokens for your first Hut on each small island (the sea expansion)";
 }
 
@@ -171,15 +171,32 @@ impl Settings {
         }
         // Expansions bring their own defaults (F1 in EXPANSIONS.md): players' defaults, then the
         // expansion's, then the game's own settings on top
+        if !matches!(s.sea_scenario, 1 | 2 | 4 | 9) {
+            return Err(format!("sea scenario {} isn't ready yet", s.sea_scenario));
+        }
         let mut base = Settings::for_players(players);
         base.sea = true;
+        base.sea_scenario = s.sea_scenario;
         base.apply_sea_defaults();
         Settings::parse_onto(base, text)
     }
 
-    // The sea expansion's defaults (its scenario 1, New Shores): 14 Renown to win
+    // The sea expansion's defaults, by scenario: the Renown to win, the island bonus, the markets
     fn apply_sea_defaults(&mut self) {
-        self.win = 14;
+        let (win, bonus) = match self.sea_scenario {
+            2 => (13, 2),
+            4 => (14, 2),
+            9 => (12, 1),
+            _ => (14, 2),
+        };
+        self.win = win;
+        self.sea_island_bonus = bonus;
+        if self.sea_scenario == 2 {
+            self.markets_any = 3;
+        }
+        if self.sea_scenario == 9 {
+            self.markets_any = 5;
+        }
     }
 
     fn parse_onto(mut s: Settings, text: &str) -> Result<Settings, String> {

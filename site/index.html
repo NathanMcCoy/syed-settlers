@@ -27,7 +27,14 @@
         <label>Round limit <input name="rounds" type="number" min="0" max="100" value="0"></label>
         <p class="note">0: no limit. Otherwise, after that many rounds the most Renown wins (a tie goes to more Lodges).</p>
         <label class="open-offer"><input name="faceUp" type="checkbox"> Projects face up</label>
-        <label class="open-offer"><input name="sea" type="checkbox"> Sea expansion: New Shores (ships, the pirate, gold, small islands; 14 Renown to win)</label>
+        <fieldset class="variants">
+          <legend>Sea expansion (<a href="/rules.html#sea">rules</a>): ships, the pirate, gold, islands</legend>
+          <label class="open-offer"><input name="sea" type="radio" value="0" checked> No sea</label>
+          <label class="open-offer"><input name="sea" type="radio" value="1"> New Shores: a main island and small islands (14 Renown)</label>
+          <label class="open-offer"><input name="sea" type="radio" value="2"> Four Islands: start on one or two, reach the rest (13)</label>
+          <label class="open-offer"><input name="sea" type="radio" value="4"> Through the Desert: a strip beyond the desert, gold islands (14)</label>
+          <label class="open-offer"><input name="sea" type="radio" value="9"> New World: random islands every game (12)</label>
+        </fieldset>
         <fieldset class="variants">
           <legend>Variants (<a href="/rules.html#variants">rules</a>)</legend>
           <label class="open-offer"><input name="friendly" type="checkbox"> Friendly squall: it leaves players with 2 Renown alone</label>

@@ -1,6 +1,6 @@
 # Syed Settlers: rules
 
-Version 0.7 (draft, Nov 16 2026: the variants box's four variants. 0.6: the sea expansion's first scenario, New Shores. 0.5: 5 and 6 players, from the classic game's 5-6 player rules: the
+Version 0.8 (draft, Nov 16 2026: sea scenarios Four Islands, Through the Desert and New World. 0.7: the variants box's four variants. 0.6: the sea expansion's first scenario, New Shores. 0.5: 5 and 6 players, from the classic game's 5-6 player rules: the
 large island, more cards and projects, and paired turns. 0.4 (Nov 15): as close as we can make it to
 the classic game this one is modelled on, checked against its rulebook: other players' buildings block Paths and break
 Longest Path again; no limit on trade offers; markets spread evenly round the coast; numbers in the
@@ -238,7 +238,23 @@ are planned (EXPANSIONS.md). Everything above still applies, with these changes.
 - **The pirate:** after a 7, or with a Pilot, move the squall *or* the pirate (to another sea hex), then steal from a
   player with a ship on its edges.
 - **Road Crew** places 2 Paths, 2 ships, or one of each.
-- **Island bonus** ⚙ (`sea.islandBonus`): your first Hut on each small island earns 2 Renown tokens.
+- **Island bonus** ⚙ (`sea.islandBonus`): the islands of your setup Huts are your home islands; your first Hut on
+  each other island earns 2 Renown tokens (in New Shores that's every small island).
+
+### Other sea scenarios (`sea.scenario`)
+
+Each map is made from the seed to the scenario's rules and tile counts; the layouts are our own.
+
+- **2 Four Islands** (13 Renown): four islands of 5 hexes, every resource on 4 of them (six islands with 5-6 players),
+  no main island and no Dunes; the squall starts on a 2 or 12. Set up on any island (one or two: your home islands);
+  every other island is a bonus (2). 8 markets (3 general), on any coast.
+- **4 Through the Desert** (14 Renown): the main island with a desert of 2 more Dunes along its east side, a strip of
+  4 hexes beyond it (Forest, Paddy, Fields, Mine; numbers 3, 5, 9, 11) and two small islands of 2 hexes holding the
+  2 Gold, a Quarry and a Paddy (4, 6, 8, 10). Set up on the main island; the strip and each small island are a bonus (2).
+- **9 New World** (12 Renown): the rulebook's 23 tiles (4 Mine, 5 Forest, 5 Paddy, 5 Fields, 4 Quarry; 2 more of
+  each with 5-6 players) on 3 to 5 random islands; 10 markets (5 general) on any coast. Set up anywhere; every island
+  beyond your home islands is a bonus of 1.
+- Still to come: 3 Fog Islands, 5 The Forgotten Tribe, 6 Cloth, 7 The Pirate Islands, 8 The Wonders.
 
 ## Not in version 1 (planned)
 

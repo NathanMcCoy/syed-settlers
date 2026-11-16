@@ -388,7 +388,7 @@ fn pirate_value(g: &Game, p: u8, h: usize) -> f64 {
 // A spot reached by sea: its value, the island bonus if p has no Hut on that island yet, less distance
 fn sea_score(g: &Game, p: u8, c: usize, d: u32) -> f64 {
     let region = g.board.corner_region[c];
-    let new_island = region != 0 && region < 16 && g.islands_reached[p as usize] & (1 << region) == 0;
+    let new_island = region < 16 && g.islands_reached[p as usize] & (1 << region) == 0;
     let bonus = if new_island { 3.0 * g.settings().sea_island_bonus as f64 } else { 0.0 };
     spot_value(g, p, c) + bonus - 2.0 * d as f64
 }

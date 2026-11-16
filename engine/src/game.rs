@@ -480,9 +480,8 @@ impl Game {
         let pu = p as usize;
         match self.phase {
             Phase::SetupHut => {
-                let sea = self.sea();
                 for c in 0..g.corners() {
-                    if self.spaced(c) && (!sea || self.board.corner_region[c] == 0) {
+                    if self.spaced(c) && self.setup_spot(c) {
                         out.push(Action::Hut(c as u16));
                     }
                 }
@@ -1061,8 +1060,9 @@ impl Game {
             let decisions = self.gold_decisions(&gold);
             self.decide_then(decisions, Phase::SetupPath { hut: c as u16 });
             self.hut_tokens(pu, c);
+            self.island_reach(pu, c, true);
         } else {
-            self.island_bonus(pu, c);
+            self.island_reach(pu, c, false);
             self.hut_tokens(pu, c);
         }
         // A new building can break other players' lines
