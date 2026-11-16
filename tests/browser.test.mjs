@@ -130,7 +130,7 @@ for (const [name, type] of Object.entries(BROWSERS)) {
     try {
       await page.goto(base + '/');
       await page.fill('input[name="name"]', 'Tester');
-      await page.check('input[name="sea"]');
+      await page.check('input[name="sea"][value="1"]');
       await page.click('button[type="submit"]');
       await page.waitForSelector('#board svg');
       assert.ok(await page.locator('polygon.t-gold').count() >= 2, 'gold fields');

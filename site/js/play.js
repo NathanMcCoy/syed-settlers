@@ -100,7 +100,11 @@ function home() {
     if (Number(f.over.value) !== 7) settings['discard.over'] = Number(f.over.value);
     if (Number(f.rounds.value) !== 0) settings.rounds = Number(f.rounds.value);
     if (f.faceUp.checked) settings['projects.faceUp'] = true;
-    if (f.sea.checked) settings.sea = true;
+    const sea = new FormData(e.target).get('sea');
+    if (sea && sea !== '0') {
+      settings.sea = true;
+      settings['sea.scenario'] = Number(sea);
+    }
     for (const [box, name] of [['friendly', 'variant.friendly'], ['ports', 'variant.ports'], ['events', 'variant.events'], ['two', 'variant.two']]) {
       if (f[box].checked) settings[name] = true;
     }

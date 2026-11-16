@@ -88,18 +88,27 @@ impl Game {
         out
     }
 
-    // The first Hut on a small island earns its owner the island bonus (once per island per player)
-    pub(super) fn island_bonus(&mut self, p: usize, c: usize) {
+    // Islands reached: setup Huts make their islands a player's home islands; afterwards, the first
+    // Hut on each other island earns the island bonus (once per island per player). (In scenarios
+    // where setup is on the main island only, that makes every small island a bonus.)
+    pub(super) fn island_reach(&mut self, p: usize, c: usize, setup: bool) {
         let region = self.board.corner_region[c];
-        let bonus = self.settings().sea_island_bonus as u16;
-        if !self.sea() || region == 0 || region == SEA || bonus == 0 || region >= 16 {
+        if !self.sea() || region == SEA || region >= 16 {
             return;
         }
         let bit = 1u16 << region;
         if self.islands_reached[p] & bit == 0 {
             self.islands_reached[p] |= bit;
-            self.give_tokens(p, Token::Renown, bonus);
+            let bonus = self.settings().sea_island_bonus as u16;
+            if !setup && bonus > 0 {
+                self.give_tokens(p, Token::Renown, bonus);
+            }
         }
+    }
+
+    // May a setup Hut go on corner c? On the main island, or in scenarios that allow it, anywhere
+    pub(super) fn setup_spot(&self, c: usize) -> bool {
+        !self.sea() || crate::sea_maps::setup_anywhere(self.settings().sea_scenario) || self.board.corner_region[c] == 0
     }
 
     // Gold owed after a production roll (or a setup Hut), as decisions: each player picks that many

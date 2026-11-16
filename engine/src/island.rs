@@ -120,7 +120,7 @@ const SEA_REACH: i32 = 2; // sea is every hex within this many steps of land
 const FAIR_LOW: f64 = 0.6;
 const FAIR_HIGH: f64 = 1.5;
 const ATTEMPTS: u32 = 300;
-const NUMBER_TRIES: usize = 400;
+pub(crate) const NUMBER_TRIES: usize = 400;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Hex {
@@ -244,9 +244,14 @@ fn attempt_island(s: &Settings, rng: &mut Rng) -> Option<Island> {
     let main_average = land.iter().map(|h| pips(h.number)).sum::<u32>() as f64
         / land.iter().filter(|h| h.number != 0).count() as f64;
     let mut land = land;
-    if s.sea {
+    if s.sea && s.sea_scenario == 1 {
         land.extend(small_islands(rng, &main_set, s)?);
+    } else if s.sea {
+        // The other sea scenarios make all their land themselves (sea_maps.rs)
+        land = crate::sea_maps::scenario_land(rng, s)?;
     }
+    // Markets and the squall's start: on the main island, or anywhere where setup is anywhere
+    let everywhere = s.sea && crate::sea_maps::setup_anywhere(s.sea_scenario);
 
     // Sea around the island, then a fixed order (row by row)
     let land_set: HashSet<Cell> = land.iter().map(|h| h.cell).collect();
@@ -264,9 +269,9 @@ fn attempt_island(s: &Settings, rng: &mut Rng) -> Option<Island> {
     hexes.sort_by_key(|h| (h.cell.r, h.cell.q));
     let graph = Graph::new(&hexes.iter().map(|h| h.cell).collect::<Vec<_>>());
 
-    let markets = place_markets(rng, &hexes, &graph, s.markets_any, s.markets_each, s.markets_extra_fish)?;
-    let squall = *rng.pick(&squall_starts(&hexes));
-    let pirate = if s.sea { pirate_start(rng, &hexes)? } else { NONE };
+    let markets = place_markets(rng, &hexes, &graph, s.markets_any, s.markets_each, s.markets_extra_fish, everywhere)?;
+    let squall = *rng.pick(&squall_starts(&hexes, everywhere));
+    let pirate = if s.sea { pirate_start(rng, &hexes, s.sea_scenario == 1)? } else { NONE };
 
     Some(Island {
         seed: String::new(),
@@ -279,8 +284,12 @@ fn attempt_island(s: &Settings, rng: &mut Rng) -> Option<Island> {
 }
 
 // Where the squall may start: the island's Dunes, or with none, its weakest hexes (fewest pips)
-fn squall_starts(hexes: &[Hex]) -> Vec<u16> {
-    let main = |i: &usize| hexes[*i].terrain != Sea && hexes[*i].region == 0;
+fn squall_starts(hexes: &[Hex], everywhere: bool) -> Vec<u16> {
+    let main = |i: &usize| hexes[*i].terrain != Sea && (everywhere || hexes[*i].region == 0);
+    let dunes: Vec<u16> = (0..hexes.len()).filter(main).filter(|&i| hexes[i].terrain == Dunes).map(|i| i as u16).collect();
+    if !dunes.is_empty() {
+        return dunes;
+    }
     let weakest = (0..hexes.len()).filter(main).map(|i| pips(hexes[i].number)).min().unwrap();
     (0..hexes.len()).filter(main).filter(|&i| pips(hexes[i].number) == weakest).map(|i| i as u16).collect()
 }
@@ -506,9 +515,10 @@ fn small_islands(rng: &mut Rng, main: &HashSet<Cell>, s: &Settings) -> Option<Ve
     None
 }
 
-// The pirate starts on a sea hex two steps from the main island (between it and the small islands)
-fn pirate_start(rng: &mut Rng, hexes: &[Hex]) -> Option<u16> {
-    let main: Vec<Cell> = hexes.iter().filter(|h| h.region == 0).map(|h| h.cell).collect();
+// The pirate starts on a sea hex two steps from the main island (between it and the small islands); in
+// other scenarios, two steps from the nearest land
+fn pirate_start(rng: &mut Rng, hexes: &[Hex], from_main: bool) -> Option<u16> {
+    let main: Vec<Cell> = hexes.iter().filter(|h| h.terrain != Sea && (!from_main || h.region == 0)).map(|h| h.cell).collect();
     let land: Vec<Cell> = hexes.iter().filter(|h| h.terrain != Sea).map(|h| h.cell).collect();
     let options: Vec<u16> = (0..hexes.len())
         .filter(|&i| hexes[i].terrain == Sea)
@@ -545,7 +555,7 @@ fn fair_resources(hexes: &[Hex]) -> bool {
 // in order around the island, one market every (edges / markets) of them from a random start, kinds
 // shuffled. If that ever puts two on a shared corner (only possible on a random-shaped coast), the
 // markets go on random coastal edges instead.
-fn place_markets(rng: &mut Rng, hexes: &[Hex], g: &Graph, any: u8, each: u8, extra_fish: u8) -> Option<Vec<Market>> {
+fn place_markets(rng: &mut Rng, hexes: &[Hex], g: &Graph, any: u8, each: u8, extra_fish: u8, everywhere: bool) -> Option<Vec<Market>> {
     let mut kinds: Vec<u8> = std::iter::repeat_n(ANY, any as usize)
         .chain((0..5u8).flat_map(|r| std::iter::repeat_n(r, each as usize)))
         .chain(std::iter::repeat_n(4, extra_fish as usize))
@@ -554,7 +564,7 @@ fn place_markets(rng: &mut Rng, hexes: &[Hex], g: &Graph, any: u8, each: u8, ext
     let mut coast: Vec<(u16, u8, u16)> = Vec::new();
     for (h, hex) in hexes.iter().enumerate() {
         // Markets are on the main island's coast (the sea expansion's small islands have none)
-        if hex.terrain == Sea || hex.region != 0 {
+        if hex.terrain == Sea || (hex.region != 0 && !everywhere) {
             continue;
         }
         for side in 0..6 {
@@ -567,7 +577,7 @@ fn place_markets(rng: &mut Rng, hexes: &[Hex], g: &Graph, any: u8, each: u8, ext
     if kinds.is_empty() {
         return Some(Vec::new());
     }
-    if let Some(markets) = spread_markets(rng, hexes, g, &coast, &kinds) {
+    if let Some(markets) = spread_markets(rng, hexes, g, &coast, &kinds, everywhere) {
         return Some(markets);
     }
     let mut blocked = vec![false; g.corners()];
@@ -598,13 +608,13 @@ fn place_markets(rng: &mut Rng, hexes: &[Hex], g: &Graph, any: u8, each: u8, ext
 }
 
 // Markets evenly spaced around the coast (see place_markets), or None if two would share a corner
-fn spread_markets(rng: &mut Rng, hexes: &[Hex], g: &Graph, coast: &[(u16, u8, u16)], kinds: &[u8]) -> Option<Vec<Market>> {
+fn spread_markets(rng: &mut Rng, hexes: &[Hex], g: &Graph, coast: &[(u16, u8, u16)], kinds: &[u8], everywhere: bool) -> Option<Vec<Market>> {
     // A point on the plane for a hex (the lattice's x is stretched: see hex.rs)
     let point = |c: Cell| {
         let (x, y) = c.center();
         (x as f64 * 3f64.sqrt() / 2.0, y as f64 / 2.0)
     };
-    let land: Vec<(f64, f64)> = hexes.iter().filter(|h| h.terrain != Sea && h.region == 0).map(|h| point(h.cell)).collect();
+    let land: Vec<(f64, f64)> = hexes.iter().filter(|h| h.terrain != Sea && (everywhere || h.region == 0)).map(|h| point(h.cell)).collect();
     let mid = (land.iter().map(|p| p.0).sum::<f64>() / land.len() as f64, land.iter().map(|p| p.1).sum::<f64>() / land.len() as f64);
     // Each coastal edge's angle around the island's middle (its midpoint: halfway to the sea hex)
     let mut around: Vec<(f64, (u16, u8, u16))> = coast.iter().map(|&(h, side, e)| {
