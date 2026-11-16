@@ -241,6 +241,29 @@ const currentTab = () => document.querySelector('[role="tab"][aria-selected="tru
 
 function drawBoard() {
   const svg = islandSvg(board.island);
+  // Rivers (the variants box): each river from its mouth through its 3 hexes, and its bridge sites
+  const rivers = board.island.rivers ?? [];
+  for (let r = 0; r * 3 < rivers.length; r++) {
+    const [a, b] = edgeEnds(board.island.bridgeSites[3 * r]);
+    const pts = [{ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, ...rivers.slice(3 * r, 3 * r + 3).map(h => centre(board.island.hexes[h]))];
+    const line = el('polyline', { points: pts.map(p => `${p.x},${p.y}`).join(' '), class: 'river', 'data-river': r });
+    line.append(el('title', {}, 'A river: building on its hexes earns coins; cross it only by a bridge'));
+    svg.append(line);
+  }
+  // With no 2 of its own, the 12's hex pays on a 2 too
+  if (rivers.length && !board.island.hexes.some(h => h.number === 2)) {
+    board.island.hexes.forEach(h => {
+      if (h.number !== 12) return;
+      const c = centre(h);
+      svg.append(el('text', { x: c.x + SIZE * 0.5, y: c.y - SIZE * 0.35, class: 'marker', 'data-shares': 2 }, '+2'));
+    });
+  }
+  for (const e of board.island.bridgeSites ?? []) {
+    const [a, b] = edgeEnds(e);
+    const site = el('line', { x1: a.x, y1: a.y, x2: b.x, y2: b.y, class: 'bridge-site', 'data-bridge-site': e });
+    site.append(el('title', {}, 'A bridge site: only a bridge goes here (Timber + 2 Copper, 3 coins)'));
+    svg.append(site);
+  }
   layers = { roads: el('g'), buildings: el('g'), squall: el('g'), targets: el('g') };
   svg.append(layers.roads, layers.buildings, layers.squall, layers.targets);
   $('board').replaceChildren(svg);
@@ -307,8 +330,9 @@ function render(data) {
   drawDeal(v);
   drawProjects(v);
   drawCity(v);
+  drawCoins(v);
   drawLog();
-  $('trade-empty').hidden = !$('offer-box').hidden || !$('trade-box').hidden || !$('deal-box').hidden;
+  $('trade-empty').hidden = !$('offer-box').hidden || !$('trade-box').hidden || !$('deal-box').hidden || !$('coin-box').hidden;
   document.body.dataset.phase = v.phase;
   document.body.dataset.myTurn = String(v.toAct === v.you && v.phase !== 'over');
 }
@@ -345,8 +369,9 @@ function drawPieces(v, before) {
   for (const [e, p, kind] of v.roads) {
     const [a, b] = edgeEnds(e);
     const broken = (v.damaged ?? []).includes(e) ? ' damaged' : '';
-    const line = el('line', { x1: a.x, y1: a.y, x2: b.x, y2: b.y, class: `road${kind === 2 ? ' ship' : ''}${broken} p${p}${glow(`e${e}:${kind}`)}`, 'data-edge': e });
-    line.append(el('title', {}, `${nameOf(p)}'s ${kind === 2 ? 'ship' : 'Path'}`));
+    const bridge = (v.rivers?.bridges ?? []).includes(e);
+    const line = el('line', { x1: a.x, y1: a.y, x2: b.x, y2: b.y, class: `road${kind === 2 ? ' ship' : ''}${bridge ? ' bridge' : ''}${broken} p${p}${glow(`e${e}:${kind}`)}`, 'data-edge': e });
+    line.append(el('title', {}, `${nameOf(p)}'s ${bridge ? 'bridge' : kind === 2 ? 'ship' : 'Path'}`));
     layers.roads.append(line);
   }
   layers.buildings.replaceChildren();
@@ -630,6 +655,11 @@ function drawTargets(v) {
       t.dataset.move = m;
       t.append(el('title', {}, CORNER_WORDS[word]));
       layers.targets.append(t);
+    } else if (word === 'bridge') {
+      const t = targetShape('edge', Number(n));
+      t.dataset.move = m;
+      t.append(el('title', {}, 'Build a bridge here'));
+      layers.targets.append(t);
     } else if (word === 'removepath') {
       const t = targetShape('edge', Number(n));
       t.dataset.move = m;
@@ -866,6 +896,8 @@ const SHOP = [
   { key: 'repair', name: 'Repair a Path', cost: [1, 0, 0, 1, 0], piece: 0, note: 'An earthquake damaged it: no new Paths until it\'s repaired', repair: true },
   { key: 'ship', name: 'Ship', cost: [1, 0, 0, 0, 1], piece: 3, note: 'Sails on from your buildings and ships', sea: true },
   { key: 'moveship', name: 'Move a ship', cost: [0, 0, 0, 0, 0], piece: 3, note: 'Once a turn: a ship with an open end, not built this turn', sea: true, free: true },
+  // Rivers only
+  { key: 'bridge', name: 'Bridge', cost: [1, 0, 0, 2, 0], note: 'On a bridge site where a river crosses: 3 coins, counts as a Path', rivers: true, why: 'No bridge site by your Paths, or no bridge left' },
   // The city expansion only
   { key: 'wall', name: 'Wall', cost: [0, 0, 0, 2, 0], note: 'Under a Lodge: +2 to your hand limit (3 at most)', city: true, why: 'No Lodge without a wall' },
   { key: 'recruit', name: 'Knight', cost: [0, 1, 0, 0, 1], note: 'A basic knight on a free corner by your Path (starts inactive)', city: true, why: 'No free corner by your Paths, or no basic knight left' },
@@ -900,7 +932,7 @@ function drawShop(v) {
     return;
   }
   const myDamaged = (v.damaged ?? []).some(e => v.roads.some(([re, p]) => re === e && p === v.you));
-  const pieces = SHOP.filter(item => (!item.sea || seaGame()) && (!item.city || v.city) && (!item.repair || myDamaged)).map(item => {
+  const pieces = SHOP.filter(item => (!item.sea || seaGame()) && (!item.city || v.city) && (!item.rivers || v.rivers) && (!item.repair || myDamaged)).map(item => {
     const reason = shopReason(v, item);
     const b = document.createElement('button');
     b.type = 'button';
@@ -1156,6 +1188,12 @@ function drawPlayers(v) {
       facts.push(`knights ${v.city.defence[s]} active`);
       if (v.city.progressCounts[s]) facts.push(`${v.city.progressCounts[s]} progress`);
     }
+    // Rivers: coins, and the Wealthiest / Poor tiles
+    if (v.rivers) {
+      facts.push(`${v.rivers.coins[s]} coin${v.rivers.coins[s] === 1 ? '' : 's'}`);
+      if (v.rivers.wealthiest === s) facts.push('Wealthiest +1');
+      if (v.rivers.poor.includes(s)) facts.push('Poor −2');
+    }
     // Fishing: fish tokens held (their values only for your own), and the old boot
     if (v.fishing) {
       const n = v.fishing.tokens[s];
@@ -1205,7 +1243,7 @@ function drawHand(v) {
     li.append(n, label);
     return li;
   }));
-  const affordable = SHOP.filter(item => !item.free && !item.repair && (!item.sea || seaGame()) && (!item.city || v.city) && item.cost.every((n, r) => v.hand[r] >= n)).map(item => item.name);
+  const affordable = SHOP.filter(item => !item.free && !item.repair && (!item.sea || seaGame()) && (!item.city || v.city) && (!item.rivers || v.rivers) && item.cost.every((n, r) => v.hand[r] >= n)).map(item => item.name);
   if (v.row.length || v.deck) {
     if (PROJECT_COST.every((n, r) => v.hand[r] >= n)) affordable.push('a project');
   }
@@ -1263,6 +1301,19 @@ function drawProjects(v) {
   $('held').textContent = mine
     ? `Yours: ${Object.keys(PROJECTS).map((k, i) => (mine[i] ? `${PROJECTS[k]} ×${mine[i]}` : null)).filter(Boolean).join(', ') || 'none'} · ${v.deck} left in the deck`
     : `${v.deck} left in the deck`;
+}
+
+// Rivers' coins, in the Trade tab: buy one with a resource (at your rate), or spend 2 for a resource
+function drawCoins(v) {
+  $('coin-box').hidden = !v.rivers || v.you === null;
+  if (!v.rivers || v.you === null) return;
+  const r = v.rivers;
+  const standing = r.wealthiest === v.you ? ' You are the Wealthiest (+1 Renown).' : r.poor.includes(v.you) ? ' You are Poor (−2 Renown): get more coins than someone.' : '';
+  $('coin-note').textContent = `You have ${r.coins[v.you]} coin${r.coins[v.you] === 1 ? '' : 's'}.${standing} Spend 2 for a resource, ${r.coinBuysLeft} more this turn.`;
+  const buys = legal().filter(m => m.startsWith('buycoin '));
+  const spends = legal().filter(m => m.startsWith('spendcoins '));
+  $('coin-buy').replaceChildren(...buys.map(m => { const k = Number(m.split(' ')[1]); return button(`${v.rates[k]} ${RESOURCES[k]} → 1 coin`, m); }));
+  $('coin-spend').replaceChildren(...spends.map(m => button(`2 coins → ${RESOURCES[Number(m.split(' ')[1])]}`, m)));
 }
 
 // The City tab (the city expansion): the raiders, your tracks, Fixed Roll and your progress cards
@@ -1380,6 +1431,9 @@ function describe(entry) {
     case 'pillage': return `The raiders pillaged ${who === 'You' ? 'your' : `${who}'s`} Lodge`;
     case 'skip': return `${who} finished`;
     case 'fish': return `${who} spent fish: ${FISH_ACTIONS[a]}`;
+    case 'bridge': return `${who} built a bridge (3 coins)`;
+    case 'buycoin': return `${who} bought a coin with ${RESOURCES[a]}`;
+    case 'spendcoins': return `${who} spent 2 coins on ${RESOURCES[a]}`;
     case 'giveboot': return `${who} gave ${Number(a) === snap.view.you ? 'you' : nameOf(Number(a))} the old boot`;
     default: return `${who}: ${entry.move}`;
   }

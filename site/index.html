@@ -51,6 +51,7 @@
           <legend>Variants box scenario (<a href="/rules.html#variant-scenarios">rules</a>): played on its own</legend>
           <label class="open-offer"><input name="box" type="radio" value="0" checked> None</label>
           <label class="open-offer"><input name="box" type="radio" value="1"> Fishing: a lake and fishing grounds catch fish tokens to spend; beware the old boot (10)</label>
+          <label class="open-offer"><input name="box" type="radio" value="2"> Rivers: bridges and coins; the richest gains 1 Renown, the poorest lose 2 (10)</label>
         </fieldset>
         <fieldset class="variants">
           <legend>City expansion (<a href="/rules.html#city">rules</a>)</legend>
@@ -140,6 +141,12 @@
               <div id="deal-to" class="pick" role="group" aria-label="Offer to"></div>
               <label class="open-offer"><input type="checkbox" id="deal-open"> Open offer: the first to accept gets it, straight away</label>
               <button type="button" id="make-offer" class="primary">Make offer</button>
+            </div>
+            <div id="coin-box" hidden>
+              <h2>Coins</h2>
+              <p id="coin-note" class="note"></p>
+              <div id="coin-buy" class="choices"></div>
+              <div id="coin-spend" class="choices"></div>
             </div>
             <p id="trade-empty" class="note">You can trade on your turn, after rolling.</p>
           </div>

@@ -43,9 +43,13 @@ button { font: inherit; padding: 6px 12px; border-radius: 6px; border: 1px solid
 .fleet { fill: #1d2228; stroke: #fffaf0; stroke-width: 2; }
 .road.warship { stroke-width: 9; }
 .marker.fort { font-size: 13px; }
+/* Rivers: the rivers, bridge sites and bridges */
+.river { fill: none; stroke: #2f7fc4; stroke-width: 7; stroke-linecap: round; stroke-linejoin: round; opacity: 0.8; pointer-events: none; }
+.bridge-site { stroke: #fffaf0; stroke-width: 3; stroke-dasharray: 3 3; pointer-events: none; }
+.road.bridge { stroke-width: 10; stroke-linecap: butt; }
 /* Fishing: the Lake and its four numbers */
 .t-lake { fill: #4a9fd8; }
-.lake-numbers { font: 800 11px system-ui, sans-serif; fill: #fffaf0; text-anchor: middle; stroke: #1d2228; stroke-width: 2px; paint-order: stroke; pointer-events: none; }
+.lake-numbers { font: 800 9px system-ui, sans-serif; fill: #fffaf0; text-anchor: middle; stroke: #1d2228; stroke-width: 2px; paint-order: stroke; pointer-events: none; }
 /* The city expansion: walls, metropolises, knights, the merchant, the event die, commodities */
 .wall { fill: none; stroke-width: 3; stroke-dasharray: 4 2; }
 .wall.p0 { stroke: var(--p0); } .wall.p1 { stroke: var(--p1); } .wall.p2 { stroke: var(--p2); }

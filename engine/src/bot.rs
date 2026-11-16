@@ -190,6 +190,24 @@ impl Greedy {
             if legal.contains(&Action::Path(e as u16)) {
                 return Action::Path(e as u16);
             }
+            // Rivers: the way on is a bridge
+            if legal.contains(&Action::Bridge(e as u16)) {
+                return Action::Bridge(e as u16);
+            }
+        }
+        // Rivers: coins buy what's short; a spare resource buys a coin when this bot is Poor
+        if g.rivers() {
+            let hand = g.hands[p as usize];
+            if let Some(r) = (0..5).filter(|&r| hand[r] < need[r]).max_by_key(|&r| need[r] - hand[r]) {
+                if legal.contains(&Action::SpendCoins(r as u8)) {
+                    return Action::SpendCoins(r as u8);
+                }
+            }
+            if g.poor(p as usize) {
+                if let Some(r) = (0..5).filter(|&r| hand[r] >= need[r] + g.rate(p, r)).max_by_key(|&r| hand[r] - need[r]) {
+                    return Action::BuyCoin(r as u8);
+                }
+            }
         }
         let short = (0..5).any(|r| g.hands[p as usize][r] < need[r]);
         // Fishing: the old boot goes to the leader; fish buy a project at 7, send the squall off this

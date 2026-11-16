@@ -166,6 +166,10 @@ pub struct Island {
     // ring of sea hexes round the main island, in order
     pub forts: Vec<((u16, u8), (u16, u8))>,
     pub fleet: Vec<u16>,
+    // Rivers (the variants box): each river's 3 hexes from its mouth inland, river after river; and
+    // their bridge sites (edges), 3 a river: the mouth, then between its hexes
+    pub rivers: Vec<u16>,
+    pub bridge_sites: Vec<u16>,
     pub info: Info,
 }
 
@@ -195,7 +199,11 @@ impl Island {
         format!(
             "{{\"version\":2,\"seed\":{},\"hexes\":[{}],\"markets\":[{}],\"squall\":{}{},\"info\":{{\"mainSize\":{},\"mainAverage\":{},\"attempts\":{}}}}}",
             json::string(&self.seed), hexes.join(","), markets.join(","), self.squall,
-            if sea { format!(",\"pirate\":{}", self.pirate) } else { String::new() },
+            if sea { format!(",\"pirate\":{}", self.pirate) } else { String::new() }
+                + &if self.rivers.is_empty() { String::new() } else {
+                    let list = |v: &[u16]| v.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(",");
+                    format!(",\"rivers\":[{}],\"bridgeSites\":[{}]", list(&self.rivers), list(&self.bridge_sites))
+                },
             i.main_size, json::number(i.main_average), i.attempts,
         )
     }
@@ -292,6 +300,7 @@ fn attempt_island(s: &Settings, rng: &mut Rng) -> Option<Island> {
     if s.box_scenario == 1 {
         fishing_grounds(rng, &mut hexes, &graph, &markets)?;
     }
+    let (rivers, bridge_sites) = if s.box_scenario == 2 { river_layout(rng, &hexes, &graph)? } else { (Vec::new(), Vec::new()) };
     let squall = *rng.pick(&squall_starts(&hexes, everywhere));
     // (Wonders and the Pirate Islands have no pirate; the Pirate Islands' fleet is its own)
     let pirate = if s.sea && !matches!(s.sea_scenario, 7 | 8) { pirate_start(rng, &hexes, s.sea_scenario == 1)? } else { NONE };
@@ -311,6 +320,8 @@ fn attempt_island(s: &Settings, rng: &mut Rng) -> Option<Island> {
         prizes,
         forts,
         fleet,
+        rivers,
+        bridge_sites,
         info: Info { main_size: main.len(), main_average, attempts: 0 },
     })
 }
@@ -357,6 +368,45 @@ fn fishing_grounds(rng: &mut Rng, hexes: &mut [Hex], g: &Graph, markets: &[Marke
         hexes[h].number = n;
     }
     Some(())
+}
+
+// Rivers: for each Swamp (a Dunes hex), a river of 3 land hexes in a line of neighbours that holds it,
+// starting at the coast, not touching the other river; its bridge sites are the coast edge where it
+// meets the sea and the edges between its hexes
+fn river_layout(rng: &mut Rng, hexes: &[Hex], g: &Graph) -> Option<(Vec<u16>, Vec<u16>)> {
+    let at: HashMap<Cell, usize> = hexes.iter().enumerate().map(|(i, h)| (h.cell, i)).collect();
+    let land = |i: usize| hexes[i].terrain != Sea && hexes[i].region == 0;
+    let near = |i: usize| -> Vec<usize> { hexes[i].cell.neighbors().iter().filter_map(|n| at.get(n).copied()).collect() };
+    let coastal = |i: usize| near(i).iter().any(|&n| hexes[n].terrain == Sea);
+    let shared = |a: usize, b: usize| g.hex_edges[a].iter().copied().find(|e| g.hex_edges[b].contains(e)).unwrap();
+    let swamps: Vec<usize> = (0..hexes.len()).filter(|&i| land(i) && hexes[i].terrain == Dunes).collect();
+    let mut taken: Vec<usize> = Vec::new();
+    let (mut rivers, mut sites) = (Vec::new(), Vec::new());
+    for &swamp in swamps.iter().take(2) {
+        let mut chains: Vec<[usize; 3]> = Vec::new();
+        for x in (0..hexes.len()).filter(|&i| land(i) && coastal(i)) {
+            for y in near(x).into_iter().filter(|&y| land(y)) {
+                for z in near(y).into_iter().filter(|&z| land(z) && z != x) {
+                    let chain = [x, y, z];
+                    let swamps_in = chain.iter().filter(|&&h| hexes[h].terrain == Dunes).count();
+                    let clear = chain.iter().all(|&h| !taken.contains(&h) && near(h).iter().all(|n| !taken.contains(n)));
+                    if chain.contains(&swamp) && swamps_in == 1 && clear {
+                        chains.push(chain);
+                    }
+                }
+            }
+        }
+        if chains.is_empty() {
+            return None; // no room for this river: the generator tries another island
+        }
+        let chain = *rng.pick(&chains);
+        let mouths: Vec<usize> = near(chain[0]).into_iter().filter(|&n| hexes[n].terrain == Sea).collect();
+        let mouth = shared(chain[0], *rng.pick(&mouths));
+        rivers.extend(chain.iter().map(|&h| h as u16));
+        sites.extend([mouth, shared(chain[0], chain[1]), shared(chain[1], chain[2])].map(|e| e as u16));
+        taken.extend(chain);
+    }
+    (rivers.len() == 6).then_some((rivers, sites))
 }
 
 // Where the squall may start: the island's Dunes, or with none, its weakest hexes (fewest pips)

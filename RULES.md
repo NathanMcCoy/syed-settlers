@@ -317,7 +317,15 @@ Played on their own: not with the sea, the city expansion, event cards or the tw
   holder needs 1 more Renown to win and may pass it on their turn to a player with as much public Renown or more.
   The squall starts off the island; it may stand on the Lake (no fish on its four numbers). (Ours: fishing grounds
   pay their coast corners; no swap at 7 tokens.)
-- Still to come: 2 Rivers, 3 Merchant trains, 4 Raider attack, 5 Traders and raiders.
+- **2 Rivers** (10 Renown): two rivers of 3 land hexes each in a line of neighbours, from a coastal hex inland,
+  each holding one Swamp (Dunes; `island.dunes` 2, `island.paddy` 3 on the hexagon: 17 numbered hexes, and the 12's
+  hex pays on a 2 too); the rivers don't touch. Bridge sites: each river's mouth (a coast edge of its first hex) and
+  the edges between its hexes. No Path on a bridge site; a bridge (Timber + 2 Copper, 3 each) goes there, connected
+  like a Path, counting as a Path for Longest Path, not with Road Crew. Coins: 1 per Hut or Path built on a river
+  hex (setup included), 3 per bridge; buy a coin from the bank with a resource at your rate; 2 coins buy a resource,
+  twice a turn. Coins aren't cards. The single most coins: +1 Renown (Wealthiest); everyone tied fewest: -2 (Poor;
+  Renown never below 0). (Ours: the layout; no coins in trades between players.)
+- Still to come: 3 Merchant trains, 4 Raider attack, 5 Traders and raiders.
 
 ## The city expansion ⚙ (`city`, chosen when starting a game)
 
