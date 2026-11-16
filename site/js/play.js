@@ -4,7 +4,7 @@
 //
 // Your seat's key comes in the link's #k=... part (never sent to the server in the address), then is
 // kept in this browser (localStorage) so a reload finds your seat again.
-import { islandSvg, el, centre, point, hexPoints, RESOURCES, SIZE } from './board.js';
+import { islandSvg, el, centre, point, hexPoints, pips, terrainName, TERRAIN_RESOURCE, RESOURCES, SIZE } from './board.js';
 
 const $ = id => document.getElementById(id);
 const COLOURS = ['Red', 'Blue', 'Orange', 'Purple', 'Green', 'Brown'];
@@ -237,6 +237,7 @@ function render(data) {
   const v = snap.view;
   // A pick in the shop lasts while it can still be built
   if (mode && !legal().some(m => m.startsWith(`${mode} `))) { mode = null; moveFrom = null; }
+  applyRevealed(v);
   drawPieces(v, before?.view);
   drawTargets(v);
   const offered = v.offer && v.legal.some(m => m.startsWith('answer '));
@@ -263,6 +264,30 @@ function render(data) {
   $('trade-empty').hidden = !$('offer-box').hidden || !$('trade-box').hidden || !$('deal-box').hidden;
   document.body.dataset.phase = v.phase;
   document.body.dataset.myTurn = String(v.toAct === v.you && v.phase !== 'over');
+}
+
+// Fog Islands: hexes revealed since the island was drawn get their terrain and number
+function applyRevealed(v) {
+  for (const [h, terrain, number] of v.revealed ?? []) {
+    const hex = board.island.hexes[h];
+    if (hex.terrain === terrain) continue;
+    hex.terrain = terrain;
+    hex.number = number;
+    const poly = document.querySelector(`#board polygon[data-hex="${h}"]`);
+    if (!poly) continue;
+    poly.setAttribute('class', `hex t-${terrain} revealed`);
+    poly.dataset.terrain = terrain;
+    const resource = TERRAIN_RESOURCE[terrain];
+    poly.querySelector('title').textContent = terrain === 'sea' ? 'Sea' : `${terrainName(terrain)}${resource ? ` (${resource})` : ''}${number ? `, ${number}` : ''}`;
+    if (number) {
+      const c = centre(hex);
+      poly.after(
+        el('circle', { cx: c.x, cy: c.y, r: SIZE * 0.42, class: 'token', 'data-number': number, 'data-token': h }),
+        el('text', { x: c.x, y: c.y - 2, class: `number${pips(number) === 5 ? ' strong' : ''}` }, number),
+        el('text', { x: c.x, y: c.y + 12, class: 'pips' }, '•'.repeat(pips(number))),
+      );
+    }
+  }
 }
 
 // Pieces placed since the last update glow for a moment, so other players' moves are easy to follow

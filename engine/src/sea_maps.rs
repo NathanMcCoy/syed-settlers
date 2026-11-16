@@ -162,11 +162,38 @@ pub fn scenario_land(rng: &mut Rng, s: &Settings) -> Option<Vec<Hex>> {
             let mut numbers = number_tokens(total);
             dress(rng, &cells, &mut tiles, &mut numbers)
         }
+        3 => {
+            // Fog Islands: two start islands face up (17 tiles: 3 Mine, 4 Forest, 4 Paddy, 3 Fields,
+            // 3 Quarry) and two hidden areas of 6 hexes, a sea hex away from them
+            let shapes = islands(rng, &[9, 8], 6)?;
+            let cells: Vec<(Cell, u8)> = shapes.iter().enumerate().flat_map(|(k, cs)| cs.iter().map(move |&c| (c, k as u8))).collect();
+            let mut tiles: Vec<Terrain> = Vec::new();
+            for (t, n) in [(Mine, 3), (Forest, 4), (Paddy, 4), (Fields, 3), (Quarry, 3)] {
+                tiles.extend(std::iter::repeat_n(t, n));
+            }
+            let mut numbers = number_tokens(cells.len());
+            let mut hexes = dress(rng, &cells, &mut tiles, &mut numbers)?;
+            let mut taken: Vec<Cell> = cells.iter().map(|&(c, _)| c).collect();
+            let near: Vec<Cell> = within(Cell::new(0, 0), 8).into_iter().filter(|&c| taken.iter().map(|t| t.distance(c)).min().unwrap() == 2).collect();
+            for _ in 0..2 {
+                let fog = grow_island(rng, 6, &near, &taken, 8)?;
+                taken.extend(&fog);
+                hexes.extend(fog.iter().map(|&c| Hex { cell: c, terrain: Fog, number: 0, region: crate::island::SEA }));
+            }
+            Some(hexes)
+        }
         _ => None,
     }
 }
 
+// What lies under Fog Islands' fog (the rulebook's 4-player list in our names): 2 sea, 2 Gold, 2 Mine,
+// 1 Forest, 1 Paddy, 2 Fields, 2 Quarry; 10 numbers for the land
+pub fn fog_stacks() -> (Vec<Terrain>, Vec<u8>) {
+    let tiles = vec![Sea, Sea, Gold, Gold, Mine, Mine, Forest, Paddy, Fields, Fields, Quarry, Quarry];
+    (tiles, number_tokens(10))
+}
+
 // Does this scenario let players set up anywhere (their home islands), or only on the main island?
 pub fn setup_anywhere(scenario: u8) -> bool {
-    matches!(scenario, 2 | 9)
+    matches!(scenario, 2 | 3 | 9)
 }

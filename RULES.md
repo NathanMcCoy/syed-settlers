@@ -248,13 +248,18 @@ Each map is made from the seed to the scenario's rules and tile counts; the layo
 - **2 Four Islands** (13 Renown): four islands of 5 hexes, every resource on 4 of them (six islands with 5-6 players),
   no main island and no Dunes; the squall starts on a 2 or 12. Set up on any island (one or two: your home islands);
   every other island is a bonus (2). 8 markets (3 general), on any coast.
+- **3 Fog Islands** (12 Renown): two start islands face up (17 tiles: 3 Mine, 4 Forest, 4 Paddy, 3 Fields, 3 Quarry)
+  and two areas of 6 hidden hexes a sea hex away. Under the fog (shuffled, unseen by anyone): 2 sea, 2 Gold, 2 Mine,
+  1 Forest, 1 Paddy, 2 Fields, 2 Quarry, with 10 numbers for the land. Placing (or moving) a Path or ship next to a
+  hidden hex's corner turns it over: land gets the next number, and the player takes one of what it produces (gold:
+  their choice). Set up on either start island (or land already revealed); no island bonus. 6s and 8s may touch here.
 - **4 Through the Desert** (14 Renown): the main island with a desert of 2 more Dunes along its east side, a strip of
   4 hexes beyond it (Forest, Paddy, Fields, Mine; numbers 3, 5, 9, 11) and two small islands of 2 hexes holding the
   2 Gold, a Quarry and a Paddy (4, 6, 8, 10). Set up on the main island; the strip and each small island are a bonus (2).
 - **9 New World** (12 Renown): the rulebook's 23 tiles (4 Mine, 5 Forest, 5 Paddy, 5 Fields, 4 Quarry; 2 more of
   each with 5-6 players) on 3 to 5 random islands; 10 markets (5 general) on any coast. Set up anywhere; every island
   beyond your home islands is a bonus of 1.
-- Still to come: 3 Fog Islands, 5 The Forgotten Tribe, 6 Cloth, 7 The Pirate Islands, 8 The Wonders.
+- Still to come: 5 The Forgotten Tribe, 6 Cloth, 7 The Pirate Islands, 8 The Wonders.
 
 ## Not in version 1 (planned)
 
