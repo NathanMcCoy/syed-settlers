@@ -264,10 +264,19 @@ Each map is made from the seed to the scenario's rules and tile counts; the layo
   general supply; an empty village sends nothing). 2 cloth = 1 Renown. Ships on such a route can't move. The pirate
   can't be moved by a player with no trade relation. No Longest Path. Ends at 14 Renown, or at the end of a turn with
   5 empty villages: the most Renown wins, then the most cloth, else a draw.
+- **8 Wonders**: New Shores' map (small islands a bonus of 1) with no pirate; 5 wall markers and 2 bridge markers on
+  main-island coast corners (none touching), and no setup Hut on a marker or next to a bridge marker. Claim one wonder
+  once its requirement is met (one each, never the same one): Great Bridge (a building on a bridge marker), Great Wall
+  (a building on a wall marker), Grand Theater (2 Lodges), Grand Monument (a Lodge on a market and a line of 5 Paths or
+  ships), Grand Castle (a Lodge and 6 Renown). Then build its 4 levels, each costing the same 5 cards (read off the
+  tiles): Great Bridge 3 Copper + Timber + Grain, Great Wall 3 Timber + Fish + Grain, Grand Theater 3 Grain + 2 Stone,
+  Grand Monument 3 Fish + Copper + Timber, Grand Castle 3 Stone + Copper + Grain. Win by finishing your wonder, or with
+  10 Renown and a higher level than everyone else; Renown alone doesn't win. (The 5-6 player box's two more wonders
+  aren't in yet: their costs are pictures we haven't read.)
 - **9 New World** (12 Renown): the rulebook's 23 tiles (4 Mine, 5 Forest, 5 Paddy, 5 Fields, 4 Quarry; 2 more of
   each with 5-6 players) on 3 to 5 random islands; 10 markets (5 general) on any coast. Set up anywhere; every island
   beyond your home islands is a bonus of 1.
-- Still to come: 5 The Forgotten Tribe, 7 The Pirate Islands, 8 The Wonders.
+- Still to come: 5 The Forgotten Tribe, 7 The Pirate Islands.
 
 ## Not in version 1 (planned)
 

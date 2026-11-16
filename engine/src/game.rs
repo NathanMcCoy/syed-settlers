@@ -22,6 +22,8 @@ mod events;
 mod turns;
 mod two;
 mod variants;
+mod wonders;
+pub use wonders::{BRIDGE, NO_SETUP, WALL, WONDERS, Wonder};
 pub use two::NEUTRAL;
 pub use events::{EVENTS, Event, event_card};
 pub use pending::{Decision, Pending};
@@ -70,6 +72,8 @@ pub enum Action {
     Rob(u8),         // event cards: take a random card from this player
     Damage(u16),     // event cards (an earthquake): damage your own Path on this edge
     Repair(u16),     // repair your damaged Path on this edge (Timber + Copper)
+    ClaimWonder(u8), // Wonders: claim this wonder (its requirement met)
+    BuildWonder,     // Wonders: build the next level of your wonder
     NeutralHut(u8, u16),  // the two-player variant: a Hut for this neutral colour on this corner
     NeutralPath(u8, u16), // ... a Path for this neutral colour on this edge
     CashPilot,       // discard a played Pilot for 2 trade tokens
@@ -137,11 +141,17 @@ pub struct Board {
     pub edge_sea: Vec<bool>,          // touches the sea: can take a ship (the sea expansion)
     pub corner_region: Vec<u8>,       // which island the corner's land is on (0 main), or SEA
     pub sea_hexes: Vec<u16>,          // where the pirate may go
+    pub corner_marker: Vec<u8>,       // Wonders: WALL, BRIDGE, NO_SETUP or 0
 }
 
 impl Board {
     pub fn new(island: &Island, settings: &Settings) -> Board {
-        Board::from_parts(island.graph(), island.hexes.clone(), island.markets.clone(), settings.clone())
+        let mut b = Board::from_parts(island.graph(), island.hexes.clone(), island.markets.clone(), settings.clone());
+        for &(h, k, kind) in &island.markers {
+            let c = b.graph.hex_corners[h as usize][k as usize] as usize;
+            b.corner_marker[c] = kind;
+        }
+        b
     }
 
     // Everything the rules ask about, worked out from the hexes (again after a hex is revealed)
@@ -151,6 +161,7 @@ impl Board {
         let land = |h: usize| !matches!(hexes_ref[h].terrain, Terrain::Sea | Terrain::Fog);
         let sea = |h: usize| hexes_ref[h].terrain == Terrain::Sea;
         let island = (&hexes, &markets);
+        let corner_marker = vec![0u8; graph.corners()];
         let mut by_number: [Vec<u16>; 13] = Default::default();
         for (i, h) in hexes.iter().enumerate() {
             if h.number != 0 {
@@ -184,6 +195,7 @@ impl Board {
                 .map(|c| listed(&graph.corner_hexes[c]).filter(|&h| land(h)).map(|h| hexes[h].region).min().unwrap_or(SEA))
                 .collect(),
             sea_hexes: (0..hexes.len()).filter(|&h| sea(h)).map(|h| h as u16).collect(),
+            corner_marker,
             graph,
             hexes: hexes.clone(),
             markets: island.1.clone(),
@@ -239,6 +251,10 @@ pub struct Game {
     pub general_cloth: u8,
     pub village_links: [u16; MAX_PLAYERS],
     pub cloth_ended: bool,
+    // Wonders (wonders.rs): who claimed each wonder, each player's wonder and its level
+    pub wonder_owner: [u8; 5],
+    pub wonder_of: [u8; MAX_PLAYERS],
+    pub wonder_level: [u8; MAX_PLAYERS],
     // Event cards (events.rs): the deck (top last), the last card's event (NOBODY before the first),
     // whether this production is an epidemic, and Paths an earthquake damaged
     pub event_deck: Vec<u8>,
@@ -359,6 +375,9 @@ impl Game {
             general_cloth: cloth::GENERAL_CLOTH,
             village_links: [0; MAX_PLAYERS],
             cloth_ended: false,
+            wonder_owner: [NOBODY; 5],
+            wonder_of: [NOBODY; MAX_PLAYERS],
+            wonder_level: [0; MAX_PLAYERS],
             event_deck: Vec::new(),
             last_event: NOBODY,
             epidemic: false,
@@ -455,6 +474,9 @@ impl Game {
     // Has p won? Enough Renown (rulesets will add their own ways here, e.g. finishing a wonder).
     // Only asked during p's own turn or extra phase.
     pub fn has_won(&self, p: usize) -> bool {
+        if self.wonders_on() {
+            return self.wonder_win(p); // Wonders: only a wonder wins
+        }
         self.renown(p) >= self.win_target(p)
     }
 
@@ -626,6 +648,7 @@ impl Game {
                 }
                 self.legal_plays(pu, out);
                 self.legal_tokens(pu, out);
+                self.legal_wonders(pu, out);
                 if let Some(o) = &self.offer {
                     out.push(Action::Withdraw);
                     for s in 0..self.players {
@@ -902,6 +925,14 @@ impl Game {
                 self.refresh_title(Title::MostPilots);
             }
             Action::ForceTrade => self.force_trade(pu),
+            Action::ClaimWonder(w) => {
+                self.wonder_owner[w as usize] = p;
+                self.wonder_of[pu] = w;
+            }
+            Action::BuildWonder => {
+                pay(&mut self.hands[pu], &WONDERS[self.wonder_of[pu] as usize].cost());
+                self.wonder_level[pu] += 1;
+            }
             Action::SquallHome => {
                 let cost = self.token_cost(pu);
                 self.spend_tokens(pu, Token::Trade, cost);

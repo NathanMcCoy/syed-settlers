@@ -34,6 +34,8 @@ pub fn action_text(a: Action) -> String {
         Action::Rob(s) => format!("rob {s}"),
         Action::Damage(e) => format!("damage {e}"),
         Action::Repair(e) => format!("repair {e}"),
+        Action::ClaimWonder(w) => format!("claimwonder {w}"),
+        Action::BuildWonder => "buildwonder".into(),
         Action::NeutralHut(n, c) => format!("neutralhut {n} {c}"),
         Action::NeutralPath(n, e) => format!("neutralpath {n} {e}"),
         Action::CashPilot => "cashpilot".into(),
@@ -94,6 +96,8 @@ pub fn parse_action(text: &str) -> Result<Action, String> {
         Some("rob") => Action::Rob(small(1)?),
         Some("damage") => Action::Damage(num(1)?),
         Some("repair") => Action::Repair(num(1)?),
+        Some("claimwonder") => Action::ClaimWonder(small(1)?),
+        Some("buildwonder") => Action::BuildWonder,
         Some("neutralhut") => Action::NeutralHut(small(1)?, num(2)?),
         Some("neutralpath") => Action::NeutralPath(small(1)?, num(2)?),
         Some("cashpilot") => Action::CashPilot,
@@ -133,7 +137,7 @@ pub fn parse_action(text: &str) -> Result<Action, String> {
         _ => return Err(format!("unknown move \"{text}\"")),
     };
     let expected = match a {
-        Action::Roll | Action::EndTurn | Action::Withdraw | Action::CashPilot | Action::ForceTrade | Action::SquallHome => 1,
+        Action::Roll | Action::EndTurn | Action::Withdraw | Action::BuildWonder | Action::CashPilot | Action::ForceTrade | Action::SquallHome => 1,
         Action::Trade(..) | Action::Answer(..) | Action::MoveShip(..) | Action::Gift(..) | Action::NeutralHut(..) | Action::NeutralPath(..) => 3,
         Action::Offer { open, .. } => if open { 5 } else { 4 },
         Action::Counter { .. } => 4,
@@ -258,7 +262,7 @@ pub fn view_json(g: &Game, seat: u8) -> String {
             "{{\"phase\":\"{}\",\"current\":{},\"toAct\":{},\"turn\":{},\"lastRoll\":{},\"squall\":{},\"winner\":{},",
             "\"buildings\":[{}],\"roads\":[{}],\"players\":[{}],\"longestPath\":{},\"mostPilots\":{},",
             "\"row\":{},\"deck\":{},\"lastTake\":{},\"win\":{},\"you\":{},\"hand\":{},\"rates\":{},\"legal\":{},",
-            "\"offer\":{},\"canOffer\":{},\"offersLeft\":{},\"dice\":{},\"bank\":{},\"short\":{},\"handLimit\":{},\"round\":{},\"roundLimit\":{},\"byRounds\":{},\"bought\":{},\"turnOf\":{},\"paired\":{},\"titles\":{},\"deciding\":{},\"pirate\":{},\"shipMoved\":{},\"event\":{},\"damaged\":{},\"revealed\":{},\"villages\":{},\"clothEnded\":{}}}"
+            "\"offer\":{},\"canOffer\":{},\"offersLeft\":{},\"dice\":{},\"bank\":{},\"short\":{},\"handLimit\":{},\"round\":{},\"roundLimit\":{},\"byRounds\":{},\"bought\":{},\"turnOf\":{},\"paired\":{},\"titles\":{},\"deciding\":{},\"pirate\":{},\"shipMoved\":{},\"event\":{},\"damaged\":{},\"revealed\":{},\"villages\":{},\"clothEnded\":{},\"wonders\":{},\"markers\":{}}}"
         ),
         // While decisions are being made (pending.rs), the phase is named after the first one ("discard")
         g.deciding().map_or(phase_name(g.phase), |d| d.decision.name()), g.current, g.to_act(), g.turn,
@@ -309,6 +313,15 @@ pub fn view_json(g: &Game, seat: u8) -> String {
         // Cloth: each village as [hex, cloth left, [linked seats]]; whether 5 empty villages ended it
         list(g.villages().into_iter().enumerate().map(|(k, h)| format!("[{h},{},{}]", g.village_cloth[k], list((0..g.players).filter(|&p| g.village_links[p] & (1 << k) != 0))))),
         g.cloth_ended,
+        // Wonders: each wonder [name, owner or null, its owner's level, cost]; corner markers [corner, kind]
+        if !g.wonders_on() { "[]".into() } else {
+            list(WONDERS.iter().map(|&w| {
+                let o = g.wonder_owner[w as usize];
+                let level = if o == NOBODY { 0 } else { g.wonder_level[o as usize] };
+                format!("[\"{}\",{},{level},{}]", w.name(), seat_or_null(o), list(w.cost()))
+            }))
+        },
+        list((0..g.board.corner_marker.len()).filter(|&c| g.board.corner_marker[c] != 0).map(|c| format!("[{c},{}]", g.board.corner_marker[c]))),
     )
 }
 
