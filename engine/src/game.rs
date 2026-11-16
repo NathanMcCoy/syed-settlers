@@ -19,6 +19,7 @@ mod fishing;
 mod rivers;
 mod merchant;
 mod raiders;
+mod traders;
 mod pending;
 mod pirates;
 mod sea;
@@ -37,6 +38,7 @@ pub use fishing::{FISH_COSTS, LAKE_NUMBERS};
 pub use rivers::{BRIDGE_COST, BRIDGES};
 pub use merchant::{MOST_BID, WAGONS};
 pub use raiders::{CAPTURE, EDGE_KNIGHTS, KNIGHTHOOD, ORDERS, RAIDERS, SWIFT_KNIGHT, TURNCOAT};
+pub use traders::{DELIVERY_COINS, DRIVE_FROM, GOODS, UPGRADES, WAGON_MP, WORKS};
 pub use events::{EVENTS, Event, event_card};
 pub use pending::{Decision, Pending};
 pub use sea::{GOLD, P_SHIP, SHIP, SHIP_COST};
@@ -129,6 +131,12 @@ pub enum Action {
     MoveRaider(u16, u16), // a raider from this coastal hex (NONE: the supply) to that one
     GuardMove(u16, u16),  // your knight from this edge to that one (up to 3 steps)
     GuardRun(u16, u16),   // the same, 4 or 5 steps, for a Grain
+    // The variants box's Traders and raiders (traders.rs)
+    WagonStep(u16),       // your wagon to this neighbouring corner
+    DriveOff(u16),        // try to drive off the raider on this edge
+    Boost,                // a Grain for 2 more move points (once a turn)
+    BarbarianTo(u16, u16), // a raider from this edge to that one
+    UpgradeWagon,         // your wagon's next level
     NeutralHut(u8, u16),  // the two-player variant: a Hut for this neutral colour on this corner
     NeutralPath(u8, u16), // ... a Path for this neutral colour on this edge
     CashPilot,       // discard a played Pilot for 2 trade tokens
@@ -400,6 +408,20 @@ pub struct Game {
     pub orders_used: Vec<u8>,
     pub last_order: u8,
     pub last_landing: Vec<u8>,
+    // Traders and raiders (traders.rs): raiders on edges, the three works' hexes, their goods stacks,
+    // each wagon's corner, cargo (NOBODY: none), level and deliveries; this move's points, raiders tried
+    // this turn, the Grain boost and Swift Journey
+    pub barbarian: Vec<bool>,
+    pub works: Vec<u16>,
+    pub goods_stacks: [Vec<u8>; 3],
+    pub wagon_corner: [u16; MAX_PLAYERS],
+    pub cargo: [u8; MAX_PLAYERS],
+    pub wagon_level: [u8; MAX_PLAYERS],
+    pub delivered: [u8; MAX_PLAYERS],
+    pub wagon_mp: u8,
+    pub driven: Vec<u16>,
+    pub boosted: bool,
+    pub swift: bool,
     pub rng: Rng,
 }
 
@@ -577,6 +599,17 @@ impl Game {
             orders_used: Vec::new(),
             last_order: NOBODY,
             last_landing: Vec::new(),
+            barbarian: Vec::new(),
+            works: Vec::new(),
+            goods_stacks: Default::default(),
+            wagon_corner: [NONE; MAX_PLAYERS],
+            cargo: [NOBODY; MAX_PLAYERS],
+            wagon_level: [0; MAX_PLAYERS],
+            delivered: [0; MAX_PLAYERS],
+            wagon_mp: 0,
+            driven: Vec::new(),
+            boosted: false,
+            swift: false,
             rng,
             board,
         };
@@ -597,6 +630,9 @@ impl Game {
         }
         if g.raider_attack() {
             g.raiders_setup();
+        }
+        if g.traders() {
+            g.traders_setup();
         }
         if g.settings().variant_two {
             g.place_neutrals();
@@ -670,7 +706,8 @@ impl Game {
             + self.title_renown(p)
             + self.token_renown(p)
             + self.city_renown(p)
-            + self.wagon_renown(p);
+            + self.wagon_renown(p)
+            + self.trade_renown(p);
         // Rivers: +1 the Wealthiest, -2 the Poor (never below 0)
         // (Raider attack: prisoners, and conquered buildings counting nothing)
         (r as i32 + self.wealth_renown(p) + self.raid_renown(p)).max(0) as u32
@@ -899,6 +936,7 @@ impl Game {
                 self.legal_city(p, out);
                 self.legal_fish(p, out);
                 self.legal_rivers(p, out);
+                self.legal_upgrade(pu, out);
                 if let Some(o) = &self.offer {
                     out.push(Action::Withdraw);
                     for s in 0..self.players {
@@ -1304,6 +1342,16 @@ impl Game {
                         self.make_warship(pu);
                         self.phase
                     }
+                    Project::Pilot if self.traders() => {
+                        // Traders and raiders: a Knight moves a raider (robbing a Path's owner)
+                        let back = self.back; // (before or after the roll)
+                        self.decide_then([Pending { seat: p, decision: Decision::MoveBarbarian { from: NONE, steal: true } }], back);
+                        self.phase
+                    }
+                    Project::Harvest if self.traders() => {
+                        self.swift = true; // Swift Journey: the wagon moves twice this turn
+                        self.phase
+                    }
                     Project::Pilot => {
                         self.pilots[pu] += 1;
                         self.refresh_title(Title::MostPilots);
@@ -1382,6 +1430,8 @@ impl Game {
             }
             Action::Bid(f, gr) => self.bid(pu, f, gr),
             Action::Capture(_) | Action::PlaceGuard(_) | Action::MoveRaider(..) | Action::GuardMove(..) | Action::GuardRun(..) => self.raid_decided(a),
+            Action::WagonStep(_) | Action::DriveOff(_) | Action::Boost | Action::BarbarianTo(..) | Action::UpgradeWagon => self.trade_decided(a),
+            Action::Skip if self.deciding().map(|d| d.decision) == Some(Decision::Drive) => self.trade_decided(a),
             Action::Wagon(e) => {
                 self.place_wagon(e as usize);
                 self.decided(None);
@@ -1404,7 +1454,7 @@ impl Game {
             Action::EndTurn => {
                 // Merchant trains: a wagon earned this phase is voted on and placed first
                 // Raider attack: knights move and the raiders are driven off first
-                if !self.start_vote() && !self.start_guard_moves() {
+                if !self.start_vote() && !self.start_guard_moves() && !self.start_drive() {
                     self.end_phase();
                 }
                 if self.over() {
@@ -1447,9 +1497,12 @@ impl Game {
         self.corner_owner[c] = p;
         self.river_coins_corner(pu, c); // Rivers: a coin for a Hut on a river hex
         // The city expansion: the second setup building is a Lodge
-        if setup && (self.city() || self.raider_attack()) && self.setup_step as usize >= self.players {
+        if setup && (self.city() || self.raider_attack() || self.traders()) && self.setup_step as usize >= self.players {
             self.corner_kind[c] = LODGE;
             self.pieces[pu][P_LODGE] -= 1;
+            if self.traders() {
+                self.wagon_corner[pu] = c as u16; // Traders and raiders: the wagon starts here
+            }
         } else {
             self.corner_kind[c] = HUT;
             self.pieces[pu][P_HUT] -= 1;

@@ -88,6 +88,7 @@ impl Greedy {
                 Action::Path(e) => best_spot_beyond(g, p, *e as usize),
                 _ => f64::MIN,
             }),
+            Phase::Decide if g.deciding().map(|d| d.decision) == Some(Decision::Drive) => drive_choice(g, p, legal),
             Phase::Decide => {
                 let need = self.plan(g, p).1;
                 let hand = g.hands[p as usize];
@@ -124,6 +125,12 @@ impl Greedy {
                     Action::GuardMove(f, t) => guard_value(g, p, *t as usize) - guard_value(g, p, *f as usize),
                     Action::GuardRun(f, t) => guard_value(g, p, *t as usize) - guard_value(g, p, *f as usize) - 0.5,
                     Action::Skip => 0.01,
+                    // Traders and raiders: a raider onto the leader's Path, off this bot's own
+                    Action::BarbarianTo(f, t) => {
+                        let on = |e: u16| g.edge_owner[e as usize];
+                        let to = if on(*t) == NOBODY || on(*t) == p { -0.5 * (on(*t) == p) as u8 as f64 } else { g.renown(on(*t) as usize) as f64 };
+                        to + if on(*f) == p { 1.0 } else { 0.0 }
+                    }
                     _ => f64::MIN,
                 })
             }
@@ -214,6 +221,10 @@ impl Greedy {
             if legal.contains(&Action::Bridge(e as u16)) {
                 return Action::Bridge(e as u16);
             }
+        }
+        // Traders and raiders: upgrade the wagon whenever it can be paid for
+        if legal.contains(&Action::UpgradeWagon) {
+            return Action::UpgradeWagon;
         }
         // Raider attack: orders bring knights (until all 6 are out)
         if g.raider_attack() && legal.contains(&Action::Buy(0)) && g.edge_knights(p) < EDGE_KNIGHTS {
@@ -462,6 +473,58 @@ fn spot_value(g: &Game, p: u8, c: usize) -> f64 {
         v += 1.0;
     }
     v
+}
+
+// Traders and raiders: the wagon heads for the nearest works that takes its cargo (or, empty, any
+// works), by move-point cost; a step that brings it closer, a Grain when that's what it takes, a try at a
+// raider in the way, or stop
+fn drive_choice(g: &Game, p: u8, legal: &[Action]) -> Action {
+    let gr = &g.board.graph;
+    let pu = p as usize;
+    let cargo = g.cargo[pu];
+    let target = |c: usize| g.works_at(c).is_some_and(|w| cargo == NOBODY || WORKS[w].1.contains(&cargo));
+    // Cost to a target from every corner (Dijkstra, costs 1-4)
+    let n = gr.corners();
+    let mut dist = vec![u32::MAX; n];
+    let mut queue = std::collections::BinaryHeap::new();
+    for c in 0..n {
+        if target(c) {
+            dist[c] = 0;
+            queue.push(std::cmp::Reverse((0u32, c)));
+        }
+    }
+    while let Some(std::cmp::Reverse((d, c))) = queue.pop() {
+        if d > dist[c] {
+            continue;
+        }
+        for (k, m) in listed(&gr.corner_corners[c]).enumerate() {
+            let e = gr.corner_edges[c][k] as usize;
+            if !g.board.edge_land[e] {
+                continue;
+            }
+            let cost = g.step_cost(p, e).map_or(u32::MAX, |(mp, _)| mp as u32);
+            if cost != u32::MAX && d + cost < dist[m] {
+                dist[m] = d + cost;
+                queue.push(std::cmp::Reverse((d + cost, m)));
+            }
+        }
+    }
+    let here = g.wagon_corner[pu] as usize;
+    // A raider by the wagon: try to drive it off
+    if let Some(&a) = legal.iter().find(|a| matches!(a, Action::DriveOff(_))) {
+        return a;
+    }
+    let best = legal.iter().filter_map(|a| match a {
+        Action::WagonStep(c) if dist[*c as usize] < dist[here] => Some((dist[*c as usize], *a)),
+        _ => None,
+    }).min_by_key(|x| x.0);
+    if let Some((_, a)) = best {
+        return a;
+    }
+    if legal.contains(&Action::Boost) && dist[here] != u32::MAX && dist[here] > 0 && (g.wagon_mp as u32) < 4 && g.hands[pu][2] > 1 {
+        return Action::Boost;
+    }
+    Action::Skip
 }
 
 // Raider attack: how much the raiders on hex h hurt p (its buildings there, by how close to conquest)

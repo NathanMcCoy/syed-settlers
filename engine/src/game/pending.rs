@@ -41,6 +41,9 @@ pub enum Decision {
     PlaceGuard { keep: bool }, // place a knight on an edge of the Keep, or any free edge (PlaceGuard)
     MoveRaider { from: u16 }, // move a raider between coastal hexes, not from `from` (MoveRaider)
     MoveGuards,            // the end of your turn: move your knights (GuardMove / GuardRun / Skip)
+    // Traders and raiders (traders.rs)
+    Drive,                 // the end of your turn: move your wagon (WagonStep / DriveOff / Boost / Skip)
+    MoveBarbarian { from: u16, steal: bool }, // move a raider (from NONE: any) to a free edge (BarbarianTo)
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -84,6 +87,8 @@ impl Decision {
             Decision::PlaceGuard { .. } => "placeGuard",
             Decision::MoveRaider { .. } => "moveRaider",
             Decision::MoveGuards => "moveGuards",
+            Decision::Drive => "drive",
+            Decision::MoveBarbarian { .. } => "moveBarbarian",
         }
     }
 }
@@ -186,6 +191,8 @@ impl Game {
             }
             Decision::PlaceWagon => out.extend(self.wagon_spots().into_iter().map(|(e, _, _)| Action::Wagon(e as u16))),
             Decision::Capture | Decision::PlaceGuard { .. } | Decision::MoveRaider { .. } | Decision::MoveGuards => self.legal_raider_decision(d, out),
+            Decision::Drive => self.legal_drive(d.seat, out),
+            Decision::MoveBarbarian { .. } => self.legal_barbarian(d, out),
             _ => self.legal_city_decision(d, out),
         }
     }

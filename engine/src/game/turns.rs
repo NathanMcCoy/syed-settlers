@@ -12,9 +12,14 @@ impl Game {
     // Where the production number comes from: two dice
     pub(super) fn production_roll(&mut self) -> u8 {
         // (the city expansion rolls its own three dice: city.rs city_roll)
-        let dice = [self.rng.below(6) as u8 + 1, self.rng.below(6) as u8 + 1];
-        self.last_dice = dice;
-        dice[0] + dice[1]
+        loop {
+            let dice = [self.rng.below(6) as u8 + 1, self.rng.below(6) as u8 + 1];
+            self.last_dice = dice;
+            // Traders and raiders: a 2 or 12 is rolled again
+            if !(self.traders() && matches!(dice[0] + dice[1], 2 | 12)) {
+                return dice[0] + dice[1];
+            }
+        }
     }
 
     // What a production number does (separate from the dice so tests can choose the total)
@@ -30,6 +35,12 @@ impl Game {
                 .filter(|&p| self.cards(p) > self.hand_limit(p))
                 .map(|p| Pending { seat: p as u8, decision: Decision::Discard { left: (self.cards(p) / 2) as u8 } })
                 .collect();
+            if self.traders() {
+                // Traders and raiders: a raider moves (robbing a Path's owner)
+                discards.push(Pending { seat: self.current, decision: Decision::MoveBarbarian { from: NONE, steal: true } });
+                self.decide_then(discards, next);
+                return;
+            }
             if self.pirate_islands() || self.raider_attack() {
                 // No squall: the roller robs anyone
                 discards.push(Pending { seat: self.current, decision: Decision::Rob });
@@ -60,6 +71,8 @@ impl Game {
         self.attack_fortress(self.current as usize);
         self.city_end_phase();
         self.coin_buys = 0;
+        self.boosted = false;
+        self.swift = false;
         self.offer = None;
         self.offers_made = 0;
         self.bought = [0; 5];

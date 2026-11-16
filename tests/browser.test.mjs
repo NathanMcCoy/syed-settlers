@@ -187,6 +187,7 @@ for (const [name, type] of Object.entries(BROWSERS)) {
     ['the variants box scenario Rivers', 3, { 'box.scenario': 2 }],
     ['the variants box scenario Merchant trains', 3, { 'box.scenario': 3 }],
     ['the variants box scenario Raider attack', 3, { 'box.scenario': 4 }],
+    ['the variants box scenario Traders and raiders', 3, { 'box.scenario': 5 }],
     ['the city expansion', 3, { city: true }],
     ['the city expansion and the sea (New Shores)', 3, { city: true, sea: true, 'sea.scenario': 1 }],
   ]) {
@@ -204,8 +205,12 @@ for (const [name, type] of Object.entries(BROWSERS)) {
           if (state.phase === 'over') break;
           if (!state.mine) { await page.waitForTimeout(25); continue; }
           const before = await page.evaluate(() => document.querySelector('#log').textContent);
-          if (await page.locator('.target').count()) await page.locator('.target').first().click({ force: true });
-          else if (await page.locator('#choices button', { hasText: 'Roll' }).count()) { await page.locator('#choices button', { hasText: 'Roll' }).click(); rolls++; }
+          if (await page.locator('.target').count()) {
+            // A two-step pick (a ship, knight or raider, then where it goes): the first click only selects
+            const from = await page.locator('.target').first().evaluate(t => t.classList.contains('from'));
+            await page.locator('.target').first().click({ force: true });
+            if (from) await page.locator('.target').first().click({ force: true });
+          } else if (await page.locator('#choices button', { hasText: 'Roll' }).count()) { await page.locator('#choices button', { hasText: 'Roll' }).click(); rolls++; }
           else if (await page.locator('#choices button', { hasText: 'End turn' }).count()) await page.locator('#choices button', { hasText: 'End turn' }).click();
           else if (await page.locator('#choices button').count()) await page.locator('#choices button').first().click();
           await page.waitForFunction(b => document.querySelector('#log').textContent !== b || document.querySelector('#move-error').textContent, before, { timeout: 5000 });
@@ -219,6 +224,11 @@ for (const [name, type] of Object.entries(BROWSERS)) {
         if (settings['sea.scenario'] === 7) {
           assert.equal(await page.locator('#board [data-fleet]').count(), 1, 'the fleet');
           assert.equal(await page.locator('#board .squall').count(), 0, 'no squall');
+        }
+        if (settings['box.scenario'] === 5) {
+          assert.equal(await page.locator('#board polygon[data-terrain="glassworks"]').count(), 1, 'the Glassworks');
+          assert.equal(await page.locator('#board [data-barbarian]').count(), 3, 'three raiders');
+          assert.equal(await page.locator('#board [data-cart]').count(), 3, 'a wagon each');
         }
         if (settings['box.scenario'] === 4) {
           assert.equal(await page.locator('#board polygon[data-terrain="keep"]').count(), 1, 'the Keep');

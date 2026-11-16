@@ -94,6 +94,11 @@ pub fn action_text(a: Action) -> String {
         Action::MoveRaider(f, t) => format!("moveraider {f} {t}"),
         Action::GuardMove(f, t) => format!("guardmove {f} {t}"),
         Action::GuardRun(f, t) => format!("guardrun {f} {t}"),
+        Action::WagonStep(c) => format!("wagonstep {c}"),
+        Action::DriveOff(e) => format!("driveoff {e}"),
+        Action::Boost => "boost".into(),
+        Action::BarbarianTo(f, t) => format!("barbarianto {f} {t}"),
+        Action::UpgradeWagon => "upgradewagon".into(),
     }
 }
 
@@ -213,13 +218,18 @@ pub fn parse_action(text: &str) -> Result<Action, String> {
         Some("moveraider") => Action::MoveRaider(num(1)?, num(2)?),
         Some("guardmove") => Action::GuardMove(num(1)?, num(2)?),
         Some("guardrun") => Action::GuardRun(num(1)?, num(2)?),
+        Some("wagonstep") => Action::WagonStep(num(1)?),
+        Some("driveoff") => Action::DriveOff(num(1)?),
+        Some("boost") => Action::Boost,
+        Some("barbarianto") => Action::BarbarianTo(num(1)?, num(2)?),
+        Some("upgradewagon") => Action::UpgradeWagon,
         _ => return Err(format!("unknown move \"{text}\"")),
     };
     let expected = match a {
-        Action::Roll | Action::EndTurn | Action::Withdraw | Action::BuildWonder | Action::CashPilot | Action::ForceTrade | Action::SquallHome | Action::Skip => 1,
+        Action::Roll | Action::EndTurn | Action::Withdraw | Action::BuildWonder | Action::CashPilot | Action::ForceTrade | Action::SquallHome | Action::Skip | Action::Boost | Action::UpgradeWagon => 1,
         Action::Trade(..) | Action::Answer(..) | Action::MoveShip(..) | Action::Gift(..) | Action::NeutralHut(..) | Action::NeutralPath(..) => 3,
         Action::KnightMove(..) | Action::Displace(..) | Action::FixedRoll(..) | Action::TakeCard(..) | Action::TakeProgress(..) | Action::SwapNumbers(..) | Action::Bid(..) => 3,
-        Action::MoveRaider(..) | Action::GuardMove(..) | Action::GuardRun(..) => 3,
+        Action::MoveRaider(..) | Action::GuardMove(..) | Action::GuardRun(..) | Action::BarbarianTo(..) => 3,
         Action::Offer { open, .. } => if open { 5 } else { 4 },
         Action::Counter { .. } => 4,
         _ => 2,
@@ -347,7 +357,7 @@ pub fn view_json(g: &Game, seat: u8) -> String {
             "{{\"phase\":\"{}\",\"current\":{},\"toAct\":{},\"turn\":{},\"lastRoll\":{},\"squall\":{},\"winner\":{},",
             "\"buildings\":[{}],\"roads\":[{}],\"players\":[{}],\"longestPath\":{},\"mostPilots\":{},",
             "\"row\":{},\"deck\":{},\"lastTake\":{},\"win\":{},\"you\":{},\"hand\":{},\"rates\":{},\"legal\":{},",
-            "\"offer\":{},\"canOffer\":{},\"offersLeft\":{},\"dice\":{},\"bank\":{},\"short\":{},\"handLimit\":{},\"round\":{},\"roundLimit\":{},\"byRounds\":{},\"bought\":{},\"turnOf\":{},\"paired\":{},\"titles\":{},\"deciding\":{},\"pirate\":{},\"shipMoved\":{},\"event\":{},\"damaged\":{},\"revealed\":{},\"villages\":{},\"clothEnded\":{},\"wonders\":{},\"markers\":{},\"prizes\":{},\"heldMarkets\":{},\"markets\":{},\"fleet\":{},\"forts\":{},\"warships\":{},\"lastAttack\":{},\"city\":{},\"fishing\":{},\"rivers\":{},\"trains\":{},\"raiders\":{}}}"
+            "\"offer\":{},\"canOffer\":{},\"offersLeft\":{},\"dice\":{},\"bank\":{},\"short\":{},\"handLimit\":{},\"round\":{},\"roundLimit\":{},\"byRounds\":{},\"bought\":{},\"turnOf\":{},\"paired\":{},\"titles\":{},\"deciding\":{},\"pirate\":{},\"shipMoved\":{},\"event\":{},\"damaged\":{},\"revealed\":{},\"villages\":{},\"clothEnded\":{},\"wonders\":{},\"markers\":{},\"prizes\":{},\"heldMarkets\":{},\"markets\":{},\"fleet\":{},\"forts\":{},\"warships\":{},\"lastAttack\":{},\"city\":{},\"fishing\":{},\"rivers\":{},\"trains\":{},\"raiders\":{},\"traders\":{}}}"
         ),
         // While decisions are being made (pending.rs), the phase is named after the first one ("discard")
         g.deciding().map_or(phase_name(g.phase), |d| d.decision.name()), g.current, g.to_act(), g.turn,
@@ -425,6 +435,28 @@ pub fn view_json(g: &Game, seat: u8) -> String {
         rivers_json(g),
         trains_json(g),
         raiders_json(g),
+        traders_json(g),
+    )
+}
+
+// Traders and raiders' part of the view (null without it): the works' hexes, raider edges, each wagon
+// [corner, level, cargo or null, deliveries], coins, move points left, goods left per works
+fn traders_json(g: &Game) -> String {
+    if !g.traders() {
+        return "null".into();
+    }
+    format!(
+        "{{\"works\":{},\"barbarians\":{},\"wagons\":{},\"coins\":{},\"coinBuysLeft\":{},\"mp\":{},\"stacks\":{},\"swift\":{}}}",
+        list(g.works.iter()),
+        list((0..g.barbarian.len()).filter(|&e| g.barbarian[e])),
+        list((0..g.players).map(|p| format!(
+            "[{},{},{},{}]",
+            g.wagon_corner[p], g.wagon_level[p],
+            if g.cargo[p] == NOBODY { "null".into() } else { json::string(GOODS[g.cargo[p] as usize]) },
+            g.delivered[p],
+        ))),
+        list(&g.coins[..g.players]), 2u8.saturating_sub(g.coin_buys), g.wagon_mp,
+        list(g.goods_stacks.iter().map(|s| s.len())), g.swift,
     )
 }
 
