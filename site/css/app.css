@@ -43,6 +43,13 @@ button { font: inherit; padding: 6px 12px; border-radius: 6px; border: 1px solid
 .fleet { fill: #1d2228; stroke: #fffaf0; stroke-width: 2; }
 .road.warship { stroke-width: 9; }
 .marker.fort { font-size: 13px; }
+/* The exploration expansion: farms, shoals, the Council, ships, pirate ships */
+.t-spice { fill: #c98f4a; } .t-shoal { fill: #5aa6d6; } .t-council { fill: #d8c9a0; }
+.boat rect { stroke: #fffaf0; stroke-width: 1.5; }
+.boat text { font: 800 8px system-ui, sans-serif; fill: #fffaf0; text-anchor: middle; pointer-events: none; }
+.boat.p0 rect { fill: var(--p0); } .boat.p1 rect { fill: var(--p1); } .boat.p2 rect { fill: var(--p2); }
+.boat.p3 rect { fill: var(--p3); } .boat.p4 rect { fill: var(--p4); } .boat.p5 rect { fill: var(--p5); }
+.marker.pirate-ship { font-size: 18px; }
 /* Traders and raiders: the works and wagons */
 .t-glassworks { fill: #8fc9d9; } .t-stoneworks { fill: #c8b79a; }
 .cart rect { stroke: #fffaf0; stroke-width: 1.5; }

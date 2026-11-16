@@ -188,6 +188,8 @@ for (const [name, type] of Object.entries(BROWSERS)) {
     ['the variants box scenario Merchant trains', 3, { 'box.scenario': 3 }],
     ['the variants box scenario Raider attack', 3, { 'box.scenario': 4 }],
     ['the variants box scenario Traders and raiders', 3, { 'box.scenario': 5 }],
+    ['the exploration expansion: Land Ho!', 3, { explore: 1 }],
+    ['the exploration expansion: the full game', 3, { explore: 5 }],
     ['the city expansion', 3, { city: true }],
     ['the city expansion and the sea (New Shores)', 3, { city: true, sea: true, 'sea.scenario': 1 }],
   ]) {
@@ -224,6 +226,12 @@ for (const [name, type] of Object.entries(BROWSERS)) {
         if (settings['sea.scenario'] === 7) {
           assert.equal(await page.locator('#board [data-fleet]').count(), 1, 'the fleet');
           assert.equal(await page.locator('#board .squall').count(), 0, 'no squall');
+        }
+        if (settings.explore) {
+          assert.equal(await page.locator('#board polygon[data-terrain="council"]').count(), 1, 'the Council');
+          assert.ok(await page.locator('#board polygon[data-terrain="fog"]').count() >= 1 || (await page.evaluate(() => document.body.dataset.phase)) === 'over', 'hidden hexes');
+          assert.ok(await page.locator('#board [data-boat]').count() >= 1 || (await page.evaluate(() => document.body.dataset.phase)) === 'over', 'ships');
+          assert.equal(await page.locator('#shop [data-build="lodge"]').count(), 0, 'no Lodges');
         }
         if (settings['box.scenario'] === 5) {
           assert.equal(await page.locator('#board polygon[data-terrain="glassworks"]').count(), 1, 'the Glassworks');
