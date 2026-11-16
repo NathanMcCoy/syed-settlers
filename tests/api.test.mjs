@@ -167,7 +167,7 @@ test('trading with a bot: the bot answers by itself, an accepted offer can be de
     const g = await toMyMainTurn(id, key);
     const bot = 1 - g.view.you;
     assert.equal(g.view.canOffer, true);
-    assert.equal(g.view.offersLeft, 3);
+    assert.equal(g.view.offersLeft, null, 'no limit on offers by default');
     const offer = oneForOne(g.view.hand, 1 << bot);
     const res = await post(`/api/games/${id}/move`, { k: key, move: offer.text });
     assert.equal(res.status, 200, await res.text());

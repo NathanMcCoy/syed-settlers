@@ -4,7 +4,7 @@
 //
 // This runs once per game, so it favours being clear over being fast, but it never iterates over a
 // HashMap/HashSet: their order changes from run to run, and the same seed must give the same island.
-use crate::hex::{Cell, Graph, NONE, listed, within};
+use crate::hex::{Cell, DIRS, Graph, NONE, within};
 use crate::json;
 use crate::rng::Rng;
 use crate::settings::Settings;
@@ -72,6 +72,35 @@ pub fn number_tokens(count: usize) -> Vec<u8> {
         i += 1;
     }
     list
+}
+
+// The classic number order: laid on the hexagon in a spiral, from a corner of the outer ring
+// inwards, counterclockwise, skipping the Dunes
+pub const SPIRAL_NUMBERS: [u8; 18] = [5, 2, 6, 3, 8, 10, 9, 12, 11, 4, 8, 10, 9, 4, 5, 6, 3, 11];
+
+// Does this island get its numbers in the spiral? Only the hexagon with exactly 18 numbered hexes
+pub fn uses_spiral(s: &Settings) -> bool {
+    s.island_spiral && s.island_hexagon && main_size(s) - s.island_dunes as usize == SPIRAL_NUMBERS.len()
+}
+
+// The hexagon's cells in spiral order: the outer ring from the corner in direction `start`,
+// counterclockwise on screen (DIRS turn counterclockwise as their index grows), then the ring
+// inside it from its own corner in the same direction, then the middle
+pub fn spiral_cells(start: usize) -> Vec<Cell> {
+    let mut out = Vec::new();
+    for radius in (1..=HEXAGON_RADIUS).rev() {
+        let (dq, dr) = DIRS[start % 6];
+        let mut c = Cell::new(dq * radius, dr * radius);
+        for side in 0..6 {
+            let (sq, sr) = DIRS[(start + 2 + side) % 6];
+            for _ in 0..radius {
+                out.push(c);
+                c = Cell::new(c.q + sq, c.r + sr);
+            }
+        }
+    }
+    out.push(Cell::new(0, 0));
+    out
 }
 
 const SEA_REACH: i32 = 2; // sea is every hex within this many steps of land
@@ -165,7 +194,7 @@ fn attempt_island(s: &Settings, rng: &mut Rng) -> Option<Island> {
         return None;
     }
     let counts = if s.island_hexagon { Some(s.tile_counts()) } else { None };
-    let land = dress_main(rng, &main, s.island_dunes as usize, counts)?;
+    let land = if uses_spiral(s) { dress_spiral(rng, &main, s) } else { dress_main(rng, &main, s.island_dunes as usize, counts)? };
     let main_average = land.iter().map(|h| pips(h.number)).sum::<u32>() as f64
         / land.iter().filter(|h| h.number != 0).count() as f64;
 
@@ -317,6 +346,24 @@ fn dress_main(rng: &mut Rng, main: &[Cell], dunes: usize, counts: Option<[u8; 5]
     None
 }
 
+// The classic way: tiles shuffled, then the numbers laid in SPIRAL_NUMBERS' order from a random
+// corner, skipping the Dunes. Nothing is redrawn: the order itself spreads the numbers out.
+fn dress_spiral(rng: &mut Rng, main: &[Cell], s: &Settings) -> Vec<Hex> {
+    let mut terrains: Vec<Terrain> = PRODUCING.iter().zip(s.tile_counts()).flat_map(|(&t, n)| std::iter::repeat_n(t, n as usize)).collect();
+    terrains.extend(std::iter::repeat_n(Dunes, s.island_dunes as usize));
+    rng.shuffle(&mut terrains);
+    let mut hexes: Vec<Hex> = main.iter().zip(&terrains).map(|(&cell, &terrain)| Hex { cell, terrain, number: 0 }).collect();
+    let index: HashMap<Cell, usize> = main.iter().enumerate().map(|(i, &c)| (c, i)).collect();
+    let mut numbers = SPIRAL_NUMBERS.iter();
+    for c in spiral_cells(rng.below(6)) {
+        let h = &mut hexes[index[&c]];
+        if h.terrain != Dunes {
+            h.number = *numbers.next().unwrap();
+        }
+    }
+    hexes
+}
+
 // No equal numbers next to each other, and no 6 or 8 next to another 6 or 8
 fn numbers_apart(hexes: &[Hex], index: &HashMap<Cell, usize>) -> bool {
     hexes.iter().all(|h| {
@@ -348,8 +395,14 @@ fn fair_resources(hexes: &[Hex]) -> bool {
     totals.iter().all(|&t| (FAIR_LOW * mean..=FAIR_HIGH * mean).contains(&(t as f64)))
 }
 
-// Markets on the island's coastal edges (land on one side, sea on the other), with no two sharing
-// or neighbouring a corner, so each market's corners can all be built on
+// Markets on the island's coastal edges (land on one side, sea on the other), with no two sharing a
+// corner. Neighbouring corners are allowed (that's how 9 fit on the hexagon's coast); the spacing
+// rule then lets one building use only one of the two.
+//
+// Like harbours printed on a sea frame, they're spread evenly around the coast: the coastal edges
+// in order around the island, one market every (edges / markets) of them from a random start, kinds
+// shuffled. If that ever puts two on a shared corner (only possible on a random-shaped coast), the
+// markets go on random coastal edges instead.
 fn place_markets(rng: &mut Rng, hexes: &[Hex], g: &Graph, any: u8, each: u8) -> Option<Vec<Market>> {
     let mut kinds: Vec<u8> = std::iter::repeat_n(ANY, any as usize)
         .chain((0..5u8).flat_map(|r| std::iter::repeat_n(r, each as usize)))
@@ -367,6 +420,12 @@ fn place_markets(rng: &mut Rng, hexes: &[Hex], g: &Graph, any: u8, each: u8) -> 
             }
         }
     }
+    if kinds.is_empty() {
+        return Some(Vec::new());
+    }
+    if let Some(markets) = spread_markets(rng, hexes, g, &coast, &kinds) {
+        return Some(markets);
+    }
     let mut blocked = vec![false; g.corners()];
     for _ in 0..50 {
         rng.shuffle(&mut coast);
@@ -383,9 +442,6 @@ fn place_markets(rng: &mut Rng, hexes: &[Hex], g: &Graph, any: u8, each: u8) -> 
             chosen.push((hex, side));
             for &c in &ends {
                 blocked[c as usize] = true;
-                for n in listed(&g.corner_corners[c as usize]) {
-                    blocked[n] = true;
-                }
             }
         }
         if chosen.len() == kinds.len() {
@@ -397,9 +453,43 @@ fn place_markets(rng: &mut Rng, hexes: &[Hex], g: &Graph, any: u8, each: u8) -> 
     None
 }
 
+// Markets evenly spaced around the coast (see place_markets), or None if two would share a corner
+fn spread_markets(rng: &mut Rng, hexes: &[Hex], g: &Graph, coast: &[(u16, u8, u16)], kinds: &[u8]) -> Option<Vec<Market>> {
+    // A point on the plane for a hex (the lattice's x is stretched: see hex.rs)
+    let point = |c: Cell| {
+        let (x, y) = c.center();
+        (x as f64 * 3f64.sqrt() / 2.0, y as f64 / 2.0)
+    };
+    let land: Vec<(f64, f64)> = hexes.iter().filter(|h| h.terrain != Sea).map(|h| point(h.cell)).collect();
+    let mid = (land.iter().map(|p| p.0).sum::<f64>() / land.len() as f64, land.iter().map(|p| p.1).sum::<f64>() / land.len() as f64);
+    // Each coastal edge's angle around the island's middle (its midpoint: halfway to the sea hex)
+    let mut around: Vec<(f64, (u16, u8, u16))> = coast.iter().map(|&(h, side, e)| {
+        let (a, b) = (point(hexes[h as usize].cell), point(hexes[g.hex_neighbors[h as usize][side as usize] as usize].cell));
+        (((a.1 + b.1) / 2.0 - mid.1).atan2((a.0 + b.0) / 2.0 - mid.0), (h, side, e))
+    }).collect();
+    around.sort_by(|x, y| x.0.total_cmp(&y.0));
+    let n = around.len() as f64;
+    let step = n / kinds.len() as f64;
+    let start = rng.next_f64() * n;
+    let mut used = vec![false; g.corners()];
+    let mut markets = Vec::with_capacity(kinds.len());
+    for (i, &kind) in kinds.iter().enumerate() {
+        let (_, (hex, side, edge)) = around[((start + i as f64 * step) as usize) % around.len()];
+        for &c in &g.edge_corners[edge as usize] {
+            if std::mem::replace(&mut used[c as usize], true) {
+                return None;
+            }
+        }
+        markets.push(Market { hex, side, kind });
+    }
+    markets.sort_by_key(|m| (m.hex, m.side));
+    Some(markets)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::hex::listed;
 
     fn settings(text: &str) -> Settings {
         Settings::parse(text).unwrap()
@@ -458,6 +548,15 @@ mod tests {
             assert!(h.number != 7 && h.number <= 12 && (h.number == 0 || h.number >= 2), "{why}");
         }
 
+        // Spiral islands: the numbers follow the spiral from one of the 6 corners (checked here), and
+        // aren't redrawn for fairness, so the shuffle's checks below don't apply
+        if uses_spiral(s) {
+            let follows = (0..6).any(|start| {
+                let laid: Vec<u8> = spiral_cells(start).iter().map(|c| hexes[at[c]].number).filter(|&n| n != 0).collect();
+                laid == SPIRAL_NUMBERS
+            });
+            assert!(follows, "numbers in spiral order: {why}");
+        } else {
         // Neighbours: no equal numbers, no 6/8 pairs
         for h in hexes.iter().filter(|h| h.number != 0) {
             for n in h.cell.neighbors() {
@@ -476,6 +575,7 @@ mod tests {
         for t in totals {
             assert!(t as f64 >= FAIR_LOW * mean && t as f64 <= FAIR_HIGH * mean, "resources {totals:?}: {why}");
         }
+        }
 
         // Sea everywhere within 2 of land
         for h in hexes.iter().filter(|h| h.terrain != Sea) {
@@ -484,7 +584,7 @@ mod tests {
             }
         }
 
-        // Markets: how many of each, on the coast, corners apart
+        // Markets: how many of each, on the coast, no corner shared
         assert_eq!(island.markets.len(), s.markets_any as usize + 5 * s.markets_each as usize, "{why}");
         assert_eq!(island.markets.iter().filter(|m| m.kind == ANY).count(), s.markets_any as usize, "{why}");
         let mut used: Vec<usize> = Vec::new();
@@ -496,7 +596,7 @@ mod tests {
             let ends = g.edge_corners[g.hex_edges[m.hex as usize][m.side as usize] as usize];
             for &c in &ends {
                 for &u in &used {
-                    assert!(u != c as usize && !listed(&g.corner_corners[u]).any(|n| n == c as usize), "markets too close: {why}");
+                    assert!(u != c as usize, "markets share a corner: {why}");
                 }
             }
             used.extend(ends.iter().map(|&c| c as usize));
@@ -544,12 +644,77 @@ mod tests {
 
     #[test]
     fn market_settings_work() {
-        // The hexagon's coast has room for 7 spaced markets; more need a random shape
-        for (shape, any, each) in [("true", 0, 0), ("true", 0, 1), ("true", 2, 1), ("false", 4, 1), ("false", 2, 2)] {
+        // The hexagon's coast (30 edges) has room for 15 markets that share no corner
+        for (shape, any, each) in [("true", 0, 0), ("true", 0, 1), ("true", 4, 1), ("true", 5, 2), ("false", 6, 1), ("false", 4, 2)] {
             let s = settings(&format!("island.hexagon={shape};markets.any={any};markets.each={each}"));
             for k in 0..50 {
                 check(&generate(&s, &format!("m{k}")).unwrap(), &s);
             }
+        }
+    }
+
+    #[test]
+    fn the_spiral_visits_every_hexagon_cell_once_each_step_to_a_neighbour() {
+        for start in 0..6 {
+            let cells = spiral_cells(start);
+            let mut sorted = cells.clone();
+            sorted.sort();
+            let mut want = within(Cell::new(0, 0), HEXAGON_RADIUS);
+            want.sort();
+            assert_eq!(sorted, want);
+            assert!(cells.windows(2).all(|w| w[0].distance(w[1]) == 1), "start {start}: {cells:?}");
+            // Counterclockwise on screen (y grows downwards): the turn from the first cell to the
+            // second, seen from the middle, has a negative cross product
+            let (a, b) = (cells[0].center(), cells[1].center());
+            assert!((a.0 * b.1 - a.1 * b.0) < 0, "start {start}");
+        }
+    }
+
+    #[test]
+    fn spiral_islands_and_how_often_red_numbers_touch() {
+        // The classic order isn't redrawn: report how often 6 and 8 end up side by side (shown with
+        // cargo test -- --nocapture), and check the shuffled setting still never allows it
+        let s = Settings::default();
+        assert!(uses_spiral(&s));
+        let mut touching = 0;
+        for k in 0..2000 {
+            let island = generate(&s, &format!("spiral{k}")).unwrap();
+            let at: HashMap<Cell, usize> = island.hexes.iter().enumerate().map(|(i, h)| (h.cell, i)).collect();
+            let red = island.hexes.iter().any(|h| strong(h.number) && h.cell.neighbors().iter().any(|n| at.get(n).is_some_and(|&j| strong(island.hexes[j].number))));
+            touching += red as u32;
+        }
+        println!("spiral: 6/8 side by side on {touching} of 2000 islands");
+        let off = Settings::parse("island.spiral=false").unwrap();
+        assert!(!uses_spiral(&off));
+        for k in 0..200 {
+            check(&generate(&off, &format!("shuffled{k}")).unwrap(), &off);
+        }
+    }
+
+    #[test]
+    fn markets_are_spread_evenly_round_the_hexagon() {
+        let s = Settings::default();
+        for k in 0..300 {
+            let island = generate(&s, &format!("spread{k}")).unwrap();
+            let g = island.graph();
+            // The coast's edges in order: walk corner to corner along coastal edges
+            let coastal: Vec<usize> = (0..g.edges()).filter(|&e| {
+                let hs: Vec<usize> = listed(&g.edge_hexes[e]).collect();
+                hs.len() == 2 && (island.hexes[hs[0]].terrain == Sea) != (island.hexes[hs[1]].terrain == Sea)
+            }).collect();
+            assert_eq!(coastal.len(), 30);
+            let mut order = vec![coastal[0]];
+            let mut at = g.edge_corners[coastal[0]][1] as usize;
+            while order.len() < coastal.len() {
+                let next = *coastal.iter().find(|&&e| !order.contains(&e) && g.edge_corners[e].contains(&(at as u16))).unwrap();
+                at = g.edge_corners[next].iter().map(|&c| c as usize).find(|&c| c != at).unwrap();
+                order.push(next);
+            }
+            let market_edges: Vec<usize> = island.markets.iter().map(|m| g.hex_edges[m.hex as usize][m.side as usize] as usize).collect();
+            let mut places: Vec<usize> = market_edges.iter().map(|e| order.iter().position(|x| x == e).unwrap()).collect();
+            places.sort();
+            let gaps: Vec<usize> = (0..9).map(|i| (places[(i + 1) % 9] + 30 - places[i]) % 30).collect();
+            assert!(gaps.iter().all(|&d| d == 3 || d == 4), "seed spread{k}: gaps {gaps:?}");
         }
     }
 
@@ -577,7 +742,7 @@ mod tests {
         let j = island.to_json();
         assert!(j.starts_with("{\"version\":2,\"seed\":\"betta\",\"hexes\":[{\"q\":"));
         assert_eq!(j.matches("\"terrain\"").count(), island.hexes.len());
-        assert_eq!(j.matches("\"kind\"").count(), 7);
+        assert_eq!(j.matches("\"kind\"").count(), 9);
         assert!(j.contains("\"terrain\":\"paddy\""));
     }
 }

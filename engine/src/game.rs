@@ -39,9 +39,9 @@ pub enum Project {
     Lighthouse,
     RoadCrew,
     Harvest,
-    Bargain,
+    MarketDay,
 }
-pub const PROJECTS: [Project; 5] = [Project::Pilot, Project::Lighthouse, Project::RoadCrew, Project::Harvest, Project::Bargain];
+pub const PROJECTS: [Project; 5] = [Project::Pilot, Project::Lighthouse, Project::RoadCrew, Project::Harvest, Project::MarketDay];
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum Action {
@@ -55,7 +55,7 @@ pub enum Action {
     Trade(u8, u8),   // give the bank/market this resource (at your best rate) for one of that
     Buy(u8),         // a project: face up, the row's slot; hidden, always 0
     Play(Project),
-    Take(u8),        // choose a resource (Good Harvest, Good Bargain)
+    Take(u8),        // choose a resource (Good Harvest, Market Day)
     EndTurn,
     // Trading between players (RULES.md "Trading"): the player whose turn it is offers cards for
     // cards to some of the others (`to`: one bit per seat); each answers; the offerer completes the
@@ -82,7 +82,7 @@ pub enum Phase {
     Main,
     FreeBuild { left: u8 },     // Road Crew
     Harvest { left: u8 },       // Good Harvest
-    Bargain,                    // Good Bargain: choose the resource
+    MarketDay,                  // Market Day: choose the resource everyone hands over
     Over,
 }
 
@@ -161,19 +161,19 @@ pub struct Game {
     pub deck: Vec<u8>,                // the rest of the deck, top last
     pub row: Vec<u8>,                 // face-up projects (empty when face up is off)
     pub longest: u8,                  // who holds Longest Path, or NOBODY
-    pub most_markets: u8,             // who holds Most Markets, or NOBODY
+    pub most_pilots: u8,              // who holds Most Pilots, or NOBODY
     pub line: [u8; MAX_PLAYERS],      // each player's longest line of Paths
-    pub markets: [u8; MAX_PLAYERS],   // how many different markets each player touches
+    pub pilots: [u8; MAX_PLAYERS],    // Pilots each player has played (everyone sees them)
     pub squall: u16,
     pub discards: [u8; MAX_PLAYERS],  // cards each player still has to lose
-    pub bargain: u8,                  // Good Bargain's resource this turn, or NOBODY
+    pub last_take: [u8; MAX_PLAYERS], // what each player handed over on the last Market Day
     pub last_roll: u8,
     pub winner: u8,
     pub last_dice: [u8; 2],           // the last roll's two dice (0, 0 before the first)
     pub short: u8,                    // resources the bank couldn't pay on the last roll (a bit each)
     pub by_rounds: bool,              // the game ended at the round limit (the winner may be NOBODY: a draw)
     pub offer: Option<Offer>,         // the current player's open offer to other players
-    pub offers_made: u8,              // this turn
+    pub offers_made: u8,              // this turn (counts up to 255; only a limit compares with it)
     pub rng: Rng,
 }
 
@@ -220,7 +220,7 @@ impl Game {
         let board = Arc::new(Board::new(island, settings));
         let mut rng = Rng::new(seed);
         let s = settings;
-        let counts = [s.deck_pilot, s.deck_lighthouse, s.deck_road_crew, s.deck_harvest, s.deck_bargain];
+        let counts = [s.deck_pilot, s.deck_lighthouse, s.deck_road_crew, s.deck_harvest, s.deck_market_day];
         let mut deck: Vec<u8> = (0..5u8).flat_map(|k| std::iter::repeat_n(k, counts[k as usize] as usize)).collect();
         rng.shuffle(&mut deck);
         let mut row = Vec::new();
@@ -251,12 +251,12 @@ impl Game {
             deck,
             row,
             longest: NOBODY,
-            most_markets: NOBODY,
+            most_pilots: NOBODY,
             line: [0; MAX_PLAYERS],
-            markets: [0; MAX_PLAYERS],
+            pilots: [0; MAX_PLAYERS],
             squall: island.squall,
             discards: [0; MAX_PLAYERS],
-            bargain: NOBODY,
+            last_take: [0; MAX_PLAYERS],
             last_roll: 0,
             winner: NOBODY,
             last_dice: [0, 0],
@@ -305,8 +305,8 @@ impl Game {
         if self.longest as usize == p {
             r += s.longest_renown as u32;
         }
-        if self.most_markets as usize == p {
-            r += s.most_markets_renown as u32;
+        if self.most_pilots as usize == p {
+            r += s.most_pilots_renown as u32;
         }
         r
     }
@@ -326,22 +326,18 @@ impl Game {
         listed(&self.board.graph.corner_edges[c]).any(|e| self.edge_owner[e] == p)
     }
 
-    // An edge p could extend to: free, and one of its ends is p's building or touches p's Path.
-    // Paths may continue through a corner holding another player's building.
+    // An edge p could extend to: free, and one of its ends is p's building, or is free of others'
+    // buildings and touches p's Path (a Path can't continue past another player's building)
     fn edge_connected(&self, p: u8, e: usize) -> bool {
         self.edge_owner[e] == NOBODY
             && self.board.graph.edge_corners[e].iter().any(|&c| {
                 let c = c as usize;
-                self.corner_owner[c] == p || self.touches_own_edge(p, c)
+                self.corner_owner[c] == p || (self.corner_owner[c] == NOBODY && self.touches_own_edge(p, c))
             })
     }
 
     // The bank's rate for giving this resource: 4, 3 with a general market, 2 with its own market
-    // or Good Bargain on it
     pub fn rate(&self, p: u8, r: usize) -> u8 {
-        if self.bargain as usize == r && self.current == p {
-            return 2;
-        }
         let mut best = 4;
         for c in 0..self.corner_owner.len() {
             if self.corner_owner[c] != p {
@@ -400,7 +396,9 @@ impl Game {
                 }
             }
             Phase::MoveSquall { anywhere } => {
+                // squall.range 0 (the default): any land hex after a 7 too
                 let range = self.settings().squall_range as i32;
+                let anywhere = anywhere || range == 0;
                 for &h in &self.board.land_hexes {
                     if h != self.squall && (anywhere || self.board.hex_distance(h, self.squall) <= range) {
                         out.push(Action::Squall(h));
@@ -477,7 +475,7 @@ impl Game {
                     }
                 }
             }
-            Phase::Bargain => {
+            Phase::MarketDay => {
                 for r in 0..5 {
                     out.push(Action::Take(r));
                 }
@@ -519,7 +517,10 @@ impl Game {
         if self.phase != Phase::Main {
             return Err("offers are made after rolling".into());
         }
-        if self.offers_made >= self.settings().trade_offers {
+        if !self.settings().trade_players {
+            return Err("trading between players is off in this game".into());
+        }
+        if !self.offers_left() {
             return Err(format!("{} offers a turn at most", self.settings().trade_offers));
         }
         trade_shape_ok(give, get)?;
@@ -531,6 +532,12 @@ impl Game {
             return Err("offer to one or more of the other players".into());
         }
         Ok(())
+    }
+
+    // May the current player make another offer this turn? (trade.offers 0: no limit)
+    pub fn offers_left(&self) -> bool {
+        let s = self.settings();
+        s.trade_players && (s.trade_offers == 0 || self.offers_made < s.trade_offers)
     }
 
     // Can the open offer still be completed with seat s (both still hold the cards)?
@@ -575,7 +582,7 @@ impl Game {
     }
 
     fn legal_plays(&self, p: usize, out: &mut Vec<Action>) {
-        for k in [Project::Pilot, Project::RoadCrew, Project::Harvest, Project::Bargain] {
+        for k in [Project::Pilot, Project::RoadCrew, Project::Harvest, Project::MarketDay] {
             if self.playable(p, k) {
                 out.push(Action::Play(k));
             }
@@ -680,10 +687,14 @@ impl Game {
                 self.project_used = true;
                 self.back = self.phase;
                 self.phase = match k {
-                    Project::Pilot => Phase::MoveSquall { anywhere: true },
+                    Project::Pilot => {
+                        self.pilots[pu] += 1;
+                        self.most_pilots = title(self.most_pilots, &self.pilots[..self.players], self.settings().most_pilots_min);
+                        Phase::MoveSquall { anywhere: true }
+                    }
                     Project::RoadCrew => Phase::FreeBuild { left: 2 },
                     Project::Harvest => Phase::Harvest { left: 2 },
-                    Project::Bargain => Phase::Bargain,
+                    Project::MarketDay => Phase::MarketDay,
                     Project::Lighthouse => unreachable!("Lighthouses aren't played"),
                 };
                 self.finish_free_build();
@@ -696,13 +707,20 @@ impl Game {
                     self.finish_harvest();
                 }
                 _ => {
-                    self.bargain = r;
+                    // Market Day: every other player hands over all of this resource
+                    let r = r as usize;
+                    for o in 0..self.players {
+                        let n = if o == pu { 0 } else { self.hands[o][r] };
+                        self.last_take[o] = n;
+                        self.hands[o][r] -= n;
+                        self.hands[pu][r] += n;
+                    }
                     self.phase = self.back;
                 }
             },
             Action::Offer { give, get, to, open } => {
                 self.offer = Some(Offer { give, get, to, open, answers: [0; MAX_PLAYERS], counters: [None; MAX_PLAYERS] });
-                self.offers_made += 1;
+                self.offers_made = self.offers_made.saturating_add(1);
             }
             Action::Answer(s, yes) => {
                 let o = self.offer.as_mut().expect("an offer");
@@ -734,7 +752,6 @@ impl Game {
                 self.turn += 1;
                 self.bought = [0; 5];
                 self.project_used = false;
-                self.bargain = NOBODY;
                 self.phase = Phase::PreRoll;
                 let limit = self.settings().round_limit as u32;
                 if limit > 0 && self.turn > limit * self.players as u32 {
@@ -789,7 +806,7 @@ impl Game {
             }
             self.phase = Phase::SetupPath { hut: c as u16 };
         }
-        // A new building may touch a market
+        // A new building can break other players' lines
         self.update_titles();
     }
 
@@ -858,7 +875,8 @@ impl Game {
 
     // Every hex with this number (except under the squall) pays 1 per Hut and 2 per Lodge around it
     // With a limited bank, a resource the bank can't pay in full to everyone owed it goes to nobody
-    // (that roll); `short` records which ones, for the page
+    // (that roll), unless only one player is owed it: they get what's left. `short` records the
+    // resources not paid in full, for the page.
     fn produce(&mut self, total: u8) {
         let g = &self.board.graph;
         let mut owed = [[0u8; 5]; MAX_PLAYERS];
@@ -877,8 +895,13 @@ impl Game {
         self.short = 0;
         for r in 0..5 {
             let wanted: u32 = owed.iter().map(|o| o[r] as u32).sum();
-            if wanted > self.bank(r) {
+            let left = self.bank(r);
+            if wanted > left {
                 self.short |= 1 << r;
+                let mut owed_to = (0..self.players).filter(|&p| owed[p][r] > 0);
+                if let (Some(only), None) = (owed_to.next(), owed_to.next()) {
+                    self.hands[only][r] += left as u8;
+                }
                 continue;
             }
             for p in 0..self.players {
@@ -925,17 +948,18 @@ impl Game {
 
     // ---- Titles ----
 
+    // Longest Path, after a Path or a building is placed (Most Pilots changes only when a Pilot is
+    // played)
     fn update_titles(&mut self) {
-        let (line_min, markets_min) = (self.settings().longest_min, self.settings().most_markets_min);
+        let line_min = self.settings().longest_min;
         for p in 0..self.players {
             self.line[p] = self.longest_line(p as u8);
-            self.markets[p] = self.markets_touched(p as u8);
         }
         self.longest = title(self.longest, &self.line[..self.players], line_min);
-        self.most_markets = title(self.most_markets, &self.markets[..self.players], markets_min);
     }
 
-    // The longest unbroken line of p's Paths: no edge twice. Other players' buildings don't break it.
+    // The longest unbroken line of p's Paths: no edge twice, and it can't pass through a corner
+    // holding another player's building (it may end there)
     pub fn longest_line(&self, p: u8) -> u8 {
         let g = &self.board.graph;
         let mut used: Vec<u16> = Vec::with_capacity(32);
@@ -953,6 +977,10 @@ impl Game {
     }
 
     fn extend_line(&self, p: u8, c: usize, used: &mut Vec<u16>, len: u8) -> u8 {
+        let owner = self.corner_owner[c];
+        if len > 0 && owner != NOBODY && owner != p {
+            return len;
+        }
         let g = &self.board.graph;
         let mut best = len;
         for e in listed(&g.corner_edges[c]) {
@@ -968,16 +996,6 @@ impl Game {
         best
     }
 
-    fn markets_touched(&self, p: u8) -> u8 {
-        let mut seen = 0u64;
-        for c in 0..self.corner_owner.len() {
-            let m = self.board.corner_market[c];
-            if self.corner_owner[c] == p && m != NOBODY {
-                seen |= 1 << m;
-            }
-        }
-        seen.count_ones() as u8
-    }
 }
 
 // Who holds a title now: the holder keeps it while nobody has strictly more; otherwise the one player

@@ -23,8 +23,9 @@ const BROWSERS = { chromium, webkit };
 // Huts and Lodges for more cards. A simple strategy that gets there in ~5 of 6 games within 6 s, so
 // start a fresh game when one doesn't (8 tries: all failing is about 1 in 1.5 million).
 // Settings: win at 20 Renown (the most allowed) and a big deck without Lighthouses (never played).
-async function gameWithPlayableProject() {
-  const settings = { win: 20, 'projects.deck.pilot': 30, 'projects.deck.lighthouse': 0, 'projects.deck.roadCrew': 10, 'projects.deck.harvest': 10, 'projects.deck.bargain': 10 };
+// `deck`: other deck settings (e.g. only Market Days)
+async function gameWithPlayableProject(deck = {}) {
+  const settings = { win: 20, 'projects.deck.pilot': 30, 'projects.deck.lighthouse': 0, 'projects.deck.roadCrew': 10, 'projects.deck.harvest': 10, 'projects.deck.marketDay': 10, ...deck };
   const PROJECT = [1, 2, 4];
   const tries = [];
   for (let attempt = 0; attempt < 8; attempt++) {
@@ -218,7 +219,7 @@ for (const [name, type] of Object.entries(BROWSERS)) {
       await page.waitForSelector('#shop .project-item');
       const names = await page.locator('#shop .project-item strong').allTextContents();
       assert.equal(names.length, 3, 'the face-up row has 3 cards');
-      for (const n of names) assert.ok(['Pilot', 'Lighthouse', 'Road Crew', 'Good Harvest', 'Good Bargain'].includes(n), n);
+      for (const n of names) assert.ok(['Pilot', 'Lighthouse', 'Road Crew', 'Good Harvest', 'Market Day'].includes(n), n);
       assert.deepEqual(await page.locator('#shop [data-buy]').evaluateAll(bs => bs.map(b => b.dataset.buy)), ['buy 0', 'buy 1', 'buy 2']);
       assert.ok(await page.locator('#shop [data-buy]').first().isDisabled(), 'not buyable during setup');
     } finally {
@@ -367,6 +368,24 @@ for (const [name, type] of Object.entries(BROWSERS)) {
       await use.first().click();
       await page.waitForFunction(b => document.querySelector('#log').textContent !== b, before);
       assert.match(await page.textContent('#log'), /You played/);
+      assert.deepEqual(errors, []);
+    } finally {
+      await browser.close();
+    }
+  });
+
+  test(`${name}: Market Day takes everyone's cards of one resource and says so in the log`, async () => {
+    const only = { 'projects.deck.pilot': 0, 'projects.deck.roadCrew': 0, 'projects.deck.harvest': 0, 'projects.deck.marketDay': 10 };
+    const { id, key } = await gameWithPlayableProject(only);
+    const { browser, page, errors } = await open(type);
+    try {
+      await page.goto(`${fastBase}/?g=${id}#k=${key}`);
+      await page.locator('#my-projects-list .use[data-move="play marketDay"]').click();
+      const take = page.locator('#choices button', { hasText: "Take everyone's Grain" });
+      await take.waitFor();
+      assert.equal(await page.locator('#choices button').count(), 5, 'one button per resource');
+      await take.click();
+      await page.waitForFunction(() => /called a Market Day and took \d+ Grain from the others/.test(document.querySelector('#log').textContent));
       assert.deepEqual(errors, []);
     } finally {
       await browser.close();

@@ -99,14 +99,17 @@ export function makeGames(engine, { botDelay = 700, now = () => Date.now() } = {
     const seat = seatOf(game, key);
     if (seat === null) throw Object.assign(new Error('that link has no seat in this game'), { status: 403 });
     if (typeof move !== 'string' || move.length > 40) throw new Error('a move is short text');
+    const before = engine.view(game.engineId, null).phase;
     engine.act(game.engineId, seat, move);
-    record(game, seat, move);
+    record(game, seat, move, before);
     changed(game);
   }
 
-  function record(game, seat, move) {
+  // `before`: the phase the move was made in (a Market Day pick also logs how many cards it took)
+  function record(game, seat, move, before) {
     const v = engine.view(game.engineId, null);
-    game.log.push({ seat, move, roll: move === 'roll' ? v.lastRoll : undefined });
+    const got = before === 'marketDay' ? v.lastTake.reduce((a, b) => a + b, 0) : undefined;
+    game.log.push({ seat, move, roll: move === 'roll' ? v.lastRoll : undefined, got });
     if (game.log.length > LIMITS.log) game.log.shift();
     game.touched = now();
   }
@@ -132,8 +135,8 @@ export function makeGames(engine, { botDelay = 700, now = () => Date.now() } = {
         const move = engine.botAnswer(game.engineId, answering);
         if (move) record(game, answering, move);
       } else {
-        const seat = engine.view(game.engineId, null).toAct;
-        record(game, seat, engine.bot(game.engineId));
+        const { toAct: seat, phase } = engine.view(game.engineId, null);
+        record(game, seat, engine.bot(game.engineId), phase);
       }
       changed(game);
     }, botDelay);

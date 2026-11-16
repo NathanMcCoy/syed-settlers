@@ -87,9 +87,9 @@ fn check(g: &Game) {
         let v = g.line[g.longest as usize];
         assert!(v >= s.longest_min && g.line[..g.players].iter().all(|&x| x <= v));
     }
-    if g.most_markets != NOBODY {
-        let v = g.markets[g.most_markets as usize];
-        assert!(v >= s.most_markets_min && g.markets[..g.players].iter().all(|&x| x <= v));
+    if g.most_pilots != NOBODY {
+        let v = g.pilots[g.most_pilots as usize];
+        assert!(v >= s.most_pilots_min && g.pilots[..g.players].iter().all(|&x| x <= v));
     }
     if g.over() && !g.by_rounds {
         assert!(g.renown(g.winner as usize) >= s.win as u32);
@@ -99,7 +99,7 @@ fn check(g: &Game) {
     if let Some(o) = &g.offer {
         assert!(g.turn > 0 && !g.over());
         assert_eq!(o.to & (1 << g.current), 0);
-        assert!(g.offers_made >= 1 && g.offers_made <= s.trade_offers);
+        assert!(g.offers_made >= 1 && (s.trade_offers == 0 || g.offers_made <= s.trade_offers));
     }
 }
 
@@ -304,10 +304,10 @@ fn a_seven_halves_big_hands_then_moves_the_squall_then_steals() {
     assert_eq!(g.hands[2].iter().sum::<u8>(), 4);
     assert_eq!(g.phase, Phase::MoveSquall { anywhere: false });
 
-    // The squall moves 1 to 4 steps, onto land
-    let range = g.settings().squall_range as i32;
+    // The squall moves to any other land hex
+    assert_eq!(g.settings().squall_range, 0);
     let moves: Vec<u16> = legal(&g).iter().map(|a| match a { Action::Squall(h) => *h, _ => panic!() }).collect();
-    let want: Vec<u16> = g.board.land_hexes.iter().copied().filter(|&h| h != g.squall && g.board.hex_distance(h, g.squall) <= range).collect();
+    let want: Vec<u16> = g.board.land_hexes.iter().copied().filter(|&h| h != g.squall).collect();
     assert_eq!(moves, want);
 
     // Onto a hex with another player's building: one card moves to the roller
@@ -327,6 +327,20 @@ fn a_seven_halves_big_hands_then_moves_the_squall_then_steals() {
         assert_eq!(g.cards(0), mine + 1);
         assert_eq!(g.phase, Phase::Main);
     }
+}
+
+#[test]
+fn a_squall_range_limits_its_steps_after_a_seven_but_not_for_a_pilot() {
+    let mut g = after_setup_with(2, "squall.range=1");
+    g.hands = [[0; 5]; 4];
+    g.phase = Phase::PreRoll;
+    g.rolled(7);
+    let moves = |g: &Game| -> Vec<u16> { legal(g).iter().filter_map(|a| match a { Action::Squall(h) => Some(*h), _ => None }).collect() };
+    let near: Vec<u16> = g.board.land_hexes.iter().copied().filter(|&h| h != g.squall && g.board.hex_distance(h, g.squall) <= 1).collect();
+    assert_eq!(moves(&g), near);
+    assert!(near.len() < g.board.land_hexes.len() - 1, "the limit leaves some hexes out");
+    g.phase = Phase::MoveSquall { anywhere: true };
+    assert_eq!(moves(&g).len(), g.board.land_hexes.len() - 1, "a Pilot goes anywhere");
 }
 
 #[test]
@@ -352,7 +366,7 @@ fn nobody_to_steal_from_returns_to_the_turn() {
 }
 
 #[test]
-fn trading_rates_bank_markets_and_good_bargain() {
+fn trading_rates_bank_and_markets() {
     let mut g = after_setup(2);
     // Clear the board's buildings so markets are controlled by the test
     g.corner_owner.fill(NOBODY);
@@ -373,8 +387,6 @@ fn trading_rates_bank_markets_and_good_bargain() {
     g.corner_kind[stone] = HUT;
     assert_eq!((g.rate(0, 1), g.rate(0, 2)), (2, 3));
     g.current = 0;
-    g.bargain = 4;
-    assert_eq!(g.rate(0, 4), 2);
 
     g.phase = Phase::Main;
     g.hands[0] = [0, 2, 0, 0, 0];
@@ -384,7 +396,7 @@ fn trading_rates_bank_markets_and_good_bargain() {
 }
 
 #[test]
-fn paths_join_your_network_even_through_another_players_building() {
+fn paths_join_your_network_but_not_through_another_players_building() {
     let mut g = after_setup(2);
     g.phase = Phase::Main;
     g.current = 0;
@@ -399,27 +411,23 @@ fn paths_join_your_network_even_through_another_players_building() {
     for e in edges(&g) {
         let ok = gr.edge_corners[e].iter().any(|&c| {
             let c = c as usize;
-            g.corner_owner[c] == 0 || listed(&gr.corner_edges[c]).any(|x| g.edge_owner[x] == 0)
+            g.corner_owner[c] == 0 || (g.corner_owner[c] == NOBODY && listed(&gr.corner_edges[c]).any(|x| g.edge_owner[x] == 0))
         });
         assert!(ok, "every offered edge joins player 1's network");
     }
-    // Put player 2's Hut at the far end of one of player 1's edges: player 1 can still build past it
+    // Put player 2's Hut at the far end of one of player 1's edges: edges beyond it are cut off
     let mine = (0..gr.edges()).find(|&e| g.edge_owner[e] == 0 && gr.edge_corners[e].iter().any(|&c| g.corner_owner[c as usize] == NOBODY)).unwrap();
     let end = gr.edge_corners[mine].iter().map(|&c| c as usize).find(|&c| g.corner_owner[c] == NOBODY).unwrap();
-    let before = edges(&g);
     g.corner_owner[end] = 1;
     g.corner_kind[end] = HUT;
-    let after = edges(&g);
-    assert_eq!(before, after, "another player's Hut takes away no Path spots");
-    let mut past = 0;
     for e in listed(&gr.corner_edges[end]) {
-        if e == mine || g.edge_owner[e] != NOBODY || !board.edge_land[e] {
+        if e == mine || g.edge_owner[e] != NOBODY {
             continue;
         }
-        assert!(after.contains(&e), "edge {e} past another player's Hut is offered");
-        past += 1;
+        let other = gr.edge_corners[e].iter().map(|&c| c as usize).find(|&c| c != end).unwrap();
+        let reachable_otherwise = g.corner_owner[other] == 0 || listed(&gr.corner_edges[other]).any(|x| g.edge_owner[x] == 0);
+        assert_eq!(edges(&g).contains(&e), reachable_otherwise, "edge {e} past another player's Hut");
     }
-    assert!(past > 0, "the test looked at at least one edge past the Hut");
 }
 
 // A chain of `len` edges walking away from a corner, over land edges
@@ -441,7 +449,7 @@ fn chain(g: &Game, start: usize, len: usize) -> Vec<usize> {
 }
 
 #[test]
-fn longest_path_takes_the_longest_line_and_other_buildings_dont_break_it() {
+fn longest_path_takes_the_longest_line_and_other_buildings_break_it() {
     let mut g = game(3);
     g.turn = 1;
     g.phase = Phase::Main;
@@ -457,14 +465,14 @@ fn longest_path_takes_the_longest_line_and_other_buildings_dont_break_it() {
     g.edge_kind[line[4]] = PATH;
     g.update_titles();
     assert_eq!((g.line[0], g.longest), (5, 0));
-    // Another player's Hut on the corner between the 2nd and 3rd edges doesn't split it
+    // Another player's Hut on the corner between the 2nd and 3rd edges splits it into 2 and 3
     let gr = &g.board.graph;
     let [a, b] = gr.edge_corners[line[1]];
     let mid = if gr.edge_corners[line[2]].contains(&a) { a } else { b } as usize;
     g.corner_owner[mid] = 1;
     g.corner_kind[mid] = HUT;
     g.update_titles();
-    assert_eq!((g.line[0], g.longest), (5, 0));
+    assert_eq!((g.line[0], g.longest), (3, NOBODY));
 }
 
 #[test]
@@ -477,19 +485,56 @@ fn titles_change_hands_only_to_someone_strictly_ahead() {
     assert_eq!(title(NOBODY, &[6, 6, 2], 5), NOBODY);
 }
 
+// Plays one Pilot for the current player, moving the squall to the first hex offered
+fn play_pilot(g: &mut Game) {
+    let p = g.current as usize;
+    g.held[p][Project::Pilot as usize] += 1;
+    g.project_used = false;
+    g.bought = [0; 5];
+    g.apply(Action::Play(Project::Pilot)).unwrap();
+    let h = legal(g)[0];
+    g.apply(h).unwrap();
+    if g.phase == Phase::Steal {
+        let v = legal(g)[0];
+        g.apply(v).unwrap();
+    }
+}
+
 #[test]
-fn most_markets_counts_different_markets() {
-    let mut g = game(2);
-    g.turn = 1;
-    let corners: Vec<usize> = (0..g.board.market_kind.len())
-        .map(|m| (0..g.corner_owner.len()).find(|&c| g.board.corner_market[c] == m as u8).unwrap())
-        .collect();
-    g.corner_owner[corners[0]] = 0;
-    g.update_titles();
-    assert_eq!((g.markets[0], g.most_markets), (1, NOBODY));
-    g.corner_owner[corners[1]] = 0;
-    g.update_titles();
-    assert_eq!((g.markets[0], g.most_markets), (2, 0));
+fn most_pilots_goes_to_three_played_and_passes_only_to_more() {
+    let mut g = after_setup(2);
+    g.phase = Phase::Main;
+    g.current = 0;
+    let renown = g.renown(0);
+    play_pilot(&mut g);
+    play_pilot(&mut g);
+    assert_eq!((g.pilots[0], g.most_pilots), (2, NOBODY), "2 isn't enough");
+    play_pilot(&mut g);
+    assert_eq!((g.pilots[0], g.most_pilots), (3, 0));
+    assert_eq!(g.renown(0), renown + 2);
+    // Player 2 draws level: player 1 keeps it; one more takes it
+    g.current = 1;
+    for _ in 0..3 {
+        play_pilot(&mut g);
+    }
+    assert_eq!(g.most_pilots, 0, "a tie doesn't take it");
+    play_pilot(&mut g);
+    assert_eq!((g.pilots[1], g.most_pilots), (4, 1));
+    // Pilots held but not played don't count
+    g.held[0][Project::Pilot as usize] = 5;
+    assert_eq!(g.most_pilots, 1);
+}
+
+#[test]
+fn most_pilots_can_win_the_game_before_the_roll() {
+    let mut g = after_setup(2);
+    g.phase = Phase::PreRoll;
+    g.current = 0;
+    g.pilots[0] = 2;
+    g.held[0][Project::Lighthouse as usize] = g.settings().win - 2 - g.renown(0) as u8;
+    g.held[0][Project::Pilot as usize] = 1;
+    g.apply(Action::Play(Project::Pilot)).unwrap();
+    assert_eq!((g.over(), g.winner), (true, 0));
 }
 
 #[test]
@@ -544,7 +589,7 @@ fn hidden_projects_are_drawn_unseen() {
     let s = Settings::parse("projects.faceUp=false").unwrap();
     let mut g = Game::new(&generate(&s, "hidden").unwrap(), &s, 2, 3);
     assert!(g.row.is_empty());
-    let total = s.deck_pilot + s.deck_lighthouse + s.deck_road_crew + s.deck_harvest + s.deck_bargain;
+    let total = s.deck_pilot + s.deck_lighthouse + s.deck_road_crew + s.deck_harvest + s.deck_market_day;
     assert_eq!(g.deck.len(), total as usize);
     g.turn = 1;
     g.phase = Phase::Main;
@@ -556,7 +601,7 @@ fn hidden_projects_are_drawn_unseen() {
 }
 
 #[test]
-fn road_crew_places_two_free_paths_and_good_bargain_trades_two_for_one() {
+fn road_crew_places_two_free_paths() {
     let mut g = after_setup(2);
     g.phase = Phase::Main;
     g.current = 0;
@@ -573,19 +618,24 @@ fn road_crew_places_two_free_paths_and_good_bargain_trades_two_for_one() {
     assert_eq!(g.phase, Phase::Main);
     assert_eq!(paths - g.pieces[0][P_PATH], 2);
     assert_eq!(g.hands[0], [0; 5], "free");
+}
 
-    g.apply(Action::EndTurn).unwrap();
+#[test]
+fn market_day_takes_every_card_of_one_resource_from_everyone_else() {
+    let mut g = after_setup(3);
     g.phase = Phase::Main;
-    g.apply(Action::EndTurn).unwrap();
-    g.phase = Phase::Main;
-    g.corner_owner.iter_mut().for_each(|o| if *o == 0 { *o = NOBODY });
-    g.held[0][Project::Bargain as usize] = 1;
-    g.hands[0] = [0, 0, 2, 0, 0];
-    assert!(!legal(&g).contains(&Action::Trade(2, 0)));
-    g.apply(Action::Play(Project::Bargain)).unwrap();
+    g.current = 1;
+    g.hands = [[1, 0, 3, 0, 0], [0, 0, 1, 2, 0], [2, 1, 4, 0, 0], [0; 5]];
+    g.held[1][Project::MarketDay as usize] = 1;
+    g.apply(Action::Play(Project::MarketDay)).unwrap();
+    assert_eq!(g.phase, Phase::MarketDay);
+    assert_eq!(legal(&g), (0..5).map(Action::Take).collect::<Vec<_>>(), "any of the 5, even one nobody has");
     g.apply(Action::Take(2)).unwrap();
-    g.apply(Action::Trade(2, 0)).unwrap();
-    assert_eq!(g.hands[0], [1, 0, 0, 0, 0]);
+    assert_eq!(g.hands[1], [0, 0, 8, 2, 0], "1 + 3 + 4 Grain");
+    assert_eq!((g.hands[0], g.hands[2]), ([1, 0, 0, 0, 0], [2, 1, 0, 0, 0]));
+    assert_eq!(&g.last_take[..3], &[3, 0, 4]);
+    assert_eq!(g.phase, Phase::Main);
+    assert!(!legal(&g).iter().any(|a| matches!(a, Action::Play(_))), "one project a turn");
 }
 
 #[test]
@@ -630,12 +680,30 @@ fn offers_must_be_real_trades_the_player_can_pay() {
     let mut before = g.clone();
     before.phase = Phase::PreRoll;
     assert!(before.offer_ok(&one(0), &one(3), 0b110).unwrap_err().contains("after rolling"));
-    let s = Settings::parse("trade.offers=0").unwrap();
+    let s = Settings::parse("trade.players=false").unwrap();
     let mut off = Game::new(&generate(&s, "rules").unwrap(), &s, 3, 7);
     off.phase = Phase::Main;
     off.turn = 1;
     off.hands[0] = [1, 0, 0, 0, 0];
-    assert!(off.offer_ok(&one(0), &one(3), 0b110).unwrap_err().contains("0 offers"), "trade.offers=0 turns it off");
+    assert!(off.offer_ok(&one(0), &one(3), 0b110).unwrap_err().contains("off"), "trade.players=false turns it off");
+    // A limit, when set: trade.offers=2 allows 2 a turn
+    let s = Settings::parse("trade.offers=2").unwrap();
+    let mut two = Game::new(&generate(&s, "rules").unwrap(), &s, 3, 7);
+    two.phase = Phase::Main;
+    two.turn = 1;
+    two.hands[0] = [1, 0, 0, 0, 0];
+    for _ in 0..2 {
+        two.apply(Action::Offer { give: one(0), get: one(3), to: 0b110, open: false }).unwrap();
+        two.apply(Action::Withdraw).unwrap();
+    }
+    assert!(two.offer_ok(&one(0), &one(3), 0b110).unwrap_err().contains("2 offers"));
+    // No limit (the default): 20 offers in one turn are all fine
+    let mut g = trading_game();
+    for _ in 0..20 {
+        g.apply(Action::Offer { give: one(0), get: one(3), to: 0b110, open: false }).unwrap();
+        g.apply(Action::Withdraw).unwrap();
+    }
+    assert!(g.offer_ok(&one(0), &one(3), 0b110).is_ok());
 }
 
 #[test]
@@ -669,7 +737,7 @@ fn offers_are_limited_withdrawn_and_end_with_the_turn() {
         g.apply(Action::Withdraw).unwrap();
         assert!(g.offer.is_none());
     }
-    assert!(g.apply(offer).unwrap_err().contains("3 offers"), "3 a turn by default");
+    assert!(g.apply(offer).is_ok(), "no limit by default");
     g.apply(Action::EndTurn).unwrap();
     assert_eq!(g.offers_made, 0);
 
@@ -758,27 +826,42 @@ fn bots_accept_trades_that_help_them_and_refuse_ones_that_dont() {
 fn the_bank_holds_what_players_dont_and_pays_a_roll_in_full_or_not_at_all() {
     let mut g = after_setup(3);
     let cap = g.settings().bank_cards as u32;
-    assert_eq!(cap, 20);
+    assert_eq!(cap, 19);
     g.hands = [[0; 5]; 4];
-    assert!((0..5).all(|r| g.bank(r) == 20));
+    assert!((0..5).all(|r| g.bank(r) == 19));
     g.hands[0][2] = 10;
-    g.hands[1][2] = 9;
-    assert_eq!(g.bank(2), 1, "20 Grain less the 19 held");
+    g.hands[1][2] = 8;
+    assert_eq!(g.bank(2), 1, "19 Grain less the 18 held");
 
-    // A roll owing more Grain than the bank has: nobody gets Grain; other resources still pay
-    let (n, owed) = (2..=12).filter(|&n| n != 7).find_map(|n| {
-        let mut copy = g.clone();
-        copy.hands = [[0; 5]; 4];
-        copy.produce(n);
-        let grain: u32 = (0..3).map(|p| copy.hands[p][2] as u32).sum();
-        (grain >= 2).then_some((n, grain))
-    }).expect("some roll pays at least 2 Grain");
+    // One Fields hex and its number, with the board cleared and the squall elsewhere: Huts placed
+    // on it are the only ones owed Grain
+    let board = g.board.clone();
+    let fields = (0..board.resource.len()).find(|&h| board.resource[h] == 2).unwrap();
+    let n = board.number[fields];
+    g.corner_owner.fill(NOBODY);
+    g.corner_kind.fill(0);
+    g.squall = *board.land_hexes.iter().find(|&&h| h as usize != fields).unwrap();
+    let [a, _, b, ..] = board.graph.hex_corners[fields];
+    let hut = |g: &mut Game, c: u16, p: u8| {
+        g.corner_owner[c as usize] = p;
+        g.corner_kind[c as usize] = HUT;
+    };
+
+    // Owed to 2 players, 1 Grain left: nobody gets Grain
+    hut(&mut g, a, 0);
+    hut(&mut g, b, 1);
     let before = g.hands;
     g.produce(n);
-    assert_eq!(g.short & (1 << 2), 1 << 2, "Grain was short (owed {owed}, 1 left)");
-    for p in 0..3 {
-        assert_eq!(g.hands[p][2], before[p][2], "nobody got Grain");
-    }
+    assert_eq!(g.short & (1 << 2), 1 << 2, "Grain was short");
+    assert_eq!(g.hands, before, "nobody got Grain");
+
+    // Owed to one player only (2 Grain for a Lodge, 1 left): they get the last card
+    g.corner_owner[b as usize] = NOBODY;
+    g.corner_kind[a as usize] = LODGE;
+    g.produce(n);
+    assert_eq!(g.short & (1 << 2), 1 << 2, "still short: 2 owed, 1 paid");
+    assert_eq!(g.hands[0][2], before[0][2] + 1);
+    assert_eq!(g.bank(2), 0);
 
     // Bank trades and Good Harvest only offer what the bank has
     let mut g = after_setup(3);
@@ -851,4 +934,43 @@ fn bot_games_finish_and_are_repeatable() {
     let a = play(&s, 5, 4, 400).unwrap();
     let b = play(&s, 5, 4, 400).unwrap();
     assert_eq!((a.winner, a.turns, a.actions), (b.winner, b.turns, b.actions));
+}
+
+#[test]
+fn building_a_hut_in_the_middle_of_a_line_takes_longest_path_away() {
+    let mut g = game(3);
+    g.turn = 1;
+    g.phase = Phase::Main;
+    let start = (0..g.corner_owner.len()).find(|&c| g.board.corner_land[c] && listed(&g.board.graph.corner_hexes[c]).count() == 3).unwrap();
+    let line = chain(&g, start, 6);
+    for &e in &line[..5] {
+        g.edge_owner[e] = 0;
+        g.edge_kind[e] = PATH;
+    }
+    g.update_titles();
+    assert_eq!(g.longest, 0);
+    // Player 2 reaches the corner between the 2nd and 3rd edges with a Path of their own, then builds there
+    let board = g.board.clone();
+    let gr = &board.graph;
+    let [a, b] = gr.edge_corners[line[1]];
+    let mid = if gr.edge_corners[line[2]].contains(&a) { a } else { b } as usize;
+    let side = listed(&gr.corner_edges[mid]).find(|&e| g.edge_owner[e] == NOBODY && board.edge_land[e]).expect("a free edge at the corner");
+    g.edge_owner[side] = 1;
+    g.edge_kind[side] = PATH;
+    g.current = 1;
+    g.hands[1] = HUT_COST;
+    g.apply(Action::Hut(mid as u16)).unwrap();
+    assert_eq!((g.line[0], g.longest), (3, NOBODY), "split into 2 and 3: under 5, so nobody holds it");
+    // Player 1 can't build on past player 2's Hut either
+    g.current = 0;
+    g.hands[0] = PATH_COST;
+    let beyond = listed(&gr.corner_edges[mid]).filter(|&e| e != line[1] && e != line[2] && e != side).collect::<Vec<_>>();
+    let mut list = Vec::new();
+    g.legal(&mut list);
+    for e in beyond {
+        let other = gr.edge_corners[e].iter().map(|&c| c as usize).find(|&c| c != mid).unwrap();
+        if g.corner_owner[other] == NOBODY && !listed(&gr.corner_edges[other]).any(|x| g.edge_owner[x] == 0) {
+            assert!(!list.contains(&Action::Path(e as u16)), "no Path past another player's Hut");
+        }
+    }
 }
