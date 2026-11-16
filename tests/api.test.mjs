@@ -62,7 +62,7 @@ test('friends get their own keys; watchers see no hand', async () => {
 test('bad requests are refused clearly', async () => {
   for (const [data, why] of [
     [{ seats: [{ kind: 'bot' }, { kind: 'bot' }] }, /first seat is you/],
-    [{ seats: [{ kind: 'person' }] }, /2 to 4 seats/],
+    [{ seats: [{ kind: 'person' }] }, /2 to 6 seats/],
     [{ seats: [{ kind: 'person' }, { kind: 'dragon' }] }, /person or a bot/],
     [{ seats: [{ kind: 'person' }, { kind: 'bot' }], settings: { win: 50 } }, /win must be between/],
   ]) {
@@ -309,5 +309,39 @@ test('a whole game of bots through the server finishes', async () => {
     }
     return null;
   }, 60_000);
+  assert.ok(end.view.players[end.view.winner].renown >= end.view.win);
+});
+
+test('6 seats: the large island, extra build phases, and a game that finishes; 7 seats are refused', async () => {
+  const seven = await post('/api/games', { seats: Array.from({ length: 7 }, () => ({ kind: 'bot' })) });
+  assert.equal(seven.status, 400);
+  assert.match((await seven.json()).error, /2 to 6 seats/);
+
+  const seats = [{ kind: 'person' }, ...Array.from({ length: 5 }, () => ({ kind: 'bot' }))];
+  const { id, key } = await (await post('/api/games', { seats })).json();
+  const first = await getJson(`/api/games/${id}?k=${key}`);
+  const land = first.board.island.hexes.filter(h => h.terrain !== 'sea');
+  assert.equal(land.length, 30, 'the large island');
+  assert.equal(land.filter(h => h.terrain === 'dunes').length, 2);
+  assert.equal(first.board.island.markets.length, 11);
+  assert.equal(first.view.players.length, 6);
+  assert.deepEqual(first.view.bank, [24, 24, 24, 24, 24]);
+
+  // Play it out (the person: roll, then end), watching for an extra build phase on the way
+  let pairedSeen = null;
+  const end = await until(async () => {
+    const g = await getJson(`/api/games/${id}?k=${key}`);
+    const v = g.view;
+    if (v.paired && !pairedSeen) pairedSeen = { turnOf: v.turnOf, current: v.current, phase: v.phase };
+    if (v.phase === 'over') return g;
+    if (v.toAct === v.you && v.legal.length) {
+      const pick = v.legal.find(m => m === 'roll') ?? v.legal.find(m => m === 'end') ?? v.legal[0];
+      await post(`/api/games/${id}/move`, { k: key, move: pick });
+    }
+    return null;
+  }, 60_000);
+  assert.ok(pairedSeen, 'an extra build phase happened');
+  assert.equal(pairedSeen.current, (pairedSeen.turnOf + 3) % 6, 'by the player 3 seats on');
+  assert.equal(pairedSeen.phase, 'main');
   assert.ok(end.view.players[end.view.winner].renown >= end.view.win);
 });

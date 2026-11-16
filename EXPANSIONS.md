@@ -226,3 +226,30 @@ search for strength.
   foundation work starts, since `MAX_PLAYERS = 4`, the 4-bit `to` field of trade offers, setup order, map sizes and the bank
   are all touched by F1–F14 anyway.
 - **Order:** Part 4 as written.
+
+## 5 and 6 players (read Nov 16 from the five 5–6 player rulebooks)
+
+**Base game: built first (branch `six-players`, RULES.md v0.5).** The large island (30 hexes, rows 3-4-5-6-5-4-3; 6 Forest,
+5 Quarry, 6 Fields, 5 Mine, 6 Paddy, 2 Dunes; 28 numbers: two 2s, two 12s, three of each other), 11 markets (one more
+general, a second 2:1 Fish), 24 of each resource, 34 projects (20/5/3/3/3), and **paired turns**: after each turn, the
+player 3 seats on takes an extra build phase (build, buy, one project, bank and market trades, no trading with players;
+can win in it). `Settings::for_players(n)` gives 5–6 seats these defaults; `turns.paired` switches the pairing.
+The classic spiral's letter order for the 28 numbers isn't printed in the rulebook (only the number sides), so the large
+island uses the fair shuffle until we have it.
+
+**Every expansion's 5–6 rules use the same paired turn**, with one difference that matters for F8: the second player's
+phase is "Action + that ruleset's end-of-turn step" (city: knight actions and progress cards in it; variants box: the
+end-of-turn phase, e.g. voting with player 2 as the active player, moving knights, moving the wagon; exploration: Action
++ Movement; sea: Action incl. moving 1 ship). So the paired phase is a **turn step list without the production steps**,
+not a special case of Main. Per expansion, the 5–6 additions are:
+
+| Ruleset | 5–6 additions |
+|---|---|
+| Sea | 10 more hexes (7 sea, 2 gold, 1 desert), 2 more wonders (one needs a building at a lighthouse marker, one needs 2 Lodges), a sixth island ("The Six Islands"), more Renown/cloth/lair tokens, 11 markets on New Shores; Pirate Islands: a "!" hex where the fleet doesn't attack; 5-player games leave one colour's locations unused. Main islands use the large island's setup. |
+| City | 18 more commodities (6 of each), the large island, otherwise as 3–4 (knights, walls, improvements per player). |
+| Variants box | Fishing: 2 lakes, 2 more fishing grounds, 14 more fish tokens. Rivers: 3 rivers, all 28 numbers (no "2 shares the 12"). Merchant trains: 2 watering holes (6 train starts), 11 more wagons; the paired player holds their own vote. Raider attack: 2 castles, two coastal 5s and 9s (3–5 raiders per landing), 12 more raiders. Traders & raiders: 5 commodity hexes (2 quarries, 2 glassworks, a second castle; some with 6 interior paths), 2/12 not rerolled. |
+| Exploration | 9 more hexes (incl. 2 gold), 3 more number discs per region, more crews/harbour buildings/ships/spice sacks/fish hauls/coins; 21 face-up start hexes; mission tracks replace frame pieces. |
+
+**Effect on the plan:** none on the order. F7 (decisions by other seats) and F8 (turn steps) must treat "acting player"
+and "whose turn" separately from day one (`owner` vs `current` as built here), and F2 map files need a 5–6 version of
+every scenario map. All seat arrays are `MAX_PLAYERS = 6` already.

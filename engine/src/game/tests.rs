@@ -95,6 +95,13 @@ fn check(g: &Game) {
         assert!(g.renown(g.winner as usize) >= s.win as u32);
     }
     assert!(g.board.terrain[g.squall as usize] != Terrain::Sea, "the squall is on land");
+    // Paired turns: only with 5-6 players, only for the player 3 seats on, never before a roll
+    if g.paired {
+        assert!(g.pairs() && g.current == g.partner(g.owner) && g.phase != Phase::PreRoll);
+        assert!(g.offer.is_none(), "no trading with players in the extra build phase");
+    } else if g.turn > 0 && !g.over() {
+        assert_eq!(g.current, g.owner);
+    }
     // An offer only exists during a turn, never to its own maker
     if let Some(o) = &g.offer {
         assert!(g.turn > 0 && !g.over());
@@ -109,10 +116,13 @@ fn random_play_never_breaks_a_rule() {
     let mut list = Vec::new();
     let mut ended = 0;
     for seed in 0..400u32 {
-        // Every 4th game the other way: projects face up, on a random-shaped island
-        let settings = if seed % 4 == 3 { Settings::parse("projects.faceUp=true;island.hexagon=false").unwrap() } else { Settings::default() };
+        // 2 to 6 players, each with that many players' defaults (5-6: the large island, paired
+        // turns); every 4th game the other way: projects face up, on a random-shaped island
+        let players = 2 + seed as usize % 5;
+        let text = if seed % 4 == 3 { "projects.faceUp=true;island.hexagon=false" } else { "" };
+        let settings = Settings::parse_for(text, players).unwrap();
         let isl = generate(&settings, &format!("fuzz{seed}")).unwrap();
-        let mut g = Game::new(&isl, &settings, 2 + seed as usize % 3, seed);
+        let mut g = Game::new(&isl, &settings, players, seed);
         let mut rng = Rng::new(seed + 1000);
         for step in 0..3000 {
             g.legal(&mut list);
@@ -285,7 +295,7 @@ fn rolling_pays_huts_one_and_lodges_two_except_under_the_squall() {
 #[test]
 fn a_seven_halves_big_hands_then_moves_the_squall_then_steals() {
     let mut g = after_setup(3);
-    g.hands = [[3, 3, 3, 0, 0], [2, 2, 2, 1, 0], [5, 0, 0, 0, 3], [0; 5]];
+    g.hands = [[3, 3, 3, 0, 0], [2, 2, 2, 1, 0], [5, 0, 0, 0, 3], [0; 5], [0; 5], [0; 5]];
     g.phase = Phase::PreRoll;
     g.rolled(7);
     assert_eq!(g.phase, Phase::Discard);
@@ -332,7 +342,7 @@ fn a_seven_halves_big_hands_then_moves_the_squall_then_steals() {
 #[test]
 fn a_squall_range_limits_its_steps_after_a_seven_but_not_for_a_pilot() {
     let mut g = after_setup_with(2, "squall.range=1");
-    g.hands = [[0; 5]; 4];
+    g.hands = [[0; 5]; MAX_PLAYERS];
     g.phase = Phase::PreRoll;
     g.rolled(7);
     let moves = |g: &Game| -> Vec<u16> { legal(g).iter().filter_map(|a| match a { Action::Squall(h) => Some(*h), _ => None }).collect() };
@@ -346,7 +356,7 @@ fn a_squall_range_limits_its_steps_after_a_seven_but_not_for_a_pilot() {
 #[test]
 fn small_hands_keep_everything_on_a_seven() {
     let mut g = after_setup(2);
-    g.hands = [[1, 1, 1, 1, 1], [7, 0, 0, 0, 0], [0; 5], [0; 5]];
+    g.hands = [[1, 1, 1, 1, 1], [7, 0, 0, 0, 0], [0; 5], [0; 5], [0; 5], [0; 5]];
     g.phase = Phase::PreRoll;
     g.rolled(7);
     assert_eq!(g.phase, Phase::MoveSquall { anywhere: false });
@@ -355,7 +365,7 @@ fn small_hands_keep_everything_on_a_seven() {
 #[test]
 fn nobody_to_steal_from_returns_to_the_turn() {
     let mut g = after_setup(2);
-    g.hands = [[0; 5]; 4];
+    g.hands = [[0; 5]; MAX_PLAYERS];
     g.hands[0] = [1, 0, 0, 0, 0];
     g.phase = Phase::MoveSquall { anywhere: true };
     g.back = Phase::Main;
@@ -625,7 +635,7 @@ fn market_day_takes_every_card_of_one_resource_from_everyone_else() {
     let mut g = after_setup(3);
     g.phase = Phase::Main;
     g.current = 1;
-    g.hands = [[1, 0, 3, 0, 0], [0, 0, 1, 2, 0], [2, 1, 4, 0, 0], [0; 5]];
+    g.hands = [[1, 0, 3, 0, 0], [0, 0, 1, 2, 0], [2, 1, 4, 0, 0], [0; 5], [0; 5], [0; 5]];
     g.held[1][Project::MarketDay as usize] = 1;
     g.apply(Action::Play(Project::MarketDay)).unwrap();
     assert_eq!(g.phase, Phase::MarketDay);
@@ -656,7 +666,7 @@ fn trading_game() -> Game {
     let mut g = after_setup(3);
     g.phase = Phase::Main;
     g.current = 0;
-    g.hands = [[2, 0, 0, 0, 1], [0, 0, 0, 2, 0], [0, 0, 1, 0, 0], [0; 5]];
+    g.hands = [[2, 0, 0, 0, 1], [0, 0, 0, 2, 0], [0, 0, 1, 0, 0], [0; 5], [0; 5], [0; 5]];
     g
 }
 
@@ -811,14 +821,14 @@ fn bots_accept_trades_that_help_them_and_refuse_ones_that_dont() {
     // of the Timber helps whatever its goal is
     g.hands[0] = [0, 0, 1, 0, 0];
     g.hands[1] = [2, 0, 0, 2, 0];
-    g.offer = Some(Offer { give: [0, 0, 1, 0, 0], get: [1, 0, 0, 0, 0], to: 0b010, open: false, answers: [0; 4], counters: [None; 4] });
+    g.offer = Some(Offer { give: [0, 0, 1, 0, 0], get: [1, 0, 0, 0, 0], to: 0b010, open: false, answers: [0; MAX_PLAYERS], counters: [None; MAX_PLAYERS] });
     assert!(bot.answer(&g, 1), "Grain it needs for a spare Timber");
     // Taking both Copper for nothing they need
-    g.offer = Some(Offer { give: [0, 0, 0, 0, 0], get: [0, 0, 0, 2, 0], to: 0b010, open: false, answers: [0; 4], counters: [None; 4] });
+    g.offer = Some(Offer { give: [0, 0, 0, 0, 0], get: [0, 0, 0, 2, 0], to: 0b010, open: false, answers: [0; MAX_PLAYERS], counters: [None; MAX_PLAYERS] });
     assert!(!bot.answer(&g, 1), "giving cards away for nothing");
     // Never when the offerer is about to win
     g.held[0][Project::Lighthouse as usize] = 10;
-    g.offer = Some(Offer { give: [0, 0, 1, 0, 0], get: [1, 0, 0, 0, 0], to: 0b010, open: false, answers: [0; 4], counters: [None; 4] });
+    g.offer = Some(Offer { give: [0, 0, 1, 0, 0], get: [1, 0, 0, 0, 0], to: 0b010, open: false, answers: [0; MAX_PLAYERS], counters: [None; MAX_PLAYERS] });
     assert!(!bot.answer(&g, 1), "the same trade, but the offerer is near winning");
 }
 
@@ -827,7 +837,7 @@ fn the_bank_holds_what_players_dont_and_pays_a_roll_in_full_or_not_at_all() {
     let mut g = after_setup(3);
     let cap = g.settings().bank_cards as u32;
     assert_eq!(cap, 19);
-    g.hands = [[0; 5]; 4];
+    g.hands = [[0; 5]; MAX_PLAYERS];
     assert!((0..5).all(|r| g.bank(r) == 19));
     g.hands[0][2] = 10;
     g.hands[1][2] = 8;
@@ -867,7 +877,7 @@ fn the_bank_holds_what_players_dont_and_pays_a_roll_in_full_or_not_at_all() {
     let mut g = after_setup(3);
     g.phase = Phase::Main;
     g.current = 0;
-    g.hands = [[4, 0, 0, 0, 0], [0, 0, 0, 0, 10], [0, 0, 0, 0, 10], [0; 5]];
+    g.hands = [[4, 0, 0, 0, 0], [0, 0, 0, 0, 10], [0, 0, 0, 0, 10], [0; 5], [0; 5], [0; 5]];
     assert!(!legal(&g).contains(&Action::Trade(0, 4)), "no Fish left in the bank");
     assert!(legal(&g).contains(&Action::Trade(0, 1)));
     g.held[0][Project::Harvest as usize] = 1;
@@ -922,6 +932,94 @@ fn a_round_limit_ends_the_game_with_the_most_renown_winning() {
     }
     assert!(g.over() && g.by_rounds);
     assert_eq!(g.winner, NOBODY, "2 Huts each: a draw");
+}
+
+// A game after setup with this many players and that many players' defaults
+fn after_setup_for(players: usize) -> Game {
+    let s = Settings::for_players(players);
+    setup_done(Game::new(&generate(&s, "rules").unwrap(), &s, players, 7))
+}
+
+#[test]
+fn with_five_or_six_the_player_three_seats_on_takes_an_extra_build_phase() {
+    for players in [5, 6] {
+        let mut g = after_setup_for(players);
+        assert!(g.pairs());
+        assert_eq!((g.current, g.owner, g.turn), (0, 0, 1));
+        g.rolled(8);
+        g.apply(Action::EndTurn).unwrap();
+        // Seat 4 (3 on from seat 1) builds, without rolling
+        assert_eq!((g.current, g.owner, g.paired, g.phase, g.turn), (3, 0, true, Phase::Main, 1), "{players} players");
+        let list = legal(&g);
+        assert!(!list.contains(&Action::Roll) && list.contains(&Action::EndTurn));
+        // Bank trades yes, offers to players no
+        g.hands[3] = [4, 0, 0, 0, 0];
+        assert!(legal(&g).contains(&Action::Trade(0, 1)));
+        let offer = Action::Offer { give: [1, 0, 0, 0, 0], get: [0, 1, 0, 0, 0], to: 1, open: false };
+        assert!(g.apply(offer).unwrap_err().contains("extra build phase"));
+        assert!(!g.offers_left());
+        // A project may be played (one per phase); a Pilot moves the squall and steals for seat 4
+        g.held[3][Project::Pilot as usize] = 1;
+        assert!(legal(&g).contains(&Action::Play(Project::Pilot)));
+        g.apply(Action::Play(Project::Pilot)).unwrap();
+        let h = legal(&g)[0];
+        g.apply(h).unwrap();
+        if g.phase == Phase::Steal {
+            let v = legal(&g)[0];
+            g.apply(v).unwrap();
+        }
+        assert_eq!((g.phase, g.current), (Phase::Main, 3), "back to the extra build phase");
+        // Then the next player's own turn
+        g.apply(Action::EndTurn).unwrap();
+        assert_eq!((g.current, g.owner, g.paired, g.phase, g.turn), (1, 1, false, Phase::PreRoll, 2));
+        // The last seat's partner wraps round: 3 on from seat 6 (or 5) is seat 3 (or 2)
+        g.owner = players as u8 - 1;
+        g.current = g.owner;
+        g.rolled(8);
+        g.apply(Action::EndTurn).unwrap();
+        assert_eq!(g.current, ((players - 1 + 3) % players) as u8);
+    }
+}
+
+#[test]
+fn no_extra_build_phase_with_four_players_or_when_turned_off() {
+    let mut g = after_setup(4);
+    assert!(!g.pairs());
+    g.rolled(8);
+    g.apply(Action::EndTurn).unwrap();
+    assert_eq!((g.current, g.paired, g.phase), (1, false, Phase::PreRoll));
+    let s = Settings::parse_for("turns.paired=false", 6).unwrap();
+    let mut g = setup_done(Game::new(&generate(&s, "rules").unwrap(), &s, 6, 7));
+    g.rolled(8);
+    g.apply(Action::EndTurn).unwrap();
+    assert_eq!((g.current, g.paired), (1, false));
+}
+
+#[test]
+fn the_paired_player_can_win_in_the_extra_build_phase() {
+    let mut g = after_setup_for(6);
+    g.rolled(8);
+    g.apply(Action::EndTurn).unwrap();
+    assert_eq!(g.current, 3);
+    // Seat 4 holds hidden Lighthouses one short of winning, and builds a Lodge
+    let c = (0..g.corner_owner.len()).find(|&c| g.corner_owner[c] == 3).unwrap();
+    g.held[3][Project::Lighthouse as usize] = g.settings().win - 1 - g.renown(3) as u8;
+    g.hands[3] = LODGE_COST;
+    g.apply(Action::Lodge(c as u16)).unwrap();
+    assert_eq!((g.over(), g.winner), (true, 3));
+}
+
+#[test]
+fn six_player_bot_games_finish() {
+    for players in [5, 6] {
+        let s = Settings::for_players(players);
+        let mut finished = 0;
+        for seed in 0..60 {
+            let out = play(&s, seed, players, 600).unwrap();
+            finished += (out.winner != NOBODY) as u32;
+        }
+        assert!(finished >= 58, "{players} players: only {finished} of 60 bot games finished");
+    }
 }
 
 #[test]

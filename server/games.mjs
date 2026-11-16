@@ -32,7 +32,7 @@ export function makeGames(engine, { botDelay = 700, now = () => Date.now() } = {
   // seats: [{ kind: 'person' | 'bot', name? }], the first being whoever creates the game.
   // Returns the game's id, the creator's seat and key, and keys for the other people's seats.
   function create({ seats, settings = {} }) {
-    if (!Array.isArray(seats) || seats.length < 2 || seats.length > 4) throw new Error('a game has 2 to 4 seats');
+    if (!Array.isArray(seats) || seats.length < 2 || seats.length > 6) throw new Error('a game has 2 to 6 seats');
     if (seats[0]?.kind !== 'person') throw new Error('the first seat is you');
     if (!seats.every(s => s?.kind === 'person' || s?.kind === 'bot')) throw new Error('each seat is a person or a bot');
     if (typeof settings !== 'object' || settings === null || Array.isArray(settings)) throw new Error('settings must be an object');

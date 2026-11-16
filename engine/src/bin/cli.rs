@@ -14,7 +14,9 @@ fn flag(args: &[String], name: &str) -> Option<String> {
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let settings = match Settings::parse(&flag(&args, "--set").unwrap_or_default()) {
+    // --players also picks that many players' defaults (5-6: the large island)
+    let players: usize = flag(&args, "--players").and_then(|c| c.parse().ok()).unwrap_or(4);
+    let settings = match Settings::parse_for(&flag(&args, "--set").unwrap_or_default(), players) {
         Ok(s) => s,
         Err(e) => fail(&e),
     };

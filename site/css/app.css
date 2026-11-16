@@ -51,7 +51,7 @@ button { font: inherit; padding: 6px 12px; border-radius: 6px; border: 1px solid
 .market-line { stroke: #fffaf0; stroke-width: 2; }
 
 /* ---------- The game page ---------- */
-:root { --p0: #d23c32; --p1: #2a64d6; --p2: #ef8f12; --p3: #8b3fb0; }
+:root { --p0: #d23c32; --p1: #2a64d6; --p2: #ef8f12; --p3: #8b3fb0; --p4: #2f9a4e; --p5: #8a5a2b; }
 h1 a { color: inherit; text-decoration: none; }
 h2 { font-size: 1rem; margin: 0 0 6px; }
 a { color: var(--sea); }
@@ -96,6 +96,7 @@ body.in-game h1 { font-size: 1.2rem; margin: 8px 0 6px; }
 .bar { height: 6px; border-radius: 3px; background: var(--line); margin: 5px 0 4px; overflow: hidden; }
 .bar .fill { height: 100%; border-radius: 3px; }
 .fill.p0 { background: var(--p0); } .fill.p1 { background: var(--p1); } .fill.p2 { background: var(--p2); } .fill.p3 { background: var(--p3); }
+.fill.p4 { background: var(--p4); } .fill.p5 { background: var(--p5); }
 .player .info { color: var(--muted); font-size: 0.8rem; }
 .title-badge { display: inline-block; font-size: 0.7rem; font-weight: 700; padding: 0 6px; border-radius: 9px; background: #ffd400; color: #1d2228; }
 
@@ -121,6 +122,7 @@ body.in-game h1 { font-size: 1.2rem; margin: 8px 0 6px; }
 .tab-panel > div + div { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--line); }
 .dot { width: 14px; height: 14px; border-radius: 50%; display: inline-block; }
 .dot.p0 { background: var(--p0); } .dot.p1 { background: var(--p1); } .dot.p2 { background: var(--p2); } .dot.p3 { background: var(--p3); }
+.dot.p4 { background: var(--p4); } .dot.p5 { background: var(--p5); }
 
 .hand { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
 .hand .card { display: flex; flex-direction: column; align-items: center; padding: 6px 2px; }
@@ -161,9 +163,10 @@ body.in-game h1 { font-size: 1.2rem; margin: 8px 0 6px; }
 /* Trading with players */
 .offer { border-color: #ffd400; }
 .answers { list-style: none; padding: 0; margin: 4px 0 8px; font-size: 0.9rem; }
-.answers li.p0::before, .answers li.p1::before, .answers li.p2::before, .answers li.p3::before { content: "● "; }
+.answers li.p0::before, .answers li.p1::before, .answers li.p2::before, .answers li.p3::before, .answers li.p4::before, .answers li.p5::before { content: "● "; }
 .answers li.p0::before { color: var(--p0); } .answers li.p1::before { color: var(--p1); }
 .answers li.p2::before { color: var(--p2); } .answers li.p3::before { color: var(--p3); }
+.answers li.p4::before { color: var(--p4); } .answers li.p5::before { color: var(--p5); }
 .steppers { display: flex; flex-wrap: wrap; gap: 6px; }
 .stepper { display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px; }
 .stepper button { padding: 0 8px; min-width: 28px; }
@@ -188,14 +191,17 @@ body.in-game h1 { font-size: 1.2rem; margin: 8px 0 6px; }
 .log { margin: 0; padding-left: 1.4em; font-size: 0.9rem; max-height: 14em; overflow: auto; }
 .log li.p0::marker { color: var(--p0); } .log li.p1::marker { color: var(--p1); }
 .log li.p2::marker { color: var(--p2); } .log li.p3::marker { color: var(--p3); }
+.log li.p4::marker { color: var(--p4); } .log li.p5::marker { color: var(--p5); }
 .costs { margin: 6px 0 0; padding-left: 1.2em; font-size: 0.9rem; }
 
 /* Pieces and targets on the board */
 .road { stroke-width: 7; stroke-linecap: round; }
 .road.p0, .building.p0 { stroke: var(--p0); } .road.p1, .building.p1 { stroke: var(--p1); }
 .road.p2, .building.p2 { stroke: var(--p2); } .road.p3, .building.p3 { stroke: var(--p3); }
+.road.p4, .building.p4 { stroke: var(--p4); } .road.p5, .building.p5 { stroke: var(--p5); }
 .building { stroke: #fff !important; stroke-width: 2; }
 .building.p0 { fill: var(--p0); } .building.p1 { fill: var(--p1); } .building.p2 { fill: var(--p2); } .building.p3 { fill: var(--p3); }
+.building.p4 { fill: var(--p4); } .building.p5 { fill: var(--p5); }
 /* What just happened: producing hexes flash; new pieces glow */
 .token.flash { animation: flash 1.8s ease-out; }
 @keyframes flash { 0%, 40% { fill: #ffd400; stroke: #ffd400; stroke-width: 6; } 100% { fill: #fffaf0; stroke-width: 1; } }

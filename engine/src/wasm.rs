@@ -59,7 +59,8 @@ pub unsafe extern "C" fn game_new(p: *const u8, n: usize) -> usize {
         let mut parts = input.splitn(3, '\n');
         let seed = parts.next().unwrap_or("");
         let players: usize = parts.next().and_then(|x| x.trim().parse().ok()).ok_or("expected the number of players")?;
-        let settings = Settings::parse(parts.next().unwrap_or(""))?;
+        // That many players' defaults (5-6: the large island), then the game's own settings
+        let settings = Settings::parse_for(parts.next().unwrap_or(""), players)?;
         if players < settings.players_min as usize || players > settings.players_max as usize {
             return Err(format!("{players} players isn't allowed ({}-{})", settings.players_min, settings.players_max));
         }

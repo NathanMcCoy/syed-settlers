@@ -12,7 +12,7 @@ use crate::rng::Rng;
 use crate::settings::Settings;
 use std::sync::Arc;
 
-pub const MAX_PLAYERS: usize = 4;
+pub const MAX_PLAYERS: usize = 6;
 pub const NOBODY: u8 = u8::MAX;
 
 // Resources, in this order everywhere: Timber, Stone, Grain, Copper, Fish
@@ -174,6 +174,11 @@ pub struct Game {
     pub by_rounds: bool,              // the game ended at the round limit (the winner may be NOBODY: a draw)
     pub offer: Option<Offer>,         // the current player's open offer to other players
     pub offers_made: u8,              // this turn (counts up to 255; only a limit compares with it)
+    // Paired turns (5-6 players, turns.paired): after the turn of `owner`, the player 3 seats on
+    // (`current` then) takes an extra build phase (`paired`): Main without the roll or trading with
+    // players. `owner` is whose turn it is; `current` is who's acting.
+    pub owner: u8,
+    pub paired: bool,
     pub rng: Rng,
 }
 
@@ -216,7 +221,7 @@ fn pay(hand: &mut Hand, cost: &Hand) {
 impl Game {
     // A new game for `players` seats (seat 0 places first), with its own random numbers from `seed`
     pub fn new(island: &Island, settings: &Settings, players: usize, seed: u32) -> Game {
-        assert!((2..=MAX_PLAYERS).contains(&players), "2 to 4 players");
+        assert!((2..=MAX_PLAYERS).contains(&players), "2 to 6 players");
         let board = Arc::new(Board::new(island, settings));
         let mut rng = Rng::new(seed);
         let s = settings;
@@ -264,6 +269,8 @@ impl Game {
             by_rounds: false,
             offer: None,
             offers_made: 0,
+            owner: 0,
+            paired: false,
             rng,
             board,
         }
@@ -520,6 +527,9 @@ impl Game {
         if !self.settings().trade_players {
             return Err("trading between players is off in this game".into());
         }
+        if self.paired {
+            return Err("no trading with players in the extra build phase (the bank and markets are fine)".into());
+        }
         if !self.offers_left() {
             return Err(format!("{} offers a turn at most", self.settings().trade_offers));
         }
@@ -534,10 +544,21 @@ impl Game {
         Ok(())
     }
 
-    // May the current player make another offer this turn? (trade.offers 0: no limit)
+    // May the current player make another offer this turn? (trade.offers 0: no limit; never in a
+    // paired player's extra build phase)
     pub fn offers_left(&self) -> bool {
         let s = self.settings();
-        s.trade_players && (s.trade_offers == 0 || self.offers_made < s.trade_offers)
+        s.trade_players && !self.paired && (s.trade_offers == 0 || self.offers_made < s.trade_offers)
+    }
+
+    // Do paired turns apply to this game? (5 or 6 players, turns.paired on)
+    pub fn pairs(&self) -> bool {
+        self.players >= 5 && self.settings().turns_paired
+    }
+
+    // The player who takes the extra build phase after `owner`'s turn: 3 seats on
+    pub fn partner(&self, owner: u8) -> u8 {
+        ((owner as usize + 3) % self.players) as u8
     }
 
     // Can the open offer still be completed with seat s (both still hold the cards)?
@@ -748,11 +769,21 @@ impl Game {
             Action::EndTurn => {
                 self.offer = None;
                 self.offers_made = 0;
-                self.current = ((self.current as usize + 1) % self.players) as u8;
-                self.turn += 1;
                 self.bought = [0; 5];
                 self.project_used = false;
-                self.phase = Phase::PreRoll;
+                if self.pairs() && !self.paired {
+                    // The paired player's extra build phase: no roll, straight to building
+                    self.paired = true;
+                    self.current = self.partner(self.owner);
+                    self.phase = Phase::Main;
+                    self.back = Phase::Main;
+                } else {
+                    self.paired = false;
+                    self.owner = ((self.owner as usize + 1) % self.players) as u8;
+                    self.current = self.owner;
+                    self.turn += 1;
+                    self.phase = Phase::PreRoll;
+                }
                 let limit = self.settings().round_limit as u32;
                 if limit > 0 && self.turn > limit * self.players as u32 {
                     self.end_by_rounds();
@@ -826,6 +857,7 @@ impl Game {
             let n = self.players as u8;
             if self.setup_step == 2 * n {
                 self.current = 0;
+                self.owner = 0;
                 self.turn = 1;
                 self.phase = Phase::PreRoll;
             } else {

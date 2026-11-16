@@ -7,7 +7,7 @@
 import { islandSvg, el, centre, point, hexPoints, RESOURCES, SIZE } from './board.js';
 
 const $ = id => document.getElementById(id);
-const COLOURS = ['Red', 'Blue', 'Orange', 'Purple'];
+const COLOURS = ['Red', 'Blue', 'Orange', 'Purple', 'Green', 'Brown'];
 const PROJECTS = { pilot: 'Pilot', lighthouse: 'Lighthouse', roadCrew: 'Road Crew', harvest: 'Good Harvest', marketDay: 'Market Day' };
 const PROJECT_HELP = {
   pilot: 'Move the squall to any land hex, then steal',
@@ -30,7 +30,8 @@ function home() {
   // with a built-in stylesheet that the site's security policy blocks)
   const rows = $('seat-rows');
   const kinds = [];
-  for (let i = 1; i <= 3; i++) {
+  // Up to 5 other seats (6 players); the 5th and 6th start as Nobody
+  for (let i = 1; i <= 5; i++) {
     const row = document.createElement('div');
     row.className = 'seat-row';
     const label = document.createElement('span');
@@ -71,7 +72,7 @@ function home() {
     const name = f.name.value.trim();
     store.set('settlers.name', name);
     const seats = [{ kind: 'person', name }];
-    for (let i = 1; i <= 3; i++) {
+    for (let i = 1; i <= 5; i++) {
       const kind = kinds[i];
       if (kind) seats.push({ kind, name: kind === 'person' ? f[`name${i}`].value.trim() : undefined });
     }
@@ -367,7 +368,9 @@ function status(v) {
     case 'discard': return mine ? `A 7! You hold too many cards: choose ${v.players[v.you].discard} more to lose.` : `A 7: ${who} is choosing cards to lose.`;
     case 'moveSquall': return mine ? 'Move the squall: click a lit hex.' : `${who} is moving the squall.`;
     case 'steal': return mine ? 'Choose who to steal a card from.' : `${who} is choosing who to steal from.`;
-    case 'main': return mine ? `You rolled ${v.lastRoll}. Pick something to build, trade or buy, then end your turn.` : `${who} rolled ${v.lastRoll}.`;
+    // 5-6 players: the player 3 seats on builds after each turn (no roll, no trading with players)
+    case 'main': if (v.paired) return mine ? `Your extra build phase (after ${nameOf(v.turnOf)}'s turn): build, buy or play a project, trade with the bank or markets (not with players), then end it.` : `${who} has an extra build phase after ${nameOf(v.turnOf)}'s turn.`;
+      return mine ? `You rolled ${v.lastRoll}. Pick something to build, trade or buy, then end your turn.` : `${who} rolled ${v.lastRoll}.`;
     case 'freeBuild': return mine ? 'Road Crew: place a free Path.' : `${who} is placing free Paths.`;
     case 'harvest': return mine ? 'Good Harvest: take a resource.' : `${who} is taking resources.`;
     case 'marketDay': return mine ? 'Market Day: choose the resource everyone else hands over.' : `${who} is calling a Market Day.`;
