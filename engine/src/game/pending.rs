@@ -14,6 +14,25 @@ pub enum Decision {
     Rob,                  // take a random card from a player of your choice (an event card)
     Damage,               // an earthquake: damage one of your own Paths
     Neutral { hut: bool }, // the two-player variant: build a neutral Hut (or Path) after building yours
+    // The city expansion (city.rs)
+    DropProgress,          // over 4 progress cards: drop one (DropCard)
+    Pillage,               // the raiders won: one of your Lodges becomes a Hut (Pillage)
+    Displaced { at: u16, level: u8, active: bool }, // your knight was pushed off this corner: move it (KnightMove)
+    DrawCard,              // tied best defenders: draw a progress card from a deck of your choice (Choose)
+    Name { card: u8 },     // name a card kind for this progress card (Choose)
+    Target { card: u8 },   // the player this progress card is played against (Choose)
+    TakeCards { from: u8, left: u8 }, // Guild Dues: take cards of your choice from this player (TakeCard)
+    Spy { from: u8 },      // Spy: take one of this player's progress cards, or none (TakeProgress / Skip)
+    Harbour { asked: u8 }, // Harbour Deal: offer a resource to each player with commodities (Gift / Skip)
+    PayGoods { to: u8 },   // Harbour Deal: give this player a commodity of your choice (Gift)
+    Smith { left: u8 },    // Smithing: promote up to this many knights for free (Promote / Skip)
+    FreeWall,              // Engineer: a wall for free (Wall)
+    Swap,                  // Number Swap: swap two number discs (SwapNumbers)
+    PlaceMerchant,         // Merchant: place the merchant (Merchant)
+    RemovePath,            // Diplomacy: remove an open Path (RemovePath)
+    Expel,                 // Intrigue: push off a knight touching your routes (Expel)
+    GiveUpKnight { to: u8 }, // Treason: remove one of your knights (RemoveKnight)
+    TreasonKnight { level: u8, active: bool }, // Treason: place a knight of yours no stronger (Recruit / Skip)
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -33,6 +52,24 @@ impl Decision {
             Decision::Rob => "rob",
             Decision::Damage => "damage",
             Decision::Neutral { .. } => "neutral",
+            Decision::DropProgress => "dropProgress",
+            Decision::Pillage => "pillage",
+            Decision::Displaced { .. } => "displaced",
+            Decision::DrawCard => "drawCard",
+            Decision::Name { .. } => "name",
+            Decision::Target { .. } => "target",
+            Decision::TakeCards { .. } => "takeCards",
+            Decision::Spy { .. } => "spy",
+            Decision::Harbour { .. } => "harbour",
+            Decision::PayGoods { .. } => "payGoods",
+            Decision::Smith { .. } => "smith",
+            Decision::FreeWall => "freeWall",
+            Decision::Swap => "swap",
+            Decision::PlaceMerchant => "placeMerchant",
+            Decision::RemovePath => "removePath",
+            Decision::Expel => "expel",
+            Decision::GiveUpKnight { .. } => "giveUpKnight",
+            Decision::TreasonKnight { .. } => "treasonKnight",
         }
     }
 }
@@ -127,6 +164,7 @@ impl Game {
                     }
                 }
             }
+            _ => self.legal_city_decision(d, out),
         }
     }
 

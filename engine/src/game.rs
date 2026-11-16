@@ -13,6 +13,7 @@ use crate::rng::Rng;
 use crate::settings::Settings;
 use std::sync::Arc;
 
+mod city;
 mod cloth;
 mod pending;
 mod pirates;
@@ -27,6 +28,7 @@ mod variants;
 mod wonders;
 pub use wonders::{BRIDGE, NO_SETUP, WALL, WONDERS, Wonder};
 pub use two::NEUTRAL;
+pub use city::*;
 pub use events::{EVENTS, Event, event_card};
 pub use pending::{Decision, Pending};
 pub use sea::{GOLD, P_SHIP, SHIP, SHIP_COST};
@@ -81,6 +83,28 @@ pub enum Action {
     ClaimWonder(u8), // Wonders: claim this wonder (its requirement met)
     BuildWonder,     // Wonders: build the next level of your wonder
     PlaceMarket(u16), // The Forgotten Tribe: place a market you took on this coastal edge
+    // The city expansion (city.rs)
+    Wall(u16),            // a wall under your Lodge on this corner
+    Improve(u8),          // the next level on track 0 science, 1 trade, 2 politics
+    Recruit(u16),         // a basic knight on this corner (Treason: your strongest allowed)
+    Promote(u16),         // the knight on this corner
+    Activate(u16),        // the knight on this corner
+    KnightMove(u16, u16), // your knight from this corner to that one (a displaced knight: its new corner)
+    Displace(u16, u16),   // your knight from this corner pushes off the weaker knight on that one
+    Chase(u16),           // your knight on this corner chases the squall (or the pirate): move it
+    PlayCard(u8),         // a progress card (city.rs CARDS)
+    FixedRoll(u8, u8),    // Fixed Roll: the production dice (red, yellow), then roll the event die
+    DropCard(u8),         // a progress card over the limit
+    Choose(u8),           // a deck, a card kind or a player, for the decision being made
+    TakeCard(u8, u8),     // Guild Dues: one card of this kind from this player
+    TakeProgress(u8, u8), // Spy: this progress card from this player
+    SwapNumbers(u16, u16), // Number Swap: these two hexes' numbers
+    RemovePath(u16),      // Diplomacy: this open Path
+    Merchant(u16),        // Merchant: place it on this hex
+    Expel(u16),           // Intrigue: push off the knight on this corner
+    RemoveKnight(u16),    // Treason: remove your knight on this corner
+    Pillage(u16),         // the raiders take your Lodge on this corner
+    Skip,                 // end an optional choice (Harbour Deal, Smithing, Spy, Treason)
     NeutralHut(u8, u16),  // the two-player variant: a Hut for this neutral colour on this corner
     NeutralPath(u8, u16), // ... a Path for this neutral colour on this edge
     CashPilot,       // discard a played Pilot for 2 trade tokens
@@ -306,6 +330,7 @@ pub struct Game {
     // players. `owner` is whose turn it is; `current` is who's acting.
     pub owner: u8,
     pub paired: bool,
+    pub cs: CityState,                // the city expansion (city.rs); empty without it
     pub rng: Rng,
 }
 
@@ -454,11 +479,15 @@ impl Game {
             offers_made: 0,
             owner: 0,
             paired: false,
+            cs: CityState::default(),
             rng,
             board,
         };
         if g.settings().variant_events {
             g.new_event_deck();
+        }
+        if g.city() {
+            g.city_setup(true);
         }
         if g.settings().variant_two {
             g.place_neutrals();
@@ -521,7 +550,7 @@ impl Game {
     // ---- Renown ----
 
     pub fn huts(&self, p: usize) -> u8 {
-        self.settings().pieces_hut - self.pieces[p][P_HUT]
+        self.settings().pieces_hut - self.pieces[p][P_HUT] + self.cs.hut_debt[p]
     }
     pub fn lodges(&self, p: usize) -> u8 {
         self.settings().pieces_lodge - self.pieces[p][P_LODGE]
@@ -531,6 +560,7 @@ impl Game {
         self.huts(p) as u32 + 2 * self.lodges(p) as u32 + self.held[p][Project::Lighthouse as usize] as u32
             + self.title_renown(p)
             + self.token_renown(p)
+            + self.city_renown(p)
     }
 
     // ---- Winning (F10 in EXPANSIONS.md) ----
@@ -561,6 +591,7 @@ impl Game {
         self.board.corner_land[c]
             && self.corner_owner[c] == NOBODY
             && listed(&g.corner_corners[c]).all(|n| self.corner_owner[n] == NOBODY)
+            && !self.has_knight(c) // the city expansion: a knight blocks the spot
     }
 
     // One of p's Paths touches this corner
@@ -574,13 +605,34 @@ impl Game {
         self.edge_owner[e] == NOBODY
             && self.board.graph.edge_corners[e].iter().any(|&c| {
                 let c = c as usize;
-                self.corner_owner[c] == p || (self.corner_owner[c] == NOBODY && self.touches_own(p, c, PATH))
+                self.corner_owner[c] == p || (self.corner_owner[c] == NOBODY && !self.foreign_knight(p, c) && self.touches_own(p, c, PATH))
             })
     }
 
-    // The bank's rate for giving this resource: 4, 3 with a general market, 2 with its own market
+    // The bank's rate for giving this resource: 4, 3 with a general market, 2 with its own market.
+    // The city expansion: commodities 4 or 3 (general market), 2 at Trade level 3; Trade Fleet's kind
+    // 2 this turn; the merchant's hex resource 2 for its owner
     pub fn rate(&self, p: u8, r: usize) -> u8 {
         let mut best = 4;
+        if self.city() {
+            let cs = &self.cs;
+            if cs.fleet as usize == r && self.current == p {
+                return 2;
+            }
+            if r >= 5 {
+                if cs.levels[p as usize][1] >= 3 {
+                    return 2;
+                }
+                let general = (0..self.corner_owner.len()).any(|c| {
+                    let m = self.board.corner_market[c];
+                    self.corner_owner[c] == p && m != NOBODY && self.board.market_kind[m as usize] == ANY
+                });
+                return if general { 3 } else { 4 };
+            }
+            if cs.merchant_owner == p && cs.merchant != NONE && self.board.resource[cs.merchant as usize] as usize == r {
+                return 2;
+            }
+        }
         for c in 0..self.corner_owner.len() {
             if self.corner_owner[c] != p {
                 continue;
@@ -633,6 +685,7 @@ impl Game {
                 out.push(Action::Roll);
                 self.legal_plays(pu, out);
                 self.legal_tokens(pu, out);
+                self.legal_fixed_roll(pu, out);
             }
             Phase::SecondRoll => out.push(Action::Roll),
             Phase::Decide => {
@@ -672,7 +725,8 @@ impl Game {
             Phase::Main => {
                 let hand = &self.hands[pu];
                 let pieces = &self.pieces[pu];
-                if afford(hand, &LODGE_COST) && pieces[P_LODGE] > 0 {
+                let medicine = self.cs.medicine && afford(hand, &MEDICINE_COST);
+                if (medicine || afford(hand, &LODGE_COST)) && pieces[P_LODGE] > 0 {
                     for c in 0..g.corners() {
                         if self.corner_owner[c] == p && self.corner_kind[c] == HUT {
                             out.push(Action::Lodge(c as u16));
@@ -702,9 +756,10 @@ impl Game {
                 if self.sea() && !self.ship_moved && !self.pirate_islands() {
                     self.legal_ship_moves(p, out);
                 }
-                for give in 0..5 {
+                let kinds = if self.city() { CARD_KINDS } else { 5 };
+                for give in 0..kinds {
                     if hand[give] >= self.rate(p, give) {
-                        for get in 0..5 {
+                        for get in 0..kinds {
                             if get != give && self.bank(get) > 0 {
                                 out.push(Action::Trade(give as u8, get as u8));
                             }
@@ -724,6 +779,7 @@ impl Game {
                 self.legal_tokens(pu, out);
                 self.legal_wonders(pu, out);
                 self.legal_markets(pu, out);
+                self.legal_city(p, out);
                 if let Some(o) = &self.offer {
                     out.push(Action::Withdraw);
                     for s in 0..self.players {
@@ -735,7 +791,12 @@ impl Game {
                         }
                     }
                 }
-                out.push(Action::EndTurn);
+                // The city expansion: at most 4 progress cards when the turn ends
+                if self.must_drop(pu) {
+                    self.legal_drops(pu, out);
+                } else {
+                    out.push(Action::EndTurn);
+                }
             }
             Phase::FreeBuild { .. } => {
                 // Road Crew: Paths, or with the sea, ships too (any mix of 2)
@@ -938,10 +999,19 @@ impl Game {
         match a {
             Action::Hut(c) => self.place_hut(p, c as usize),
             Action::Lodge(c) => {
-                pay(&mut self.hands[pu], &LODGE_COST);
+                if self.cs.medicine && afford(&self.hands[pu], &MEDICINE_COST) {
+                    pay(&mut self.hands[pu], &MEDICINE_COST);
+                    self.cs.medicine = false;
+                } else {
+                    pay(&mut self.hands[pu], &LODGE_COST);
+                }
                 self.corner_kind[c as usize] = LODGE;
                 self.pieces[pu][P_LODGE] -= 1;
-                self.pieces[pu][P_HUT] += 1;
+                if self.cs.hut_debt[pu] > 0 {
+                    self.cs.hut_debt[pu] -= 1; // a pillaged Lodge's Hut that had no piece
+                } else {
+                    self.pieces[pu][P_HUT] += 1;
+                }
                 self.refresh_ports();
             }
             Action::Path(e) => self.place_edge(p, e as usize, PATH),
@@ -1018,6 +1088,11 @@ impl Game {
                     self.squall = h;
                 }
             }
+            Action::Roll if self.city() => {
+                // The city expansion: three dice; the event die's raiders and progress cards come first
+                let (total, decisions) = self.city_roll();
+                self.decide_then(decisions, Phase::Rolled { total });
+            }
             Action::Roll => {
                 if self.settings().variant_events {
                     self.draw_event();
@@ -1031,6 +1106,9 @@ impl Game {
                         self.decide_then(winners, Phase::Rolled { total });
                     }
                 }
+            }
+            Action::Gift(to, r) if matches!(self.deciding().map(|d| d.decision), Some(Decision::Harbour { .. })) => {
+                self.harbour_gift(pu, to, r);
             }
             Action::Gift(to, r) => {
                 self.hands[pu][r as usize] -= 1;
@@ -1053,6 +1131,16 @@ impl Game {
                 self.hands[pu][r as usize] -= 1;
                 let Some(Pending { decision: Decision::Discard { left }, .. }) = self.deciding() else { unreachable!("a discard is decided") };
                 self.decided(if left > 1 { Some(Decision::Discard { left: left - 1 }) } else { None });
+            }
+            Action::Squall(h) if self.cs.tax => {
+                // Taxes: a card from every player with a building there
+                self.squall = h;
+                self.at_sea = false;
+                self.cs.tax = false;
+                for v in self.victims() {
+                    self.steal(v);
+                }
+                self.phase = self.back;
             }
             Action::Squall(h) => {
                 self.squall = h;
@@ -1162,6 +1250,16 @@ impl Game {
                 self.swap(s as usize, give, get);
             }
             Action::Withdraw => self.offer = None,
+            Action::Wall(_) | Action::Improve(_) | Action::Recruit(_) | Action::Promote(_) | Action::Activate(_)
+            | Action::KnightMove(..) | Action::Displace(..) | Action::Chase(_) | Action::PlayCard(_) | Action::FixedRoll(..)
+            | Action::DropCard(_) | Action::Choose(_) | Action::TakeCard(..) | Action::TakeProgress(..) | Action::SwapNumbers(..)
+            | Action::RemovePath(_) | Action::Merchant(_) | Action::Expel(_) | Action::RemoveKnight(_) | Action::Pillage(_)
+            | Action::Skip => {
+                self.apply_city(a);
+                if self.over() {
+                    return;
+                }
+            }
             Action::EndTurn => {
                 self.end_phase();
                 if self.over() {
@@ -1201,8 +1299,14 @@ impl Game {
             pay(&mut self.hands[pu], &HUT_COST);
         }
         self.corner_owner[c] = p;
-        self.corner_kind[c] = HUT;
-        self.pieces[pu][P_HUT] -= 1;
+        // The city expansion: the second setup building is a Lodge
+        if setup && self.city() && self.setup_step as usize >= self.players {
+            self.corner_kind[c] = LODGE;
+            self.pieces[pu][P_LODGE] -= 1;
+        } else {
+            self.corner_kind[c] = HUT;
+            self.pieces[pu][P_HUT] -= 1;
+        }
         let mut gold = [0u8; MAX_PLAYERS];
         if setup {
             // The second round's Hut collects one of each resource around it (a gold field: one of
@@ -1313,7 +1417,8 @@ impl Game {
     // Returns the gold each player is owed (a resource of their choice each: pending.rs decides them)
     pub(crate) fn produce(&mut self, total: u8) -> [u8; MAX_PLAYERS] {
         let g = &self.board.graph;
-        let mut owed = [[0u8; 5]; MAX_PLAYERS];
+        let mut owed = [[0u8; CARD_KINDS]; MAX_PLAYERS];
+        let city = self.city();
         let mut gold = [0u8; MAX_PLAYERS];
         for &h in &self.board.by_number[total as usize] {
             if h == self.squall {
@@ -1330,6 +1435,10 @@ impl Game {
                     let n = if self.epidemic { 1 } else { self.corner_kind[c as usize] };
                     if r == GOLD as usize {
                         gold[o as usize] += n;
+                    } else if let (true, LODGE, Some(goods)) = (city, self.corner_kind[c as usize], Game::lodge_goods(r)) {
+                        // The city expansion: a Lodge makes 1 resource + 1 commodity here
+                        owed[o as usize][r] += 1;
+                        owed[o as usize][goods] += 1;
                     } else {
                         owed[o as usize][r] += n;
                     }
@@ -1337,7 +1446,7 @@ impl Game {
             }
         }
         self.short = 0;
-        for r in 0..5 {
+        for r in 0..if city { CARD_KINDS } else { 5 } {
             let wanted: u32 = owed.iter().map(|o| o[r] as u32).sum();
             let left = self.bank(r);
             if wanted > left {
@@ -1358,7 +1467,7 @@ impl Game {
     // Cards of a resource left in the bank: the game's total less what players hold (u32::MAX when
     // the bank never runs out)
     pub fn bank(&self, r: usize) -> u32 {
-        let cap = self.settings().bank_cards as u32;
+        let cap = if r >= 5 { self.settings().bank_goods } else { self.settings().bank_cards } as u32;
         if cap == 0 {
             return u32::MAX;
         }
@@ -1424,7 +1533,7 @@ impl Game {
     // at one of p's own buildings (the sea expansion).
     fn extend_line(&self, p: u8, c: usize, used: &mut Vec<u16>, len: u8, came: u8) -> u8 {
         let owner = self.corner_owner[c];
-        if len > 0 && owner != NOBODY && owner != p {
+        if len > 0 && ((owner != NOBODY && owner != p) || self.foreign_knight(p, c)) {
             return len;
         }
         let g = &self.board.graph;

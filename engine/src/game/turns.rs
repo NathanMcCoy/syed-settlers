@@ -11,6 +11,7 @@ use super::*;
 impl Game {
     // Where the production number comes from: two dice
     pub(super) fn production_roll(&mut self) -> u8 {
+        // (the city expansion rolls its own three dice: city.rs city_roll)
         let dice = [self.rng.below(6) as u8 + 1, self.rng.below(6) as u8 + 1];
         self.last_dice = dice;
         dice[0] + dice[1]
@@ -25,9 +26,8 @@ impl Game {
         self.back = next;
         if total == 7 {
             // Everyone over the hand limit loses half, in seat order, then the squall moves
-            let over = self.settings().discard_over as u32;
             let mut discards: Vec<Pending> = (0..self.players)
-                .filter(|&p| self.cards(p) > over)
+                .filter(|&p| self.cards(p) > self.hand_limit(p))
                 .map(|p| Pending { seat: p as u8, decision: Decision::Discard { left: (self.cards(p) / 2) as u8 } })
                 .collect();
             if self.pirate_islands() {
@@ -36,14 +36,20 @@ impl Game {
                 self.decide_then(discards, next);
                 return;
             }
-            self.decide_then(discards, Phase::MoveSquall { anywhere: false });
+            // The city expansion: before the raiders first land there's no squall to move
+            let squall = if self.city() && !self.cs.landed { next } else { Phase::MoveSquall { anywhere: false } };
+            self.decide_then(discards, squall);
             return;
         }
         // Gold fields' owners then choose their resources (pending.rs), starting with this player
+        let before: [u32; MAX_PLAYERS] = std::array::from_fn(|p| if p < self.players { self.cards(p) } else { 0 });
         let gold = self.produce(total);
         self.village_production(total);
         self.epidemic = false;
-        let decisions = self.gold_decisions(&gold);
+        let mut decisions = self.gold_decisions(&gold);
+        if self.city() {
+            decisions.extend(self.science_picks(&before));
+        }
         self.decide_then(decisions, next);
     }
 
@@ -51,6 +57,7 @@ impl Game {
     pub(super) fn end_phase(&mut self) {
         // The Pirate Islands: a line at its fortress attacks it as the turn ends
         self.attack_fortress(self.current as usize);
+        self.city_end_phase();
         self.offer = None;
         self.offers_made = 0;
         self.bought = [0; 5];

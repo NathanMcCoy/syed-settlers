@@ -16,6 +16,10 @@
 //   counter S G,G,G,G,G R,R,R,R,R          seat S proposes instead: what the offerer would give and get
 //   accept S                               the offerer takes seat S's counter-offer
 //   deal S | withdraw                      complete the offer with seat S (who accepted), or take it back
+// The city expansion (K a progress card by name, e.g. irrigation; T a track 0 science, 1 trade, 2 politics):
+//   wall C | improve T | recruit C | promote C | activate C | knightmove C D | displace C D | chase C
+//   card K | fixedroll R Y | dropcard K | choose X | takecard S R | takeprogress S K | swap H H
+//   removepath E | merchant H | expel C | removeknight C | pillage C | skip
 use crate::game::*;
 use crate::island::{ANY, Island, RESOURCES};
 use crate::json;
@@ -57,7 +61,33 @@ pub fn action_text(a: Action) -> String {
         Action::Answer(s, yes) => format!("answer {s} {}", if yes { "yes" } else { "no" }),
         Action::Deal(s) => format!("deal {s}"),
         Action::Withdraw => "withdraw".into(),
+        Action::Wall(c) => format!("wall {c}"),
+        Action::Improve(t) => format!("improve {t}"),
+        Action::Recruit(c) => format!("recruit {c}"),
+        Action::Promote(c) => format!("promote {c}"),
+        Action::Activate(c) => format!("activate {c}"),
+        Action::KnightMove(a, b) => format!("knightmove {a} {b}"),
+        Action::Displace(a, b) => format!("displace {a} {b}"),
+        Action::Chase(c) => format!("chase {c}"),
+        Action::PlayCard(k) => format!("card {}", CARDS[k as usize].0),
+        Action::FixedRoll(a, b) => format!("fixedroll {a} {b}"),
+        Action::DropCard(k) => format!("dropcard {}", CARDS[k as usize].0),
+        Action::Choose(x) => format!("choose {x}"),
+        Action::TakeCard(s, k) => format!("takecard {s} {k}"),
+        Action::TakeProgress(s, k) => format!("takeprogress {s} {}", CARDS[k as usize].0),
+        Action::SwapNumbers(a, b) => format!("swap {a} {b}"),
+        Action::RemovePath(e) => format!("removepath {e}"),
+        Action::Merchant(h) => format!("merchant {h}"),
+        Action::Expel(c) => format!("expel {c}"),
+        Action::RemoveKnight(c) => format!("removeknight {c}"),
+        Action::Pillage(c) => format!("pillage {c}"),
+        Action::Skip => "skip".into(),
     }
+}
+
+// A progress card by name
+fn card_named(word: Option<&&str>, text: &str) -> Result<u8, String> {
+    word.and_then(|w| CARDS.iter().position(|c| c.0 == *w)).map(|k| k as u8).ok_or_else(|| format!("unknown progress card in \"{text}\""))
 }
 
 // 5 counts (resources), or 8 when commodities are in it (the city expansion)
@@ -138,11 +168,33 @@ pub fn parse_action(text: &str) -> Result<Action, String> {
         }),
         Some("deal") => Action::Deal(small(1)?),
         Some("withdraw") => Action::Withdraw,
+        Some("wall") => Action::Wall(num(1)?),
+        Some("improve") => Action::Improve(small(1)?),
+        Some("recruit") => Action::Recruit(num(1)?),
+        Some("promote") => Action::Promote(num(1)?),
+        Some("activate") => Action::Activate(num(1)?),
+        Some("knightmove") => Action::KnightMove(num(1)?, num(2)?),
+        Some("displace") => Action::Displace(num(1)?, num(2)?),
+        Some("chase") => Action::Chase(num(1)?),
+        Some("card") => Action::PlayCard(card_named(words.get(1), text)?),
+        Some("fixedroll") => Action::FixedRoll(small(1)?, small(2)?),
+        Some("dropcard") => Action::DropCard(card_named(words.get(1), text)?),
+        Some("choose") => Action::Choose(small(1)?),
+        Some("takecard") => Action::TakeCard(small(1)?, small(2)?),
+        Some("takeprogress") => Action::TakeProgress(small(1)?, card_named(words.get(2), text)?),
+        Some("swap") => Action::SwapNumbers(num(1)?, num(2)?),
+        Some("removepath") => Action::RemovePath(num(1)?),
+        Some("merchant") => Action::Merchant(num(1)?),
+        Some("expel") => Action::Expel(num(1)?),
+        Some("removeknight") => Action::RemoveKnight(num(1)?),
+        Some("pillage") => Action::Pillage(num(1)?),
+        Some("skip") => Action::Skip,
         _ => return Err(format!("unknown move \"{text}\"")),
     };
     let expected = match a {
-        Action::Roll | Action::EndTurn | Action::Withdraw | Action::BuildWonder | Action::CashPilot | Action::ForceTrade | Action::SquallHome => 1,
+        Action::Roll | Action::EndTurn | Action::Withdraw | Action::BuildWonder | Action::CashPilot | Action::ForceTrade | Action::SquallHome | Action::Skip => 1,
         Action::Trade(..) | Action::Answer(..) | Action::MoveShip(..) | Action::Gift(..) | Action::NeutralHut(..) | Action::NeutralPath(..) => 3,
+        Action::KnightMove(..) | Action::Displace(..) | Action::FixedRoll(..) | Action::TakeCard(..) | Action::TakeProgress(..) | Action::SwapNumbers(..) => 3,
         Action::Offer { open, .. } => if open { 5 } else { 4 },
         Action::Counter { .. } => 4,
         _ => 2,
@@ -266,7 +318,7 @@ pub fn view_json(g: &Game, seat: u8) -> String {
             "{{\"phase\":\"{}\",\"current\":{},\"toAct\":{},\"turn\":{},\"lastRoll\":{},\"squall\":{},\"winner\":{},",
             "\"buildings\":[{}],\"roads\":[{}],\"players\":[{}],\"longestPath\":{},\"mostPilots\":{},",
             "\"row\":{},\"deck\":{},\"lastTake\":{},\"win\":{},\"you\":{},\"hand\":{},\"rates\":{},\"legal\":{},",
-            "\"offer\":{},\"canOffer\":{},\"offersLeft\":{},\"dice\":{},\"bank\":{},\"short\":{},\"handLimit\":{},\"round\":{},\"roundLimit\":{},\"byRounds\":{},\"bought\":{},\"turnOf\":{},\"paired\":{},\"titles\":{},\"deciding\":{},\"pirate\":{},\"shipMoved\":{},\"event\":{},\"damaged\":{},\"revealed\":{},\"villages\":{},\"clothEnded\":{},\"wonders\":{},\"markers\":{},\"prizes\":{},\"heldMarkets\":{},\"markets\":{},\"fleet\":{},\"forts\":{},\"warships\":{},\"lastAttack\":{}}}"
+            "\"offer\":{},\"canOffer\":{},\"offersLeft\":{},\"dice\":{},\"bank\":{},\"short\":{},\"handLimit\":{},\"round\":{},\"roundLimit\":{},\"byRounds\":{},\"bought\":{},\"turnOf\":{},\"paired\":{},\"titles\":{},\"deciding\":{},\"pirate\":{},\"shipMoved\":{},\"event\":{},\"damaged\":{},\"revealed\":{},\"villages\":{},\"clothEnded\":{},\"wonders\":{},\"markers\":{},\"prizes\":{},\"heldMarkets\":{},\"markets\":{},\"fleet\":{},\"forts\":{},\"warships\":{},\"lastAttack\":{},\"city\":{}}}"
         ),
         // While decisions are being made (pending.rs), the phase is named after the first one ("discard")
         g.deciding().map_or(phase_name(g.phase), |d| d.decision.name()), g.current, g.to_act(), g.turn,
@@ -339,6 +391,57 @@ pub fn view_json(g: &Game, seat: u8) -> String {
         },
         list((0..g.warship.len()).filter(|&e| g.warship[e])),
         if g.last_attack[0] == NOBODY { "null".into() } else { list(g.last_attack) },
+        city_json(g, seat, mine),
+    )
+}
+
+// The city expansion's part of the view (null without it). A seat sees its own progress cards and
+// commodities; for everyone else only counts.
+fn city_json(g: &Game, seat: u8, mine: bool) -> String {
+    if !g.city() {
+        return "null".into();
+    }
+    let cs = &g.cs;
+    let names = |cards: &[u8]| list(cards.iter().map(|&k| json::string(CARDS[k as usize].0)));
+    let me = seat as usize;
+    // While this seat makes a Spy decision, it sees that player's progress cards
+    let spied = match g.deciding() {
+        Some(Pending { seat: s, decision: Decision::Spy { from } }) if mine && s == seat => names(&cs.progress[from as usize]),
+        _ => "null".into(),
+    };
+    format!(
+        concat!(
+            "{{\"levels\":{},\"walls\":{},\"metro\":{},\"knights\":{},\"raiders\":{},\"raidersAt\":{},\"landed\":{},",
+            "\"lastRaid\":{},\"eventDie\":{},\"decks\":{},\"progress\":{},\"progressCounts\":{},\"cardRenown\":{},",
+            "\"merchant\":{},\"goods\":{},\"goodsRates\":{},\"goodsBank\":{},\"improveCost\":{},\"crane\":{},\"medicine\":{},",
+            "\"fleet\":{},\"spied\":{},\"drawn\":{},\"handLimits\":{},\"defence\":{},\"strength\":{}}}"
+        ),
+        list((0..g.players).map(|p| list(cs.levels[p]))),
+        list((0..cs.walls.len()).filter(|&c| cs.walls[c])),
+        list((0..3).map(|t| if cs.metro_owner[t] == NOBODY { "null".to_string() } else { format!("[{},{}]", cs.metro[t], cs.metro_owner[t]) })),
+        // [corner, owner, level, active, activated this turn]
+        list((0..cs.knight_owner.len()).filter(|&c| cs.knight_owner[c] != NOBODY).map(|c| {
+            format!("[{c},{},{},{},{}]", cs.knight_owner[c], cs.knight_level[c], cs.knight_active[c], cs.knight_fresh[c])
+        })),
+        cs.raiders, g.settings().city_raiders, cs.landed,
+        if cs.last_raid == [0, 0, 0] { "null".into() } else { list(cs.last_raid) },
+        if cs.event_die == NOBODY { "null".into() } else { cs.event_die.to_string() },
+        list(cs.decks.iter().map(|d| d.len())),
+        if mine { names(&cs.progress[me]) } else { "null".into() },
+        list((0..g.players).map(|p| cs.progress[p].len())),
+        list(&cs.card_renown[..g.players]),
+        if cs.merchant_owner == NOBODY { "null".into() } else { format!("[{},{}]", cs.merchant, cs.merchant_owner) },
+        if mine { list(g.hands[me][5..].iter()) } else { "null".into() },
+        if mine { list((5..8).map(|k| g.rate(seat, k))) } else { "null".into() },
+        if g.settings().bank_goods == 0 { "null".into() } else { list((5..8).map(|k| g.bank(k))) },
+        if mine { list((0..3).map(|t| g.improve_cost(me, t))) } else { "null".into() },
+        cs.crane, cs.medicine,
+        if cs.fleet == NOBODY { "null".into() } else { cs.fleet.to_string() },
+        spied,
+        list(cs.drawn.iter().map(|&(s, d)| format!("[{s},{d}]"))),
+        list((0..g.players).map(|p| g.hand_limit(p))),
+        list((0..g.players).map(|p| g.defence(p))),
+        g.raider_strength(),
     )
 }
 
