@@ -25,6 +25,7 @@ pub enum Terrain {
     Village, // the sea scenario Cloth: a village trading cloth (a number, no resource)
     Lake,    // the variants box's Fishing: fish tokens on 2, 3, 11 and 12 (no resource)
     Oasis,   // the variants box's Merchant trains: the watering hole the trains start from (no resource)
+    Keep,    // the variants box's Raider attack: the castle in the middle (no resource)
 }
 use Terrain::*;
 
@@ -41,11 +42,11 @@ impl Terrain {
             Fields => Some(2),
             Mine => Some(3),
             Paddy => Some(4),
-            Sea | Dunes | Gold | Fog | Village | Lake | Oasis => None,
+            Sea | Dunes | Gold | Fog | Village | Lake | Oasis | Keep => None,
         }
     }
     pub fn name(self) -> &'static str {
-        ["sea", "forest", "quarry", "fields", "mine", "paddy", "dunes", "gold", "fog", "village", "lake", "oasis"][self as usize]
+        ["sea", "forest", "quarry", "fields", "mine", "paddy", "dunes", "gold", "fog", "village", "lake", "oasis", "keep"][self as usize]
     }
 }
 
@@ -68,6 +69,12 @@ const LARGE_NUMBERS: [u8; 28] = [2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5, 6, 6, 6, 8, 8,
 // usual 28 producing hexes, otherwise number_tokens()
 pub fn tokens_for(s: &Settings) -> Vec<u8> {
     let producing = main_size(s) - s.island_dunes as usize;
+    // Raider attack: the usual 18 less one 11 (the 2 and 12 stay: the first raiders land there)
+    if s.box_scenario == 4 && !s.island_large && producing == 17 {
+        let mut list = BASE_NUMBERS.to_vec();
+        list.remove(list.iter().position(|&n| n == 11).unwrap());
+        return list;
+    }
     if s.island_large && producing == LARGE_NUMBERS.len() { LARGE_NUMBERS.to_vec() } else { number_tokens(producing) }
 }
 
@@ -273,6 +280,10 @@ fn attempt_island(s: &Settings, rng: &mut Rng) -> Option<Island> {
     if s.box_scenario == 3 {
         fishing_lake(rng, &mut land, 0, Oasis)?; // the watering hole: the very middle
     }
+    if s.box_scenario == 4 {
+        fishing_lake(rng, &mut land, 0, Keep)?;  // the Keep in the middle,
+        fishing_lake(rng, &mut land, 1, Dunes)?; // the Dunes beside it
+    }
     if s.sea && matches!(s.sea_scenario, 1 | 5 | 8) {
         land.extend(small_islands(rng, &main_set, s)?);
     } else if s.sea {
@@ -335,7 +346,7 @@ fn attempt_island(s: &Settings, rng: &mut Rng) -> Option<Island> {
 // (Merchant trains use the same for the watering hole, `reach` 0: the centre hex itself)
 fn fishing_lake(rng: &mut Rng, land: &mut [Hex], reach: i32, terrain: Terrain) -> Option<()> {
     let dunes = land.iter().position(|h| h.terrain == Dunes)?;
-    let inner: Vec<usize> = (0..land.len()).filter(|&i| land[i].region == 0 && land[i].cell.distance(Cell::new(0, 0)) <= reach).collect();
+    let inner: Vec<usize> = (0..land.len()).filter(|&i| land[i].region == 0 && land[i].terrain != Keep && land[i].cell.distance(Cell::new(0, 0)) <= reach).collect();
     let i = *rng.pick(&inner);
     let (t, n) = (land[i].terrain, land[i].number);
     land[dunes].terrain = t;

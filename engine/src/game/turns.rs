@@ -30,7 +30,7 @@ impl Game {
                 .filter(|&p| self.cards(p) > self.hand_limit(p))
                 .map(|p| Pending { seat: p as u8, decision: Decision::Discard { left: (self.cards(p) / 2) as u8 } })
                 .collect();
-            if self.pirate_islands() {
+            if self.pirate_islands() || self.raider_attack() {
                 // No squall: the roller robs anyone
                 discards.push(Pending { seat: self.current, decision: Decision::Rob });
                 self.decide_then(discards, next);

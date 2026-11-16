@@ -186,6 +186,7 @@ for (const [name, type] of Object.entries(BROWSERS)) {
     ['the variants box scenario Fishing', 3, { 'box.scenario': 1 }],
     ['the variants box scenario Rivers', 3, { 'box.scenario': 2 }],
     ['the variants box scenario Merchant trains', 3, { 'box.scenario': 3 }],
+    ['the variants box scenario Raider attack', 3, { 'box.scenario': 4 }],
     ['the city expansion', 3, { city: true }],
     ['the city expansion and the sea (New Shores)', 3, { city: true, sea: true, 'sea.scenario': 1 }],
   ]) {
@@ -218,6 +219,10 @@ for (const [name, type] of Object.entries(BROWSERS)) {
         if (settings['sea.scenario'] === 7) {
           assert.equal(await page.locator('#board [data-fleet]').count(), 1, 'the fleet');
           assert.equal(await page.locator('#board .squall').count(), 0, 'no squall');
+        }
+        if (settings['box.scenario'] === 4) {
+          assert.equal(await page.locator('#board polygon[data-terrain="keep"]').count(), 1, 'the Keep');
+          assert.ok(await page.locator('#board .raiders').count() >= 1, 'raiders on the coast');
         }
         if (settings['box.scenario'] === 3) assert.equal(await page.locator('#board polygon[data-terrain="oasis"]').count(), 1, 'the watering hole');
         if (settings['box.scenario'] === 2) {

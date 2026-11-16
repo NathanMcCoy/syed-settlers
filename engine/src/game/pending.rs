@@ -36,6 +36,11 @@ pub enum Decision {
     // Merchant trains (merchant.rs)
     Bid,                   // bid Fish and Grain for where the wagon goes (Bid)
     PlaceWagon,            // place the wagon (Wagon)
+    // Raider attack (raiders.rs)
+    Capture,               // take a raider prisoner from a coastal hex (Capture)
+    PlaceGuard { keep: bool }, // place a knight on an edge of the Keep, or any free edge (PlaceGuard)
+    MoveRaider { from: u16 }, // move a raider between coastal hexes, not from `from` (MoveRaider)
+    MoveGuards,            // the end of your turn: move your knights (GuardMove / GuardRun / Skip)
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -75,6 +80,10 @@ impl Decision {
             Decision::TreasonKnight { .. } => "treasonKnight",
             Decision::Bid => "bid",
             Decision::PlaceWagon => "placeWagon",
+            Decision::Capture => "capture",
+            Decision::PlaceGuard { .. } => "placeGuard",
+            Decision::MoveRaider { .. } => "moveRaider",
+            Decision::MoveGuards => "moveGuards",
         }
     }
 }
@@ -176,6 +185,7 @@ impl Game {
                 }
             }
             Decision::PlaceWagon => out.extend(self.wagon_spots().into_iter().map(|(e, _, _)| Action::Wagon(e as u16))),
+            Decision::Capture | Decision::PlaceGuard { .. } | Decision::MoveRaider { .. } | Decision::MoveGuards => self.legal_raider_decision(d, out),
             _ => self.legal_city_decision(d, out),
         }
     }
@@ -187,6 +197,10 @@ impl Game {
             Phase::Rolled { total } => self.rolled(total),
             Phase::VoteDone => self.resolve_vote(),
             Phase::TurnEnd => self.end_phase(),
+            Phase::ExpelDone => {
+                self.expel();
+                self.end_phase();
+            }
             _ => {}
         }
     }

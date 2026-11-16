@@ -385,6 +385,25 @@ function drawPieces(v, before) {
   }
   drawCityPieces(v);
   layers.squall.replaceChildren();
+  // Raider attack: raiders on the coast (conquered at 3: the hex greys), knights on edges
+  if (v.raiders) {
+    for (const p of document.querySelectorAll('#board polygon.conquered')) p.classList.remove('conquered');
+    v.raiders.coast.forEach((h, i) => {
+      const n = v.raiders.on[i];
+      if (!n) return;
+      const c = centre(board.island.hexes[h]);
+      if (n >= 3) document.querySelector(`#board polygon[data-hex="${h}"]`)?.classList.add('conquered');
+      const t = el('text', { x: c.x - SIZE * 0.45, y: c.y - SIZE * 0.3, class: 'marker raiders', 'data-raiders': h }, `☗${n}`);
+      t.append(el('title', {}, n >= 3 ? 'Conquered by 3 raiders: no production, no building here; more knights than raiders on its edges free it' : `${n} raider${n === 1 ? '' : 's'}: 3 conquer the hex`));
+      layers.squall.append(t);
+    });
+    for (const [e, p] of v.raiders.knights) {
+      const [a, b] = edgeEnds(e);
+      const k = el('circle', { cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2, r: 6, class: `edge-knight p${p}`, 'data-guard': e });
+      k.append(el('title', {}, `${nameOf(p)}'s knight`));
+      layers.squall.append(k);
+    }
+  }
   // Merchant trains: each wagon, a short block along its edge
   for (const e of v.trains?.wagons ?? []) {
     const [a, b] = edgeEnds(e);
@@ -602,9 +621,13 @@ function drawTargets(v) {
   const moves = v.phase === 'main' ? legal().filter(m => (mode && m.startsWith(`${mode} `)) || m.startsWith('placemarket ')) : legal();
   // Two-step moves: first what moves (a ship, a knight, a number), then where it goes. A decision with
   // only one starting point (a displaced knight) skips the first step.
-  const word = TWO_STEP[mode] ? mode : moves.length && moves.every(m => TWO_STEP[m.split(' ')[0]] && m.split(' ')[0] === moves[0].split(' ')[0]) ? moves[0].split(' ')[0] : null;
+  // (A knight's Grain run counts as the same move; Skip isn't a place)
+  const fam = w => (w === 'guardrun' ? 'guardmove' : w);
+  const placed = moves.filter(m => m !== 'skip');
+  const word = TWO_STEP[mode] ? mode : placed.length && placed.every(m => TWO_STEP[fam(m.split(' ')[0])] && fam(m.split(' ')[0]) === fam(placed[0].split(' ')[0])) ? fam(placed[0].split(' ')[0]) : null;
   if (word) {
-    const pairs = moves.filter(m => m.startsWith(`${word} `)).map(m => m.split(' ').slice(1).map(Number));
+    const pairs = placed.filter(m => fam(m.split(' ')[0]) === word).map(m => m.split(' ').slice(1).map(Number));
+    const sent = (a, b) => (placed.includes(`${word} ${a} ${b}`) ? word : 'guardrun');
     const starts = [...new Set(pairs.map(([a]) => a))];
     const from = moveFrom ?? (starts.length === 1 && word !== 'swap' ? starts[0] : null);
     const lit = from === null ? starts : pairs.filter(([a]) => a === from).map(([, b]) => b);
@@ -614,7 +637,7 @@ function drawTargets(v) {
       t.dataset[word] = n;
       t.append(el('title', {}, from === null ? first : second));
       const pick = () => {
-        if (from === null) { moveFrom = n; render(snap); } else { moveFrom = null; send(`${word} ${from} ${n}`); }
+        if (from === null) { moveFrom = n; render(snap); } else { moveFrom = null; send(`${sent(from, n)} ${from} ${n}`); }
       };
       t.addEventListener('click', pick);
       t.addEventListener('keydown', ev => { if (ev.key === 'Enter' || ev.key === ' ') pick(); });
@@ -662,6 +685,16 @@ function drawTargets(v) {
       t.dataset.move = m;
       t.append(el('title', {}, CORNER_WORDS[word]));
       layers.targets.append(t);
+    } else if (word === 'capture') {
+      const t = targetShape('hex', Number(n));
+      t.dataset.move = m;
+      t.append(el('title', {}, 'Take a raider prisoner here'));
+      layers.targets.append(t);
+    } else if (word === 'placeguard') {
+      const t = targetShape('edge', Number(n));
+      t.dataset.move = m;
+      t.append(el('title', {}, 'Place a knight here'));
+      layers.targets.append(t);
     } else if (word === 'wagon') {
       const t = targetShape('edge', Number(n));
       t.dataset.move = m;
@@ -701,6 +734,8 @@ const TWO_STEP = {
   knightmove: ['corner', 'Move this knight', 'Move the knight here'],
   displace: ['corner', 'Use this knight', 'Push off this knight'],
   swap: ['hex', 'Swap this number', 'with this one'],
+  moveraider: ['hex', 'Move a raider from here', 'Move it here'],
+  guardmove: ['edge', 'Move this knight', 'Move it here (4 or 5 steps cost a Grain)'],
 };
 // Moves on a corner (the city expansion), with their tips
 const CORNER_WORDS = {
@@ -791,6 +826,11 @@ function status(v) {
     // Merchant trains
     case 'bid': return mine ? `A wagon to place: bid Fish and Grain (spent) for the say in where it goes. Bids so far: ${v.trains.bids.map((b, s) => `${nameOf(s)} ${b}`).join(', ')}.` : `Wagon vote: ${who} is bidding.`;
     case 'placeWagon': return mine ? 'You won the vote: click where the wagon goes.' : `${who} is placing the wagon.`;
+    // Raider attack
+    case 'capture': return mine ? 'Capture: click a coastal hex to take a raider prisoner.' : `${who} is capturing a raider.`;
+    case 'placeGuard': return mine ? 'Click an edge for your new knight.' : `${who} is placing a knight.`;
+    case 'moveRaider': return mine ? 'Turncoat: move a raider from one coastal hex to another (click the two hexes).' : `${who} is moving raiders.`;
+    case 'moveGuards': return mine ? 'End of turn: move your knights (click one, then where it goes), then Done. Knights on the Keep must move.' : `${who} is moving knights.`;
     default: return '';
   }
 }
@@ -820,7 +860,7 @@ function drawChoices(v) {
     if (word === 'takecard') box.append(button(`Take a ${CARD_NAMES[m.split(' ')[2]]}`, m));
     if (word === 'takeprogress') box.append(button(`Take ${cardName(m.split(' ')[2])}`, m));
     if (word === 'dropcard' && v.phase !== 'main') box.append(button(`Drop ${cardName(n)}`, m));
-    if (word === 'skip') box.append(button(v.phase === 'treasonKnight' ? 'Place no knight' : v.phase === 'spy' ? 'Take nothing' : 'Done', m));
+    if (word === 'skip') box.append(button(v.phase === 'treasonKnight' ? 'Place no knight' : v.phase === 'spy' ? 'Take nothing' : v.phase === 'moveGuards' ? 'Done moving knights' : 'Done', m));
     // Merchant trains' vote: pick a bid of Fish and Grain (drawn once, below)
     if (word === 'bid' && !box.querySelector('.bid-pick')) box.append(bidPicker(v));
     // Fishing: spend fish, pass the old boot
@@ -865,6 +905,9 @@ function bidPicker(v) {
   }
   return wrap;
 }
+
+// Raider attack's orders (engine raiders.rs ORDERS)
+const ORDER_NAMES = { capture: 'Capture', knighthood: 'Knighthood', swiftKnight: 'Swift Knight', turncoat: 'Turncoat' };
 
 // Fishing's spending (engine fishing.rs FISH_COSTS order)
 const FISH_ACTIONS = ['send the squall off the island', 'steal a card', 'take a resource', 'a free Path', 'a free project'];
@@ -1052,6 +1095,16 @@ function shopRow(v, item, button, reason) {
 // Project cards in the shop: hidden (the default), one card drawn unseen; face up, each card showing
 const PROJECT_COST = [0, 1, 1, 0, 1];   // Stone + Grain + Fish (engine: PROJECT_COST)
 function projectItems(v) {
+  if (v.city) return []; // no projects in the city expansion
+  // Raider attack: the order deck, used as soon as it's bought
+  if (v.raiders) {
+    const card = { key: 'order', move: 'buy 0', name: 'Order', note: `Used at once: Knighthood (a knight on the Keep), Swift Knight (a knight anywhere), Capture or Turncoat${v.raiders.lastOrder ? ` · last: ${ORDER_NAMES[v.raiders.lastOrder]}` : ''}` };
+    const reason = projectReason(v, card.move);
+    const b = button('Buy', card.move);
+    b.dataset.buy = card.move;
+    b.disabled = reason !== null;
+    return [shopRow(v, { ...card, cost: PROJECT_COST, project: true }, b, reason)];
+  }
   const cards = v.row.length
     ? v.row.map((k, slot) => ({ key: `project-${slot}`, move: `buy ${slot}`, name: PROJECTS[k], note: PROJECT_HELP[k] }))
     : [{
@@ -1233,6 +1286,11 @@ function drawPlayers(v) {
       facts.push(`knights ${v.city.defence[s]} active`);
       if (v.city.progressCounts[s]) facts.push(`${v.city.progressCounts[s]} progress`);
     }
+    // Raider attack: knights out, prisoners (2 = 1 Renown), coins
+    if (v.raiders) {
+      const k = v.raiders.knights.filter(([, o]) => o === s).length;
+      facts.push(`${k} knight${k === 1 ? '' : 's'}`, `${v.raiders.prisoners[s]} prisoner${v.raiders.prisoners[s] === 1 ? '' : 's'}`, `${v.raiders.coins[s]} coins`);
+    }
     // Rivers: coins, and the Wealthiest / Poor tiles
     if (v.rivers) {
       facts.push(`${v.rivers.coins[s]} coin${v.rivers.coins[s] === 1 ? '' : 's'}`);
@@ -1350,10 +1408,10 @@ function drawProjects(v) {
 
 // Rivers' coins, in the Trade tab: buy one with a resource (at your rate), or spend 2 for a resource
 function drawCoins(v) {
-  $('coin-box').hidden = !v.rivers || v.you === null;
-  if (!v.rivers || v.you === null) return;
-  const r = v.rivers;
-  const standing = r.wealthiest === v.you ? ' You are the Wealthiest (+1 Renown).' : r.poor.includes(v.you) ? ' You are Poor (−2 Renown): get more coins than someone.' : '';
+  const r = v.rivers ?? v.raiders;
+  $('coin-box').hidden = !r || v.you === null;
+  if (!r || v.you === null) return;
+  const standing = r.wealthiest === v.you ? ' You are the Wealthiest (+1 Renown).' : (r.poor ?? []).includes(v.you) ? ' You are Poor (−2 Renown): get more coins than someone.' : '';
   $('coin-note').textContent = `You have ${r.coins[v.you]} coin${r.coins[v.you] === 1 ? '' : 's'}.${standing} Spend 2 for a resource, ${r.coinBuysLeft} more this turn.`;
   const buys = legal().filter(m => m.startsWith('buycoin '));
   const spends = legal().filter(m => m.startsWith('spendcoins '));
@@ -1479,6 +1537,10 @@ function describe(entry) {
     case 'bridge': return `${who} built a bridge (3 coins)`;
     case 'bid': return `${who} bid ${Number(a) + Number(b)} for the wagon`;
     case 'wagon': return `${who} placed a wagon`;
+    case 'capture': return `${who} took a raider prisoner`;
+    case 'placeguard': return `${who} placed a knight`;
+    case 'moveraider': return `${who} moved a raider`;
+    case 'guardmove': case 'guardrun': return `${who} moved a knight`;
     case 'buycoin': return `${who} bought a coin with ${RESOURCES[a]}`;
     case 'spendcoins': return `${who} spent 2 coins on ${RESOURCES[a]}`;
     case 'giveboot': return `${who} gave ${Number(a) === snap.view.you ? 'you' : nameOf(Number(a))} the old boot`;

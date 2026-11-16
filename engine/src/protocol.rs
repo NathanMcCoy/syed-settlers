@@ -89,6 +89,11 @@ pub fn action_text(a: Action) -> String {
         Action::SpendCoins(r) => format!("spendcoins {r}"),
         Action::Bid(f, g) => format!("bid {f} {g}"),
         Action::Wagon(e) => format!("wagon {e}"),
+        Action::Capture(h) => format!("capture {h}"),
+        Action::PlaceGuard(e) => format!("placeguard {e}"),
+        Action::MoveRaider(f, t) => format!("moveraider {f} {t}"),
+        Action::GuardMove(f, t) => format!("guardmove {f} {t}"),
+        Action::GuardRun(f, t) => format!("guardrun {f} {t}"),
     }
 }
 
@@ -203,12 +208,18 @@ pub fn parse_action(text: &str) -> Result<Action, String> {
         Some("spendcoins") => Action::SpendCoins(small(1)?),
         Some("bid") => Action::Bid(small(1)?, small(2)?),
         Some("wagon") => Action::Wagon(num(1)?),
+        Some("capture") => Action::Capture(num(1)?),
+        Some("placeguard") => Action::PlaceGuard(num(1)?),
+        Some("moveraider") => Action::MoveRaider(num(1)?, num(2)?),
+        Some("guardmove") => Action::GuardMove(num(1)?, num(2)?),
+        Some("guardrun") => Action::GuardRun(num(1)?, num(2)?),
         _ => return Err(format!("unknown move \"{text}\"")),
     };
     let expected = match a {
         Action::Roll | Action::EndTurn | Action::Withdraw | Action::BuildWonder | Action::CashPilot | Action::ForceTrade | Action::SquallHome | Action::Skip => 1,
         Action::Trade(..) | Action::Answer(..) | Action::MoveShip(..) | Action::Gift(..) | Action::NeutralHut(..) | Action::NeutralPath(..) => 3,
         Action::KnightMove(..) | Action::Displace(..) | Action::FixedRoll(..) | Action::TakeCard(..) | Action::TakeProgress(..) | Action::SwapNumbers(..) | Action::Bid(..) => 3,
+        Action::MoveRaider(..) | Action::GuardMove(..) | Action::GuardRun(..) => 3,
         Action::Offer { open, .. } => if open { 5 } else { 4 },
         Action::Counter { .. } => 4,
         _ => 2,
@@ -233,7 +244,7 @@ fn phase_name(p: Phase) -> &'static str {
         Phase::FreeBuild { .. } => "freeBuild",
         Phase::Harvest { .. } => "harvest",
         Phase::MarketDay => "marketDay",
-        Phase::VoteDone | Phase::TurnEnd => "main",
+        Phase::VoteDone | Phase::TurnEnd | Phase::ExpelDone => "main",
         Phase::Over => "over",
     }
 }
@@ -336,7 +347,7 @@ pub fn view_json(g: &Game, seat: u8) -> String {
             "{{\"phase\":\"{}\",\"current\":{},\"toAct\":{},\"turn\":{},\"lastRoll\":{},\"squall\":{},\"winner\":{},",
             "\"buildings\":[{}],\"roads\":[{}],\"players\":[{}],\"longestPath\":{},\"mostPilots\":{},",
             "\"row\":{},\"deck\":{},\"lastTake\":{},\"win\":{},\"you\":{},\"hand\":{},\"rates\":{},\"legal\":{},",
-            "\"offer\":{},\"canOffer\":{},\"offersLeft\":{},\"dice\":{},\"bank\":{},\"short\":{},\"handLimit\":{},\"round\":{},\"roundLimit\":{},\"byRounds\":{},\"bought\":{},\"turnOf\":{},\"paired\":{},\"titles\":{},\"deciding\":{},\"pirate\":{},\"shipMoved\":{},\"event\":{},\"damaged\":{},\"revealed\":{},\"villages\":{},\"clothEnded\":{},\"wonders\":{},\"markers\":{},\"prizes\":{},\"heldMarkets\":{},\"markets\":{},\"fleet\":{},\"forts\":{},\"warships\":{},\"lastAttack\":{},\"city\":{},\"fishing\":{},\"rivers\":{},\"trains\":{}}}"
+            "\"offer\":{},\"canOffer\":{},\"offersLeft\":{},\"dice\":{},\"bank\":{},\"short\":{},\"handLimit\":{},\"round\":{},\"roundLimit\":{},\"byRounds\":{},\"bought\":{},\"turnOf\":{},\"paired\":{},\"titles\":{},\"deciding\":{},\"pirate\":{},\"shipMoved\":{},\"event\":{},\"damaged\":{},\"revealed\":{},\"villages\":{},\"clothEnded\":{},\"wonders\":{},\"markers\":{},\"prizes\":{},\"heldMarkets\":{},\"markets\":{},\"fleet\":{},\"forts\":{},\"warships\":{},\"lastAttack\":{},\"city\":{},\"fishing\":{},\"rivers\":{},\"trains\":{},\"raiders\":{}}}"
         ),
         // While decisions are being made (pending.rs), the phase is named after the first one ("discard")
         g.deciding().map_or(phase_name(g.phase), |d| d.decision.name()), g.current, g.to_act(), g.turn,
@@ -413,6 +424,25 @@ pub fn view_json(g: &Game, seat: u8) -> String {
         fishing_json(g, seat, mine),
         rivers_json(g),
         trains_json(g),
+        raiders_json(g),
+    )
+}
+
+// Raider attack's part of the view (null without it): the Keep, the coast in order, raiders per coastal
+// hex, the supply, knights [edge, owner], prisoners, coins, the last landing and order
+fn raiders_json(g: &Game) -> String {
+    if !g.raider_attack() {
+        return "null".into();
+    }
+    format!(
+        "{{\"keep\":{},\"coast\":{},\"on\":{},\"supply\":{},\"knights\":{},\"prisoners\":{},\"coins\":{},\"coinBuysLeft\":{},\"lastLanding\":{},\"lastOrder\":{}}}",
+        g.keep, list(g.coast.iter()),
+        list(g.coast.iter().map(|&h| g.raiders_on[h as usize])),
+        g.raider_supply,
+        list((0..g.edge_knight.len()).filter(|&e| g.edge_knight[e] != NOBODY).map(|e| format!("[{e},{}]", g.edge_knight[e]))),
+        list(&g.prisoners[..g.players]), list(&g.coins[..g.players]), 2u8.saturating_sub(g.coin_buys),
+        list(g.last_landing.iter()),
+        if g.last_order == NOBODY { "null".into() } else { json::string(ORDERS[g.last_order as usize].0) },
     )
 }
 
