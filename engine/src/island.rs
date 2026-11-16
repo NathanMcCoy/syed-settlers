@@ -24,6 +24,7 @@ pub enum Terrain {
     Fog,  // the sea expansion's Fog Islands: a hidden hex, turned over when a Path or ship reaches it
     Village, // the sea scenario Cloth: a village trading cloth (a number, no resource)
     Lake,    // the variants box's Fishing: fish tokens on 2, 3, 11 and 12 (no resource)
+    Oasis,   // the variants box's Merchant trains: the watering hole the trains start from (no resource)
 }
 use Terrain::*;
 
@@ -40,11 +41,11 @@ impl Terrain {
             Fields => Some(2),
             Mine => Some(3),
             Paddy => Some(4),
-            Sea | Dunes | Gold | Fog | Village | Lake => None,
+            Sea | Dunes | Gold | Fog | Village | Lake | Oasis => None,
         }
     }
     pub fn name(self) -> &'static str {
-        ["sea", "forest", "quarry", "fields", "mine", "paddy", "dunes", "gold", "fog", "village", "lake"][self as usize]
+        ["sea", "forest", "quarry", "fields", "mine", "paddy", "dunes", "gold", "fog", "village", "lake", "oasis"][self as usize]
     }
 }
 
@@ -267,7 +268,10 @@ fn attempt_island(s: &Settings, rng: &mut Rng) -> Option<Island> {
         / land.iter().filter(|h| h.number != 0).count() as f64;
     let mut land = land;
     if s.box_scenario == 1 {
-        fishing_lake(rng, &mut land)?;
+        fishing_lake(rng, &mut land, 1, Lake)?;
+    }
+    if s.box_scenario == 3 {
+        fishing_lake(rng, &mut land, 0, Oasis)?; // the watering hole: the very middle
     }
     if s.sea && matches!(s.sea_scenario, 1 | 5 | 8) {
         land.extend(small_islands(rng, &main_set, s)?);
@@ -328,15 +332,16 @@ fn attempt_island(s: &Settings, rng: &mut Rng) -> Option<Island> {
 
 // Fishing: the Dunes move to the island's middle (the hex or one of its 6 neighbours) as the Lake; the
 // hex they swap with takes the Dunes' place, number and all
-fn fishing_lake(rng: &mut Rng, land: &mut [Hex]) -> Option<()> {
+// (Merchant trains use the same for the watering hole, `reach` 0: the centre hex itself)
+fn fishing_lake(rng: &mut Rng, land: &mut [Hex], reach: i32, terrain: Terrain) -> Option<()> {
     let dunes = land.iter().position(|h| h.terrain == Dunes)?;
-    let inner: Vec<usize> = (0..land.len()).filter(|&i| land[i].region == 0 && land[i].cell.distance(Cell::new(0, 0)) <= 1).collect();
+    let inner: Vec<usize> = (0..land.len()).filter(|&i| land[i].region == 0 && land[i].cell.distance(Cell::new(0, 0)) <= reach).collect();
     let i = *rng.pick(&inner);
     let (t, n) = (land[i].terrain, land[i].number);
     land[dunes].terrain = t;
     land[dunes].number = n;
     // (last, so a Dunes already in the middle simply becomes the Lake)
-    land[i].terrain = Lake;
+    land[i].terrain = terrain;
     land[i].number = 0;
     Some(())
 }

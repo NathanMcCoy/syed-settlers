@@ -185,6 +185,7 @@ for (const [name, type] of Object.entries(BROWSERS)) {
     ['the sea scenario The Pirate Islands', 3, { sea: true, 'sea.scenario': 7 }],
     ['the variants box scenario Fishing', 3, { 'box.scenario': 1 }],
     ['the variants box scenario Rivers', 3, { 'box.scenario': 2 }],
+    ['the variants box scenario Merchant trains', 3, { 'box.scenario': 3 }],
     ['the city expansion', 3, { city: true }],
     ['the city expansion and the sea (New Shores)', 3, { city: true, sea: true, 'sea.scenario': 1 }],
   ]) {
@@ -218,6 +219,7 @@ for (const [name, type] of Object.entries(BROWSERS)) {
           assert.equal(await page.locator('#board [data-fleet]').count(), 1, 'the fleet');
           assert.equal(await page.locator('#board .squall').count(), 0, 'no squall');
         }
+        if (settings['box.scenario'] === 3) assert.equal(await page.locator('#board polygon[data-terrain="oasis"]').count(), 1, 'the watering hole');
         if (settings['box.scenario'] === 2) {
           assert.equal(await page.locator('#board .river').count(), 2, 'two rivers');
           assert.equal(await page.locator('#board .bridge-site').count(), 6, 'six bridge sites');

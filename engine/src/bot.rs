@@ -104,10 +104,20 @@ impl Greedy {
                     // build (denying it); neutral Paths anywhere
                     Action::NeutralHut(_, c) => spot_value(g, 1 - p, *c as usize),
                     Action::NeutralPath(..) => 0.0,
+                    // Merchant trains: bid up to 2 spare Fish/Grain when a wagon spot is worth it; place
+                    // the wagon where it helps this bot most
+                    Action::Bid(f, gr) => {
+                        let worth = g.wagon_spots().iter().map(|s| wagon_value(g, p, s.0)).fold(f64::MIN, f64::max);
+                        let spare = |r: usize| hand[r].saturating_sub(need[r]);
+                        let target = if worth >= 1.0 { (spare(4) + spare(2)).min(2) } else { 0 };
+                        let fits = *f <= spare(4) && *gr <= spare(2);
+                        -((*f + *gr) as f64 - target as f64).abs() + if fits { 0.0 } else { -10.0 }
+                    }
+                    Action::Wagon(e) => wagon_value(g, p, *e as usize),
                     _ => f64::MIN,
                 })
             }
-            Phase::Rolled { .. } | Phase::SecondRoll => legal[0],
+            Phase::Rolled { .. } | Phase::SecondRoll | Phase::VoteDone | Phase::TurnEnd => legal[0],
             Phase::MoveSquall { .. } => self.best_by(legal, |a| match a {
                 Action::Squall(h) => squall_value(g, p, *h as usize),
                 Action::Pirate(h) => pirate_value(g, p, *h as usize),
@@ -429,6 +439,27 @@ fn spot_value(g: &Game, p: u8, c: usize) -> f64 {
     }
     if b.corner_market[c] != NOBODY {
         v += 1.0;
+    }
+    v
+}
+
+// Merchant trains: what a wagon on edge e is worth to p: +1 for each of p's buildings it gives a
+// second wagon (less for others'), a little for p's Path under it (Longest Path)
+fn wagon_value(g: &Game, p: u8, e: usize) -> f64 {
+    let gr = &g.board.graph;
+    let mut v = 0.0;
+    for &c in &gr.edge_corners[e] {
+        let c = c as usize;
+        let o = g.corner_owner[c];
+        let wagons = listed(&gr.corner_edges[c]).filter(|&x| g.wagon_on(x)).count();
+        if o != NOBODY && wagons == 1 {
+            v += if o == p { 1.0 } else { -0.7 };
+        }
+    }
+    if g.edge_owner[e] == p {
+        v += 0.5;
+    } else if g.edge_owner[e] != NOBODY {
+        v -= 0.3;
     }
     v
 }

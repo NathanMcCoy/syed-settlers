@@ -325,7 +325,15 @@ Played on their own: not with the sea, the city expansion, event cards or the tw
   hex (setup included), 3 per bridge; buy a coin from the bank with a resource at your rate; 2 coins buy a resource,
   twice a turn. Coins aren't cards. The single most coins: +1 Renown (Wealthiest); everyone tied fewest: -2 (Poor;
   Renown never below 0). (Ours: the layout; no coins in trades between players.)
-- Still to come: 3 Merchant trains, 4 Raider attack, 5 Traders and raiders.
+- **3 Merchant trains** (12 Renown): the Dunes become the watering hole on the centre hex (no number); the squall
+  starts off the island. Building any Hut or Lodge in a phase earns 1 wagon, placed when that phase ends after a vote:
+  each player from the one acting bids Fish and Grain (spent; up to 9 of each). More than half the votes places it;
+  else the single most; else the player acting. Wagons go on land edges without a wagon, not the watering hole's own
+  edges: a new train from an unused start (corners 0, 2, 4 of the watering hole, on the edge leading away) or on the
+  front of a train that hasn't ended; a train ends when its front reaches a corner with another wagon, or can't go
+  on. 22 wagons. A building with 2+ wagons at its corner: +1 Renown. A wagon on a Path: +1 to its owner's line
+  length. (Ours: no vote negotiation.)
+- Still to come: 4 Raider attack, 5 Traders and raiders.
 
 ## The city expansion ⚙ (`city`, chosen when starting a game)
 

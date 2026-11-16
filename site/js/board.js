@@ -5,7 +5,7 @@ export const SIZE = 34;                                                    // pi
 export const X = SIZE * Math.sqrt(3) / 2, Y = SIZE / 2;
 export const CORNERS = [[0, -2], [1, -1], [1, 1], [0, 2], [-1, 1], [-1, -1]];
 export const RESOURCES = ['Timber', 'Stone', 'Grain', 'Copper', 'Fish'];
-export const TERRAIN_RESOURCE = { forest: 'Timber', quarry: 'Stone', fields: 'Grain', mine: 'Copper', paddy: 'Fish', gold: 'any resource', village: 'cloth, to players linked to it', fog: 'hidden: reach it with a Path or ship', lake: 'fish tokens on 2, 3, 11 and 12' };
+export const TERRAIN_RESOURCE = { forest: 'Timber', quarry: 'Stone', fields: 'Grain', mine: 'Copper', paddy: 'Fish', gold: 'any resource', village: 'cloth, to players linked to it', fog: 'hidden: reach it with a Path or ship', lake: 'fish tokens on 2, 3, 11 and 12', oasis: 'the watering hole: merchant trains start here' };
 // Fishing: the Lake pays on these four numbers (engine fishing.rs LAKE_NUMBERS)
 const LAKE_NUMBERS = [2, 3, 11, 12];
 const MARKET = { any: '3:1 any', timber: '2:1 Timber', stone: '2:1 Stone', grain: '2:1 Grain', copper: '2:1 Copper', fish: '2:1 Fish' };
