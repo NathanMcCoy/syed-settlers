@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { chromium, webkit } from 'playwright';
 import { start } from '../server/server.mjs';
 
-const server = await start({ port: 0, host: '127.0.0.1', botDelay: 20 });
+const server = await start({ port: 0, host: '127.0.0.1', botDelay: 20, offerWait: 300 });
 const base = `http://127.0.0.1:${server.address().port}`;
 after(() => server.close());
 

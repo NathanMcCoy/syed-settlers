@@ -451,6 +451,6 @@ improvements and progress cards; walls and knights are in the Build shop.
 
 ## Not in version 1 (planned)
 
-- Bots making trade offers and counter-offers (they answer offers, including open ones).
+- Bots making counter-offers (they make 1-for-1 offers once a turn when short of something, and answer offers, including open ones; a bot waits up to 20 s for people to answer its offer).
 - A turn timer, and a bot taking over the seat of a person who leaves.
 - Illustrations (the board is plain and functional for now).

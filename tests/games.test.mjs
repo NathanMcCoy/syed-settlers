@@ -16,12 +16,18 @@ test('a game of bots plays to the end, every view consistent', () => {
   for (; moves < 5000; moves++) {
     const watcher = engine.view(id, null);
     if (watcher.phase === 'over') break;
+    // A bot's trade offer: the bots it's made to answer first (as the server does)
+    if (watcher.offer && watcher.offer.to.some(s => watcher.offer.answers[s] === null)) {
+      for (const s of watcher.offer.to) if (engine.view(id, null).offer?.answers[s] === null) engine.botAnswer(id, s);
+      continue;
+    }
     const seat = watcher.toAct;
     const mine = engine.view(id, seat);
     assert.ok(mine.legal.length > 0, `seat ${seat} has moves in ${mine.phase}`);
     for (let s = 0; s < 3; s++) if (s !== seat) assert.deepEqual(engine.view(id, s).legal, [], 'only the seat to act has moves');
     const move = engine.bot(id);
-    assert.ok(mine.legal.includes(move), `the bot's ${move} was legal`);
+    // (offers aren't listed: the bot may make one when the view says it can offer)
+    assert.ok(mine.legal.includes(move) || (move.startsWith('offer ') && mine.canOffer), `the bot's ${move} was legal`);
   }
   const end = engine.view(id, null);
   assert.equal(end.phase, 'over');

@@ -31,6 +31,7 @@ pub fn renown_sources(g: &Game, p: usize) -> [u32; 5] {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum BotKind {
     Greedy,
+    Plain, // Greedy without trade offers (the original)
     Random,
 }
 
@@ -38,21 +39,24 @@ impl BotKind {
     pub fn parse(name: &str) -> Result<BotKind, String> {
         match name {
             "greedy" => Ok(BotKind::Greedy),
+            "plain" => Ok(BotKind::Plain),
             "random" => Ok(BotKind::Random),
-            _ => Err(format!("unknown bot {name} (greedy or random)")),
+            _ => Err(format!("unknown bot {name} (greedy, plain or random)")),
         }
     }
     fn make(self, seed: u32) -> Box<dyn Bot> {
         match self {
             BotKind::Greedy => Box::new(Greedy::new(seed)),
+            BotKind::Plain => Box::new(Greedy::plain(seed)),
             BotKind::Random => Box::new(RandomBot::new(seed)),
         }
     }
 }
 
-// One game of Greedy bots on the island made from seed `sim<seed>`
+// One game of the original Greedy bots (no trade offers: the base game's fingerprint) on the island
+// made from seed `sim<seed>`
 pub fn play(settings: &Settings, seed: u32, players: usize, max_turns: u32) -> Result<Outcome, String> {
-    play_with(settings, seed, players, max_turns, &[BotKind::Greedy])
+    play_with(settings, seed, players, max_turns, &[BotKind::Plain])
 }
 
 // The same, with these kinds of bot in the seats (repeated round the table: [Greedy, Random] alternates)
@@ -71,8 +75,25 @@ pub fn play_with(settings: &Settings, seed: u32, players: usize, max_turns: u32,
             return Err(format!("stuck: nothing legal for seat {p} in {:?} (seed {seed})", g.phase));
         }
         let a = bots[p].choose(&g, &legal);
-        g.apply_unchecked(a);
+        if matches!(a, Action::Offer { .. } | Action::Counter { .. }) {
+            g.apply_as(p as u8, a)?; // (offers aren't in legal(): checked here)
+        } else {
+            g.apply_unchecked(a);
+        }
         actions += 1;
+        // The bots an offer is made to answer it, as on the server
+        if let Some(o) = g.offer {
+            for s in 0..players {
+                if o.to & (1 << s) != 0 && g.offer.is_some_and(|o| o.answers[s] == 0) {
+                    let mut l = Vec::new();
+                    g.legal_for(s as u8, &mut l);
+                    let yes = bots[s].answer(&g, s as u8) && l.contains(&Action::Answer(s as u8, true));
+                    if l.contains(&Action::Answer(s as u8, yes)) {
+                        g.apply_as(s as u8, Action::Answer(s as u8, yes))?;
+                    }
+                }
+            }
+        }
     }
     let mut sources = [[0; 5]; MAX_PLAYERS];
     for (p, row) in sources.iter_mut().enumerate().take(players) {

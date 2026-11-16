@@ -55,6 +55,8 @@ impl Bot for Greedy {
 
 pub struct Greedy {
     pub rng: Rng,
+    pub offers: bool,      // makes trade offers to other players (off: the original Greedy)
+    pub offered_turn: u32, // the turn of its last offer (one a turn)
 }
 
 enum Goal {
@@ -67,7 +69,12 @@ enum Goal {
 
 impl Greedy {
     pub fn new(seed: u32) -> Greedy {
-        Greedy { rng: Rng::new(seed) }
+        Greedy { rng: Rng::new(seed), offers: true, offered_turn: u32::MAX }
+    }
+
+    // The original Greedy, which never offers trades (kept for the base game's fingerprint)
+    pub fn plain(seed: u32) -> Greedy {
+        Greedy { rng: Rng::new(seed), offers: false, offered_turn: u32::MAX }
     }
 
     pub fn choose(&mut self, g: &Game, legal: &[Action]) -> Action {
@@ -290,6 +297,38 @@ impl Greedy {
         }
         if self.pilot_wanted(g, p) && legal.contains(&Action::Play(Project::Pilot)) {
             return Action::Play(Project::Pilot);
+        }
+        // Its own open offer: trade with whoever accepted (the one furthest behind), take a counter
+        // that still helps, otherwise take it back
+        if let Some(o) = g.offer {
+            let deal = self.best_of(legal, |a| match a {
+                Action::Deal(s) => Some(-(g.renown(*s as usize) as f64)),
+                _ => None,
+            });
+            if let Some(a) = deal {
+                return a;
+            }
+            let _ = o;
+            if legal.contains(&Action::Withdraw) {
+                return Action::Withdraw;
+            }
+        }
+        // Offer another player a 1-for-1: a spare card for one it's short of (once a turn)
+        if self.offers && g.offer.is_none() && g.offers_left() && self.offered_turn != g.turn {
+            let hand = g.hands[p as usize];
+            let short = (0..5).filter(|&r| hand[r] < need[r]).max_by_key(|&r| need[r] - hand[r]);
+            let spare = (0..5).filter(|&r| hand[r] > need[r]).max_by_key(|&r| hand[r] - need[r]);
+            if let (Some(get), Some(give)) = (short, spare) {
+                let target = g.win_target(p as usize);
+                let to: u8 = (0..g.players).filter(|&s| s != p as usize && g.renown(s) + 2 < target && g.hands[s][get] > 0).map(|s| 1u8 << s).sum();
+                let (mut give_cards, mut get_cards) = ([0u8; 8], [0u8; 8]);
+                give_cards[give] = 1;
+                get_cards[get] = 1;
+                if to != 0 && g.offer_ok(&give_cards, &get_cards, to).is_ok() {
+                    self.offered_turn = g.turn;
+                    return Action::Offer { give: give_cards, get: get_cards, to, open: false };
+                }
+            }
         }
         // Trade a surplus toward the goal: give what's most over need, get what's most short
         let hand = g.hands[p as usize];

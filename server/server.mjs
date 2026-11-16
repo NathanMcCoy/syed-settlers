@@ -99,10 +99,11 @@ export function handle(req, res, games) {
 }
 
 // Starts listening; port 0 picks a free one (the tests do). Resolves with the http.Server.
-// botDelay: milliseconds between bot moves (the tests use 0).
-export async function start({ port = 3000, host = '0.0.0.0', botDelay = 700 } = {}) {
+// botDelay: milliseconds between bot moves (the tests use 0). offerWait: how long a bot's trade offer
+// waits for people's answers (default 20 s; 0 with no bot delay).
+export async function start({ port = 3000, host = '0.0.0.0', botDelay = 700, offerWait } = {}) {
   const engine = await loadEngine(await readFile(join(SITE, 'js', 'settlers.wasm')));
-  const games = makeGames(engine, { botDelay });
+  const games = makeGames(engine, { botDelay, ...(offerWait === undefined ? {} : { offerWait }) });
   const server = createServer((req, res) => {
     Promise.resolve(handle(req, res, games)).catch(() => { if (!res.headersSent) send(res, 500, 'text/plain', 'Something went wrong'); });
   });
