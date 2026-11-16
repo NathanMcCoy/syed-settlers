@@ -250,12 +250,13 @@ impl Settings {
             }
         }
         if s.city {
+            if s.sea && s.sea_scenario == 7 {
+                return Err("the Pirate Islands' warships come from Pilot projects, which the city expansion replaces: it can't be won with the city expansion".into());
+            }
             if s.variant_events || s.variant_two {
                 return Err("the city expansion doesn't combine with event cards or the two-player variant".into());
             }
-            if s.sea && !matches!(s.sea_scenario, 1 | 4 | 9) {
-                return Err("the city expansion combines with sea scenarios 1 (New Shores), 4 (Through the Desert) and 9 (New World)".into());
-            }
+
         }
         if !s.sea {
             if !s.city {

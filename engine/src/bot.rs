@@ -621,7 +621,7 @@ fn squall_value(g: &Game, p: u8, h: usize) -> f64 {
         if o == p {
             return -100.0;
         }
-        if o != NOBODY {
+        if (o as usize) < g.players {
             v += n * g.corner_kind[c as usize] as f64 * (1.0 + g.renown(o as usize) as f64 / 5.0);
         }
     }

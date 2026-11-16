@@ -401,8 +401,8 @@ Its own game, 2-4 players, not combined with anything else. Scenarios (each adds
 
 ## The city expansion ⚙ (`city`, chosen when starting a game)
 
-From the classic game's cities-and-knights expansion, with our own names. 13 Renown to win (with the sea: only
-scenarios 1, 4 and 9, at their target + 2). Not with event cards or the two-player variant. The page's City tab holds
+From the classic game's cities-and-knights expansion, with our own names. 13 Renown to win (with the sea:
+any scenario but 7, at its target + 2: the Pirate Islands needs Pilots for warships). Not with event cards or the two-player variant. The page's City tab holds
 improvements and progress cards; walls and knights are in the Build shop.
 
 - **Setup:** the second setup building is a Lodge (it collects the starting resources). No projects, no Most Pilots.
