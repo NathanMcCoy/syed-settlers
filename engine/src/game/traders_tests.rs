@@ -83,6 +83,9 @@ fn the_end_of_the_turn_drives_the_wagon_and_a_works_takes_and_gives_goods() {
     assert_eq!(g.deciding().unwrap().decision, Decision::Drive);
     let coins = g.coins[0];
     g.apply(Action::WagonStep(corner as u16)).unwrap();
+    assert_eq!(g.delivered[0], 0, "reaching the corner isn't entering");
+    assert!(legal(&g).contains(&Action::EnterWorks), "4 points - 2 for the step leaves 2 to enter");
+    g.apply(Action::EnterWorks).unwrap();
     assert_eq!(g.delivered[0], 1, "Sand delivered");
     assert_eq!(g.coins[0], coins + 1, "1 coin at level 0");
     assert!(WORKS[w].2.contains(&g.cargo[0]), "a good of the Glassworks picked up");

@@ -32,15 +32,17 @@ impl Game {
         }
     }
 
-    // Trade tokens for a new Hut of p's: 2 by the Dunes, 1 on the coast
+    // Trade tokens for a new Hut of p's: 2 by the Dunes, 1 on the coast (Traders and raiders: 1 more by a
+    // works; Fishing uses no trade tokens)
     pub(super) fn hut_tokens(&mut self, p: usize, c: usize) {
-        if !self.two() {
+        if !self.two() || self.fishing() {
             return;
         }
         let hexes: Vec<usize> = listed(&self.board.graph.corner_hexes[c]).collect();
         let dunes = hexes.iter().any(|&h| self.board.terrain[h] == Terrain::Dunes);
         let coast = hexes.iter().any(|&h| self.board.terrain[h] == Terrain::Sea) || hexes.len() < 3;
-        let n = 2 * dunes as u16 + coast as u16;
+        let works = self.traders() && hexes.iter().any(|&h| matches!(self.board.terrain[h], Terrain::Keep | Terrain::Glassworks | Terrain::Stoneworks));
+        let n = 2 * dunes as u16 + coast as u16 + works as u16;
         if n > 0 {
             self.give_tokens(p, Token::Trade, n);
         }
@@ -89,8 +91,8 @@ impl Game {
 
     // Trade-token actions open to the player acting (before the roll or in the main phase)
     pub(super) fn legal_tokens(&self, p: usize, out: &mut Vec<Action>) {
-        if !self.two() || self.paired {
-            return;
+        if !self.two() || self.paired || self.fishing() {
+            return; // (Fishing uses no trade tokens)
         }
         if !self.pilot_cashed && self.pilots[p] > 0 {
             out.push(Action::CashPilot);
@@ -99,9 +101,44 @@ impl Game {
             if self.cards(1 - p) > 0 {
                 out.push(Action::ForceTrade);
             }
-            if self.board.terrain[self.squall as usize] != Terrain::Dunes && self.board.land_hexes.iter().any(|&h| self.board.terrain[h as usize] == Terrain::Dunes) {
+            if self.squall_home_ok() {
                 out.push(Action::SquallHome);
             }
+        }
+    }
+
+    // The token action that sends the squall to the Dunes, scenario by scenario: Merchant trains take the
+    // squall off the island; Raider attack and Traders and raiders move a raider instead
+    fn squall_home_ok(&self) -> bool {
+        if self.raider_attack() {
+            return self.coast.iter().any(|&h| self.raiders_on[h as usize] > 0);
+        }
+        if self.traders() {
+            return self.barbarian.iter().any(|&b| b);
+        }
+        if self.squall == NONE {
+            return false;
+        }
+        if self.merchant_trains() {
+            return true;
+        }
+        self.board.terrain[self.squall as usize] != Terrain::Dunes && self.board.land_hexes.iter().any(|&h| self.board.terrain[h as usize] == Terrain::Dunes)
+    }
+
+    pub(super) fn squall_home(&mut self, p: usize) {
+        let cost = self.token_cost(p);
+        self.spend_tokens(p, Token::Trade, cost);
+        self.token_used = true;
+        let seat = p as u8;
+        let back = self.phase;
+        if self.raider_attack() {
+            self.decide_then([Pending { seat, decision: Decision::MoveRaider { from: NONE } }], back);
+        } else if self.traders() {
+            self.decide_then([Pending { seat, decision: Decision::MoveBarbarian { from: NONE, steal: false } }], back);
+        } else if self.merchant_trains() {
+            self.squall = NONE;
+        } else if let Some(&h) = self.board.land_hexes.iter().find(|&&h| self.board.terrain[h as usize] == Terrain::Dunes) {
+            self.squall = h;
         }
     }
 

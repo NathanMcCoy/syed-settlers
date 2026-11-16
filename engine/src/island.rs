@@ -471,9 +471,17 @@ fn river_layout(rng: &mut Rng, hexes: &[Hex], g: &Graph) -> Option<(Vec<u16>, Ve
 // for the scenario turned over as ships reach it
 fn explore_island(s: &Settings, rng: &mut Rng) -> Option<Island> {
     let removed = [Cell::new(2, 0), Cell::new(1, 1), Cell::new(2, -1), Cell::new(2, -2)];
-    let start: Vec<Cell> = within(Cell::new(0, 0), 2).into_iter().filter(|c| !removed.contains(c)).collect();
+    let mut start: Vec<Cell> = within(Cell::new(0, 0), 2).into_iter().filter(|c| !removed.contains(c)).collect();
     let mut terrains: Vec<Terrain> = [(Mine, 2), (Forest, 4), (Paddy, 3), (Fields, 3), (Quarry, 3)].iter().flat_map(|&(t, n)| std::iter::repeat_n(t, n)).collect();
     let mut numbers: Vec<u8> = vec![3, 3, 4, 4, 5, 6, 6, 8, 8, 9, 10, 10, 11, 11, 12];
+    let big = s.island_large; // 5-6 players: 21 start hexes, bigger regions
+    if big {
+        let mut west: Vec<Cell> = within(Cell::new(0, 0), 3).into_iter().filter(|c| c.distance(Cell::new(0, 0)) == 3).collect();
+        west.sort_by_key(|c| (2 * c.q + c.r, c.r));
+        start.extend(west.into_iter().take(6));
+        terrains.extend([Mine, Forest, Paddy, Fields, Quarry, Quarry]);
+        numbers.extend([3, 4, 5, 9, 10, 11]);
+    }
     let mut ok = false;
     for _ in 0..NUMBER_TRIES {
         rng.shuffle(&mut terrains);
@@ -501,6 +509,12 @@ fn explore_island(s: &Settings, rng: &mut Rng) -> Option<Island> {
         tiles.extend(std::iter::repeat_n(Sea, if sc == 5 { 1 } else { 2 }));
         if sc == 2 || sc == 5 {
             tiles.extend([Gold; 3]);
+        }
+        if big {
+            tiles.extend(if region == 1 { [Fields, Quarry, Forest, Sea] } else { [Mine, Paddy, Quarry, Sea] });
+            if sc == 2 || sc == 5 {
+                tiles.push(Gold);
+            }
         }
         if sc == 3 || sc == 5 {
             tiles.extend([Shoal; 3]);

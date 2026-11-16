@@ -176,24 +176,21 @@ impl Settings {
             if s.sea || s.city || s.box_scenario != 0 || s.variant_events || s.variant_two {
                 return Err("the exploration expansion is played on its own".into());
             }
-            if players > 4 {
-                return Err("the exploration expansion is for 2 to 4 players (its 5-6 player map isn't in yet)".into());
-            }
             // Its own game: the win by scenario, no projects, no markets
             let mut base = Settings::for_players(players);
             base.explore = s.explore;
             base.win = [0, 8, 12, 15, 15, 17][s.explore as usize];
             (base.deck_pilot, base.deck_lighthouse, base.deck_road_crew, base.deck_harvest, base.deck_market_day) = (0, 0, 0, 0, 0);
             (base.markets_any, base.markets_each, base.markets_extra_fish) = (0, 0, 0);
-            base.island_large = false;
+            // (island.large, on for 5-6 players, makes the bigger exploration map)
             return Settings::parse_onto(base, text);
         }
         if s.box_scenario != 0 {
             if !matches!(s.box_scenario, 1..=5) {
                 return Err(format!("variants box scenario {} isn't ready yet", s.box_scenario));
             }
-            if s.sea || s.city || s.variant_events || s.variant_two {
-                return Err("a variants box scenario is played on its own (no sea, city, event cards or two-player variant)".into());
+            if s.sea || s.city || s.variant_events {
+                return Err("a variants box scenario is played on its own (no sea, city or event cards; the two-player variant is fine)".into());
             }
             if matches!(s.box_scenario, 1 | 3) && s.island_dunes == 0 {
                 return Err("this scenario needs a Dunes hex (it becomes the Lake or the watering hole)".into());
@@ -204,6 +201,7 @@ impl Settings {
                 // slot, Renown 3 = Lighthouses)
                 let mut base = Settings::for_players(players);
                 base.box_scenario = 5;
+                base.variant_two = s.variant_two;
                 base.win = 13;
                 if !base.island_large {
                     (base.island_paddy, base.island_fields, base.island_dunes) = (3, 3, 3);
@@ -218,6 +216,7 @@ impl Settings {
                 // win, the order deck instead of projects
                 let mut base = Settings::for_players(players);
                 base.box_scenario = 4;
+                base.variant_two = s.variant_two;
                 base.win = 12;
                 if !base.island_large {
                     (base.island_forest, base.island_dunes) = (3, 2);
@@ -232,6 +231,7 @@ impl Settings {
                 // Merchant trains: 12 to win
                 let mut base = Settings::for_players(players);
                 base.box_scenario = 3;
+                base.variant_two = s.variant_two;
                 base.win = 12;
                 return Settings::parse_onto(base, text);
             }
@@ -239,6 +239,7 @@ impl Settings {
                 // Rivers: two Swamps (Dunes) and one Paddy fewer on the hexagon (17 numbered hexes)
                 let mut base = Settings::for_players(players);
                 base.box_scenario = 2;
+                base.variant_two = s.variant_two;
                 if !base.island_large {
                     (base.island_paddy, base.island_dunes) = (3, 2);
                 }
@@ -250,12 +251,13 @@ impl Settings {
             }
         }
         if s.city {
+            if s.sea && s.sea_scenario == 7 {
+                return Err("the Pirate Islands' warships come from Pilot projects, which the city expansion replaces: it can't be won with the city expansion".into());
+            }
             if s.variant_events || s.variant_two {
                 return Err("the city expansion doesn't combine with event cards or the two-player variant".into());
             }
-            if s.sea && !matches!(s.sea_scenario, 1 | 4 | 9) {
-                return Err("the city expansion combines with sea scenarios 1 (New Shores), 4 (Through the Desert) and 9 (New World)".into());
-            }
+
         }
         if !s.sea {
             if !s.city {

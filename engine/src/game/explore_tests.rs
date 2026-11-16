@@ -32,6 +32,10 @@ fn the_map_a_start_island_two_hidden_regions_and_the_council() {
         let start = g.ex.start_hexes.iter().filter(|&&s| s).count();
         assert_eq!(start, 15, "the start island");
     }
+    // 5-6 players: 21 start hexes, 4 more hidden hexes a region (and a gold field with lairs)
+    let g = explore_game(5, 6);
+    assert_eq!(g.ex.start_hexes.iter().filter(|&&s| s).count(), 21);
+    assert_eq!((0..g.board.terrain.len()).filter(|&h| g.board.terrain[h] == Terrain::Fog).count(), 2 * 21);
     let win: Vec<u8> = (1..=5).map(|k| Settings::parse_for(&format!("explore={k}"), 3).unwrap().win).collect();
     assert_eq!(win, vec![8, 12, 15, 15, 17]);
 }
@@ -118,7 +122,7 @@ fn three_crews_capture_a_lair_for_coins_and_track_steps() {
 fn explore_games_never_get_stuck_and_greedy_finishes_them() {
     use crate::sim::{BotKind, play_with};
     for scenario in 1..=5u8 {
-        for players in [2, 3, 4] {
+        for players in [2, 3, 4, 6] {
             let s = Settings::parse_for(&format!("explore={scenario}"), players).unwrap();
             for seed in 0..8 {
                 play_with(&s, seed, players, 300, &[BotKind::Random]).unwrap();

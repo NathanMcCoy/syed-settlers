@@ -21,7 +21,7 @@ const newId = () => Array.from(randomBytes(12), b => ID_CHARS[b % ID_CHARS.lengt
 
 export const BOT_NAMES = ['Coral', 'Kelp', 'Pebble', 'Driftwood', 'Heron', 'Lagoon'];
 
-export function makeGames(engine, { botDelay = 700, now = () => Date.now() } = {}) {
+export function makeGames(engine, { botDelay = 700, offerWait = botDelay ? 20_000 : 0, now = () => Date.now() } = {}) {
   const games = new Map();
 
   function cleanName(name, fallback) {
@@ -128,6 +128,17 @@ export function makeGames(engine, { botDelay = 700, now = () => Date.now() } = {
     if (v.phase === 'over') return;
     const answering = v.offer ? v.offer.to.find(s => game.seats[s].kind === 'bot' && v.offer.answers[s] === null) : undefined;
     if (answering === undefined && game.seats[v.toAct].kind !== 'bot') return;
+    // A bot's own offer: give the people it's made to time to answer (up to 20 s) before it moves on
+    if (answering === undefined && v.offer && game.seats[v.offer.by].kind === 'bot') {
+      const waiting = v.offer.to.some(s => game.seats[s].kind === 'person' && v.offer.answers[s] === null);
+      game.offerSince ??= now();
+      if (waiting && now() - game.offerSince < offerWait) {
+        game.timer = setTimeout(() => { game.timer = null; schedule(game); }, Math.min(1000, offerWait));
+        return;
+      }
+    } else {
+      game.offerSince = null;
+    }
     game.timer = setTimeout(() => {
       game.timer = null;
       if (!games.has(game.id)) return;

@@ -302,7 +302,15 @@ Each map is made from the seed to the scenario's rules and tile counts; the layo
 
 ## The variants box: scenarios ⚙ (`box.scenario`, chosen when starting a game)
 
-Played on their own: not with the sea, the city expansion, event cards or the two-player variant.
+Played on their own: not with the sea, the city expansion or event cards. **With the two-player variant**
+(`variant.two`, 2 seats): its rules apply, and the token action "squall to the Dunes" takes the squall off the island
+(Merchant trains) or moves a raider (Raider attack: between coastal hexes; Traders: to a free edge). Per scenario:
+Fishing has no trade tokens, each player starts with 5 fish tokens (1, 1, 2, 2, 3), and the player behind in public
+Renown pays 1 fish less per action; Rivers as the variant; Merchant trains place 2 wagons a vote (more votes: both; a
+tie: one each, the player acting first); Raider attack: the first knight built brings a neutral knight (placed by its
+builder on any free edge; either player may move it after their own; never lost; its tie-break roll is 3), each
+neutral Hut brings a landing, and a player left out of prisoners or losing a knight gets 2 coins and a trade token;
+Traders: a Hut by a works earns a trade token, and a neutral Path costs a wagon 1 point and a coin (to the bank).
 
 - **1 Fishing** (10 Renown): the Dunes become the **Lake**, moved to the middle (the centre hex or a neighbour; the hex
   it swaps with takes the Dunes' place and number). It pays on 2, 3, 11 and 12. Six **fishing grounds** (sea hexes
@@ -354,17 +362,17 @@ Played on their own: not with the sea, the city expansion, event cards or the tw
   the wagon starts; 5 coins each. Works: Keep wants Marble/Glass, supplies Tools/Sand; Glassworks wants Sand,
   supplies Glass/Tools; Stoneworks wants Tools, supplies Sand/Marble (stacks of 12, 6 of each). End of turn: the
   wagon moves by move points (levels 0-4: 4, 5, 6, 7, 7; a Grain once a turn +2): a step costs 2, 1 on your Path,
-  1 + a coin to the owner on another's Path (not without a coin), +2 with a raider. A works' corner ends the move:
-  a wanted good is delivered (1 Renown, coins 1-5 by level), then one of its goods is taken. Driving off (level 1+,
+  1 + a coin to the owner on another's Path (not without a coin), +2 with a raider. From a works' corner, entering it costs
+  2 more move points and ends the move: a wanted good is delivered (1 Renown, coins 1-5 by level), then one of its goods is taken. Driving off (level 1+,
   each raider once a turn): a die of at least 6/5/4/3 by level; then the player moves it to any free edge. Upgrades:
   Timber+Fish+Stone, Timber+Stone, 2 Timber+Fish+Stone, 2 Timber+Fish+Stone; level 4 +1 Renown. A 7: discards, then
   the roller moves a raider (robbing a Path's owner where it lands). Projects (as the project deck): Knight 16 (the
   Pilot slot: move a raider), Path Builders 3 (Road Crew), Swift Journey 3 (the Good Harvest slot: the wagon moves
-  twice), Renown 3 (Lighthouses). Coins as in Rivers. (Ours: works reached at any corner; random raider starts.)
+  twice), Renown 3 (Lighthouses). Coins as in Rivers. (Ours: works entered from any corner for 2 points; random raider starts.)
 
 ## The exploration expansion ⚙ (`explore` 1-5, chosen when starting a game)
 
-Its own game, 2-4 players, not combined with anything else. Scenarios (each adds to the one before): 1 Land Ho! (8),
+Its own game, 2-6 players, not combined with anything else. Scenarios (each adds to the one before): 1 Land Ho! (8),
 2 Pirate lairs (12), 3 Fish (15), 4 Spices (15), 5 the full game (17).
 
 - **Map:** a start island of 15 hexes (2 Mine, 4 Forest, 3 Paddy, 3 Fields, 3 Quarry; numbers 3 3 4 4 5 6 6 8 8 9 10
@@ -397,12 +405,12 @@ Its own game, 2-4 players, not combined with anything else. Scenarios (each adds
   island (anyone else's goes home); rob a player with a ship on that hex (a card, or a coin). Moving a ship from or to
   an edge of its hex costs a coin. An unmoved ship by another's pirate ship may roll to chase it (6), then place yours.
 - **Ours:** no harbour storage; one-go ship moves; tribute at the start or end only; the map; lair numbers 3 4 5 9 10
-  11; 5-6 players not in yet.
+  11; 5-6 players (ours): paired turns as in the base game, a start island of 21 (6 more on the west: Mine, Forest, Paddy, Fields, 2 Quarry; numbers 3 4 5 9 10 11), each region +3 land (parrot Fields, Quarry, Forest; goose Mine, Paddy, Quarry), +1 sea, +1 gold with lairs, numbers parrot +5 8 11, goose +3 6 10, lairs +4 9; harbours a little further round the coast. Sims: the last seat wins about 3% less with 6.
 
 ## The city expansion ⚙ (`city`, chosen when starting a game)
 
-From the classic game's cities-and-knights expansion, with our own names. 13 Renown to win (with the sea: only
-scenarios 1, 4 and 9, at their target + 2). Not with event cards or the two-player variant. The page's City tab holds
+From the classic game's cities-and-knights expansion, with our own names. 13 Renown to win (with the sea:
+any scenario but 7, at its target + 2: the Pirate Islands needs Pilots for warships). Not with event cards or the two-player variant. The page's City tab holds
 improvements and progress cards; walls and knights are in the Build shop.
 
 - **Setup:** the second setup building is a Lodge (it collects the starting resources). No projects, no Most Pilots.
@@ -443,6 +451,6 @@ improvements and progress cards; walls and knights are in the Build shop.
 
 ## Not in version 1 (planned)
 
-- Bots making trade offers and counter-offers (they answer offers, including open ones).
+- Bots making counter-offers (they make 1-for-1 offers once a turn when short of something, and answer offers, including open ones; a bot waits up to 20 s for people to answer its offer).
 - A turn timer, and a bot taking over the seat of a person who leaves.
 - Illustrations (the board is plain and functional for now).

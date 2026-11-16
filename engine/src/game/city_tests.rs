@@ -51,7 +51,7 @@ fn setup_gives_a_lodge_second_13_to_win_no_projects_and_no_squall_yet() {
         assert_eq!(g.renown(p), 3);
     }
     assert_eq!(g.cs.decks.iter().map(|d| d.len()).sum::<usize>(), 54);
-    assert!(Settings::parse_for("city=true;sea=true;sea.scenario=2", 4).unwrap_err().contains("combines with sea scenarios"));
+    assert!(Settings::parse_for("city=true;sea=true;sea.scenario=7", 4).unwrap_err().contains("can't be won"));
     assert_eq!(Settings::parse_for("city=true;sea=true;sea.scenario=1", 4).unwrap().win, 16, "a sea scenario's target + 2");
 }
 
@@ -406,7 +406,7 @@ fn treason_and_intrigue_move_other_players_knights() {
 #[test]
 fn city_games_never_get_stuck_and_greedy_finishes_them() {
     use crate::sim::{BotKind, play_with};
-    for (text, counts) in [("city=true", &[2usize, 3, 4, 6][..]), ("city=true;sea=true;sea.scenario=1", &[3, 4]), ("city=true;sea=true;sea.scenario=4", &[3]), ("city=true;sea=true;sea.scenario=9", &[4])] {
+    for (text, counts) in [("city=true", &[2usize, 3, 4, 6][..]), ("city=true;sea=true;sea.scenario=1", &[3, 4]), ("city=true;sea=true;sea.scenario=4", &[3]), ("city=true;sea=true;sea.scenario=9", &[4]), ("city=true;sea=true;sea.scenario=2", &[3]), ("city=true;sea=true;sea.scenario=3", &[4]), ("city=true;sea=true;sea.scenario=5", &[3]), ("city=true;sea=true;sea.scenario=6", &[3]), ("city=true;sea=true;sea.scenario=8", &[4])] {
         for &players in counts {
             let s = Settings::parse_for(text, players).unwrap();
             for seed in 0..12 {

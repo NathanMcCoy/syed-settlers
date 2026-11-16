@@ -152,7 +152,14 @@ impl Game {
 
     pub(super) fn resolve_vote(&mut self) {
         let seat = self.vote_winner();
-        self.decide_then([Pending { seat, decision: Decision::PlaceWagon }], Phase::TurnEnd);
+        let mut places = vec![Pending { seat, decision: Decision::PlaceWagon }];
+        // Two players: 2 wagons a vote; more votes place both, a tie one each (the player acting first)
+        if self.two() {
+            let other = 1 - self.current;
+            let second = if self.bids[0] == self.bids[1] { other } else { seat };
+            places.push(Pending { seat: second, decision: Decision::PlaceWagon });
+        }
+        self.decide_then(places, Phase::TurnEnd);
     }
 
     pub(super) fn bid(&mut self, p: usize, fish: u8, grain: u8) {
