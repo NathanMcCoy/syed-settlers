@@ -113,7 +113,9 @@ impl Game {
 
     // May any Hut go on corner c? (Cloth: not on the small islands, regions 2 and up)
     pub(super) fn hut_spot(&self, c: usize) -> bool {
-        !self.cloth() || self.board.corner_region[c] <= 1
+        // The Forgotten Tribe: next to a numbered hex only
+        let numbered = !self.tribe() || listed(&self.board.graph.corner_hexes[c]).any(|h| self.board.number[h] > 0);
+        numbered && (!self.cloth() || self.board.corner_region[c] <= 1)
     }
 
     // Setup rounds: 2, or 3 in Cloth (only the last round's Hut collects)

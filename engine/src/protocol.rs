@@ -36,6 +36,7 @@ pub fn action_text(a: Action) -> String {
         Action::Repair(e) => format!("repair {e}"),
         Action::ClaimWonder(w) => format!("claimwonder {w}"),
         Action::BuildWonder => "buildwonder".into(),
+        Action::PlaceMarket(e) => format!("placemarket {e}"),
         Action::NeutralHut(n, c) => format!("neutralhut {n} {c}"),
         Action::NeutralPath(n, e) => format!("neutralpath {n} {e}"),
         Action::CashPilot => "cashpilot".into(),
@@ -98,6 +99,7 @@ pub fn parse_action(text: &str) -> Result<Action, String> {
         Some("repair") => Action::Repair(num(1)?),
         Some("claimwonder") => Action::ClaimWonder(small(1)?),
         Some("buildwonder") => Action::BuildWonder,
+        Some("placemarket") => Action::PlaceMarket(num(1)?),
         Some("neutralhut") => Action::NeutralHut(small(1)?, num(2)?),
         Some("neutralpath") => Action::NeutralPath(small(1)?, num(2)?),
         Some("cashpilot") => Action::CashPilot,
@@ -262,7 +264,7 @@ pub fn view_json(g: &Game, seat: u8) -> String {
             "{{\"phase\":\"{}\",\"current\":{},\"toAct\":{},\"turn\":{},\"lastRoll\":{},\"squall\":{},\"winner\":{},",
             "\"buildings\":[{}],\"roads\":[{}],\"players\":[{}],\"longestPath\":{},\"mostPilots\":{},",
             "\"row\":{},\"deck\":{},\"lastTake\":{},\"win\":{},\"you\":{},\"hand\":{},\"rates\":{},\"legal\":{},",
-            "\"offer\":{},\"canOffer\":{},\"offersLeft\":{},\"dice\":{},\"bank\":{},\"short\":{},\"handLimit\":{},\"round\":{},\"roundLimit\":{},\"byRounds\":{},\"bought\":{},\"turnOf\":{},\"paired\":{},\"titles\":{},\"deciding\":{},\"pirate\":{},\"shipMoved\":{},\"event\":{},\"damaged\":{},\"revealed\":{},\"villages\":{},\"clothEnded\":{},\"wonders\":{},\"markers\":{}}}"
+            "\"offer\":{},\"canOffer\":{},\"offersLeft\":{},\"dice\":{},\"bank\":{},\"short\":{},\"handLimit\":{},\"round\":{},\"roundLimit\":{},\"byRounds\":{},\"bought\":{},\"turnOf\":{},\"paired\":{},\"titles\":{},\"deciding\":{},\"pirate\":{},\"shipMoved\":{},\"event\":{},\"damaged\":{},\"revealed\":{},\"villages\":{},\"clothEnded\":{},\"wonders\":{},\"markers\":{},\"prizes\":{},\"heldMarkets\":{},\"markets\":{}}}"
         ),
         // While decisions are being made (pending.rs), the phase is named after the first one ("discard")
         g.deciding().map_or(phase_name(g.phase), |d| d.decision.name()), g.current, g.to_act(), g.turn,
@@ -322,6 +324,11 @@ pub fn view_json(g: &Game, seat: u8) -> String {
             }))
         },
         list((0..g.board.corner_marker.len()).filter(|&c| g.board.corner_marker[c] != 0).map(|c| format!("[{c},{}]", g.board.corner_marker[c]))),
+        // The Forgotten Tribe: prizes left as [edge, kind]; each player's markets taken but not placed;
+        // every market now on the board (placed ones included) as [hex, side, kind]
+        list((0..g.prizes.len()).filter(|&e| g.prizes[e] != 0).map(|e| format!("[{e},{}]", g.prizes[e]))),
+        list((0..g.players).map(|p| list(g.held_markets[p].iter().map(|&k| json::string(market_name(k)))))),
+        list(g.board.markets.iter().map(|m| format!("[{},{},{}]", m.hex, m.side, json::string(market_name(m.kind))))),
     )
 }
 

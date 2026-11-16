@@ -19,6 +19,7 @@ mod sea;
 mod titles;
 mod tokens;
 mod events;
+mod tribe;
 mod turns;
 mod two;
 mod variants;
@@ -74,6 +75,7 @@ pub enum Action {
     Repair(u16),     // repair your damaged Path on this edge (Timber + Copper)
     ClaimWonder(u8), // Wonders: claim this wonder (its requirement met)
     BuildWonder,     // Wonders: build the next level of your wonder
+    PlaceMarket(u16), // The Forgotten Tribe: place a market you took on this coastal edge
     NeutralHut(u8, u16),  // the two-player variant: a Hut for this neutral colour on this corner
     NeutralPath(u8, u16), // ... a Path for this neutral colour on this edge
     CashPilot,       // discard a played Pilot for 2 trade tokens
@@ -255,6 +257,9 @@ pub struct Game {
     pub wonder_owner: [u8; 5],
     pub wonder_of: [u8; MAX_PLAYERS],
     pub wonder_level: [u8; MAX_PLAYERS],
+    // The Forgotten Tribe (tribe.rs): the prize left on each edge (0 none), markets taken but not placed
+    pub prizes: Vec<u8>,
+    pub held_markets: Vec<Vec<u8>>,
     // Event cards (events.rs): the deck (top last), the last card's event (NOBODY before the first),
     // whether this production is an epidemic, and Paths an earthquake damaged
     pub event_deck: Vec<u8>,
@@ -378,6 +383,14 @@ impl Game {
             wonder_owner: [NOBODY; 5],
             wonder_of: [NOBODY; MAX_PLAYERS],
             wonder_level: [0; MAX_PLAYERS],
+            prizes: {
+                let mut prizes = vec![0u8; g.edges()];
+                for &(h, side, kind) in &island.prizes {
+                    prizes[g.hex_edges[h as usize][side as usize] as usize] = kind;
+                }
+                prizes
+            },
+            held_markets: vec![Vec::new(); MAX_PLAYERS],
             event_deck: Vec::new(),
             last_event: NOBODY,
             epidemic: false,
@@ -573,7 +586,8 @@ impl Game {
                 let anywhere = anywhere || range == 0;
                 let before = out.len();
                 for &h in &self.board.land_hexes {
-                    let village = self.board.terrain[h as usize] == Terrain::Village; // Cloth: not on the small islands
+                    // Cloth: not on the small islands; the Forgotten Tribe: numbered hexes only
+                    let village = self.board.terrain[h as usize] == Terrain::Village || (self.tribe() && self.board.number[h as usize] == 0);
                     if h != self.squall && !village && (anywhere || self.board.hex_distance(h, self.squall) <= range) && self.squall_allowed(h as usize) {
                         out.push(Action::Squall(h));
                     }
@@ -649,6 +663,7 @@ impl Game {
                 self.legal_plays(pu, out);
                 self.legal_tokens(pu, out);
                 self.legal_wonders(pu, out);
+                self.legal_markets(pu, out);
                 if let Some(o) = &self.offer {
                     out.push(Action::Withdraw);
                     for s in 0..self.players {
@@ -880,6 +895,7 @@ impl Game {
                 self.ship_moved = true;
                 self.update_titles();
                 self.lift_fog(pu, to);
+                self.take_prize(pu, to);
                 self.check_villages(pu);
             }
             Action::Pirate(h) => {
@@ -929,6 +945,7 @@ impl Game {
                 self.wonder_owner[w as usize] = p;
                 self.wonder_of[pu] = w;
             }
+            Action::PlaceMarket(e) => self.place_market(pu, e as usize),
             Action::BuildWonder => {
                 pay(&mut self.hands[pu], &WONDERS[self.wonder_of[pu] as usize].cost());
                 self.wonder_level[pu] += 1;
@@ -1187,6 +1204,9 @@ impl Game {
         // choice comes before the next setup step)
         self.lift_fog(pu, e);
         self.check_villages(pu);
+        if kind == SHIP {
+            self.take_prize(pu, e);
+        }
         // The two-player variant: a Path built owes a neutral Path
         if kind == PATH && built {
             if let Some(d) = self.owe_neutral(p, false) {

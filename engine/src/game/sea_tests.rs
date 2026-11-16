@@ -371,7 +371,7 @@ fn home_islands_are_where_you_set_up_and_every_other_island_is_a_bonus() {
     let s = Settings::parse_for("sea=true;sea.scenario=4", 3).unwrap();
     let g = Game::new(&generate(&s, "desert").unwrap(), &s, 3, 7);
     assert!(legal(&g).iter().all(|a| matches!(a, Action::Hut(c) if g.board.corner_region[*c as usize] == 0)));
-    assert!(Settings::parse_for("sea=true;sea.scenario=5", 3).unwrap_err().contains("isn't ready"));
+    assert!(Settings::parse_for("sea=true;sea.scenario=7", 3).unwrap_err().contains("isn't ready"));
 }
 
 #[test]

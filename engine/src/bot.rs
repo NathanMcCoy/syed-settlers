@@ -164,8 +164,9 @@ impl Greedy {
                 return Action::Ship(e as u16);
             }
         }
-        // Wonders: claim one as soon as possible, then build its levels whenever affordable
-        if let Some(&a) = legal.iter().find(|a| matches!(a, Action::ClaimWonder(_) | Action::BuildWonder)) {
+        // Wonders: claim one as soon as possible, then build its levels whenever affordable; the
+        // Forgotten Tribe: place a market as soon as there's a spot
+        if let Some(&a) = legal.iter().find(|a| matches!(a, Action::ClaimWonder(_) | Action::BuildWonder | Action::PlaceMarket(_))) {
             return a;
         }
         // The two-player variant: trade tokens send the squall off this bot's own hex
@@ -258,6 +259,14 @@ impl Greedy {
         // Wonders: once claimed, save for its levels (a finished wonder wins)
         if g.wonders_on() && g.wonder_of[pu] != NOBODY && g.wonder_level[pu] < 4 && (g.wonder_level[pu] > 0 || spot.is_none()) {
             return (Goal::Project, WONDERS[g.wonder_of[pu] as usize].cost());
+        }
+        // The Forgotten Tribe: sail for the prizes around the small islands
+        if g.tribe() && pieces[P_SHIP] > 0 {
+            if let Some((d, e)) = reachable_prize(g, p) {
+                if d <= 5 {
+                    return (Goal::ShipEdge(e), SHIP_COST);
+                }
+            }
         }
         // Cloth: link to a village not yet traded with (cloth is Renown), by ship
         if g.cloth() && pieces[P_SHIP] > 0 {
@@ -453,6 +462,43 @@ fn reachable_by_sea(g: &Game, p: u8) -> Option<(usize, u32, Option<usize>)> {
         }
     }
     best.map(|(c, d, f, _)| (c, d, f))
+}
+
+// The Forgotten Tribe: the nearest prize edge by ships (ships needed, the first ship to build)
+fn reachable_prize(g: &Game, p: u8) -> Option<(u32, usize)> {
+    let gr = &g.board.graph;
+    let corners = gr.corners();
+    let mut dist = vec![u32::MAX; corners];
+    let mut first: Vec<Option<usize>> = vec![None; corners];
+    let mut queue = std::collections::VecDeque::new();
+    for c in 0..corners {
+        let own_ship = listed(&gr.corner_edges[c]).any(|e| g.edge_owner[e] == p && g.edge_kind[e] == SHIP);
+        if g.corner_owner[c] == p || (g.corner_owner[c] == NOBODY && own_ship) {
+            dist[c] = 0;
+            queue.push_back(c);
+        }
+    }
+    while let Some(c) = queue.pop_front() {
+        if g.corner_owner[c] != NOBODY && g.corner_owner[c] != p {
+            continue;
+        }
+        for (k, n) in listed(&gr.corner_corners[c]).enumerate() {
+            let e = gr.corner_edges[c][k] as usize;
+            if !g.board.edge_sea[e] || g.edge_owner[e] != NOBODY || g.by_pirate(e) {
+                continue;
+            }
+            let via = if dist[c] == 0 { e } else { first[c].unwrap() };
+            if g.prizes[e] != 0 {
+                return Some((dist[c] + 1, via));
+            }
+            if dist[n] == u32::MAX {
+                dist[n] = dist[c] + 1;
+                first[n] = Some(via);
+                queue.push_back(n);
+            }
+        }
+    }
+    None
 }
 
 // Cloth: the nearest corner of a village p isn't linked to, by ships from p's coastal buildings and

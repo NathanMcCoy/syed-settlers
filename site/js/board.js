@@ -24,6 +24,21 @@ export const hexPoints = h => {
   return CORNERS.map(([dx, dy]) => `${c.x + dx * X},${c.y + dy * Y}`).join(' ');
 };
 
+// A market's tag and the line to its edge (also for markets placed during a game: the Forgotten Tribe)
+export function marketTag(island, m) {
+  const c = centre(island.hexes[m.hex]);
+  const [a, b] = [CORNERS[m.side], CORNERS[(m.side + 1) % 6]];
+  const mid = { x: c.x + (a[0] + b[0]) / 2 * X, y: c.y + (a[1] + b[1]) / 2 * Y };
+  // Far enough out that the tag never covers the edge's corners (where Huts go)
+  const out = { x: c.x + (mid.x - c.x) * 1.9, y: c.y + (mid.y - c.y) * 1.9 };
+  const line = el('line', { x1: mid.x, y1: mid.y, x2: out.x, y2: out.y, class: 'market-line' });
+  const g = el('g', { 'data-market': m.kind });
+  g.append(el('rect', { x: out.x - 27, y: out.y - 8, width: 54, height: 16, rx: 4, class: 'market' }));
+  g.append(el('text', { x: out.x, y: out.y, class: 'market-text' }, MARKET[m.kind]));
+  g.append(el('title', {}, m.kind === 'any' ? 'Market: 3 of anything for 1' : `Market: 2 ${m.kind} for 1`));
+  return [line, g];
+}
+
 export function terrainName(t) {
   return `${t[0].toUpperCase()}${t.slice(1)}`;
 }
@@ -83,18 +98,6 @@ export function islandSvg(island) {
   });
 
   // Markets: a tag just out to sea from the middle of their edge
-  for (const m of island.markets) {
-    const c = centre(island.hexes[m.hex]);
-    const [a, b] = [CORNERS[m.side], CORNERS[(m.side + 1) % 6]];
-    const mid = { x: c.x + (a[0] + b[0]) / 2 * X, y: c.y + (a[1] + b[1]) / 2 * Y };
-    // Far enough out that the tag never covers the edge's corners (where Huts go)
-    const out = { x: c.x + (mid.x - c.x) * 1.9, y: c.y + (mid.y - c.y) * 1.9 };
-    svg.append(el('line', { x1: mid.x, y1: mid.y, x2: out.x, y2: out.y, class: 'market-line' }));
-    const g = el('g', { 'data-market': m.kind });
-    g.append(el('rect', { x: out.x - 27, y: out.y - 8, width: 54, height: 16, rx: 4, class: 'market' }));
-    g.append(el('text', { x: out.x, y: out.y, class: 'market-text' }, MARKET[m.kind]));
-    g.append(el('title', {}, m.kind === 'any' ? 'Market: 3 of anything for 1' : `Market: 2 ${m.kind} for 1`));
-    svg.append(g);
-  }
+  for (const m of island.markets) svg.append(...marketTag(island, m));
   return svg;
 }

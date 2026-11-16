@@ -159,6 +159,8 @@ pub struct Island {
     pub fog_numbers: Vec<u8>,
     // Wonders: corner markers, as (hex, which corner of it 0-5, kind: 1 wall, 2 bridge, 3 no setup)
     pub markers: Vec<(u16, u8, u8)>,
+    // The Forgotten Tribe: prizes on sea edges, as (hex, side, kind: 1 Renown, 2 project, 10 + market kind)
+    pub prizes: Vec<(u16, u8, u8)>,
     pub info: Info,
 }
 
@@ -251,7 +253,7 @@ fn attempt_island(s: &Settings, rng: &mut Rng) -> Option<Island> {
     let main_average = land.iter().map(|h| pips(h.number)).sum::<u32>() as f64
         / land.iter().filter(|h| h.number != 0).count() as f64;
     let mut land = land;
-    if s.sea && matches!(s.sea_scenario, 1 | 8) {
+    if s.sea && matches!(s.sea_scenario, 1 | 5 | 8) {
         land.extend(small_islands(rng, &main_set, s)?);
     } else if s.sea {
         // The other sea scenarios make all their land themselves (sea_maps.rs)
@@ -282,6 +284,7 @@ fn attempt_island(s: &Settings, rng: &mut Rng) -> Option<Island> {
     // (Wonders has no pirate)
     let pirate = if s.sea && s.sea_scenario != 8 { pirate_start(rng, &hexes, s.sea_scenario == 1)? } else { NONE };
     let markers = if s.sea && s.sea_scenario == 8 { wonder_markers(rng, &hexes, &graph)? } else { Vec::new() };
+    let prizes = if s.sea && s.sea_scenario == 5 { tribe_prizes(rng, &hexes, &graph)? } else { Vec::new() };
 
     Some(Island {
         seed: String::new(),
@@ -292,6 +295,7 @@ fn attempt_island(s: &Settings, rng: &mut Rng) -> Option<Island> {
         fog_tiles,
         fog_numbers,
         markers,
+        prizes,
         info: Info { main_size: main.len(), main_average, attempts: 0 },
     })
 }
@@ -560,6 +564,39 @@ fn wonder_markers(rng: &mut Rng, hexes: &[Hex], g: &Graph) -> Option<Vec<(u16, u
         let k = g.hex_corners[h].iter().position(|&x| x as usize == c).unwrap();
         (h as u16, k as u8, kind)
     }).collect())
+}
+
+// The Forgotten Tribe: 8 Renown tokens, 4 projects and 3 markets (one general, two of random
+// resources) on sea edges touching the small islands, no two sharing a corner
+fn tribe_prizes(rng: &mut Rng, hexes: &[Hex], g: &Graph) -> Option<Vec<(u16, u8, u8)>> {
+    let small = |h: usize| hexes[h].terrain != Sea && hexes[h].region != 0;
+    let mut edges: Vec<usize> = (0..g.edges())
+        .filter(|&e| {
+            let hs: Vec<usize> = listed(&g.edge_hexes[e]).collect();
+            hs.len() == 2 && hs.iter().any(|&h| hexes[h].terrain == Sea) && g.edge_corners[e].iter().any(|&c| listed(&g.corner_hexes[c as usize]).any(small))
+        })
+        .collect();
+    rng.shuffle(&mut edges);
+    let mut kinds: Vec<u8> = vec![1; 8];
+    kinds.extend([2; 4]);
+    kinds.extend([10 + ANY, 10 + rng.below(5) as u8, 10 + rng.below(5) as u8]);
+    let mut used = vec![false; g.corners()];
+    let mut out = Vec::new();
+    for e in edges {
+        if out.len() == kinds.len() {
+            break;
+        }
+        let [a, b] = g.edge_corners[e];
+        if used[a as usize] || used[b as usize] {
+            continue;
+        }
+        used[a as usize] = true;
+        used[b as usize] = true;
+        let h = listed(&g.edge_hexes[e]).find(|&h| hexes[h].terrain == Sea).unwrap();
+        let side = g.hex_edges[h].iter().position(|&x| x as usize == e).unwrap();
+        out.push((h as u16, side as u8, kinds[out.len()]));
+    }
+    if out.len() == kinds.len() { Some(out) } else { None }
 }
 
 // The pirate starts on a sea hex two steps from the main island (between it and the small islands); in

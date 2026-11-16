@@ -4,7 +4,7 @@
 //
 // Your seat's key comes in the link's #k=... part (never sent to the server in the address), then is
 // kept in this browser (localStorage) so a reload finds your seat again.
-import { islandSvg, el, centre, point, hexPoints, pips, terrainName, TERRAIN_RESOURCE, RESOURCES, SIZE } from './board.js';
+import { islandSvg, el, centre, point, hexPoints, pips, terrainName, marketTag, TERRAIN_RESOURCE, RESOURCES, SIZE } from './board.js';
 
 const $ = id => document.getElementById(id);
 const COLOURS = ['Red', 'Blue', 'Orange', 'Purple', 'Green', 'Brown'];
@@ -320,6 +320,18 @@ function drawPieces(v, before) {
     mark.append(el('title', {}, ['', 'Wall marker (the Great Wall)', 'Bridge marker (the Great Bridge)', 'No setup Hut here'][kind]));
     layers.squall.append(mark);
   }
+  // The Forgotten Tribe: prizes on sea edges (R a Renown token, P a project, M a market), and markets
+  // placed during the game
+  for (const [e, kind] of v.prizes ?? []) {
+    const [a, b] = edgeEnds(e);
+    const label = kind === 1 ? 'R' : kind === 2 ? 'P' : 'M';
+    const mark = el('text', { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 + 4, class: 'marker prize', 'data-prize': e }, label);
+    mark.append(el('title', {}, kind === 1 ? 'A Renown token for the first ship here' : kind === 2 ? 'A project for the first ship here' : 'A market for the first ship here'));
+    layers.squall.append(mark);
+  }
+  for (const [hex, side, kind] of (v.markets ?? []).slice(board.island.markets.length)) {
+    layers.squall.append(...marketTag(board.island, { hex, side, kind }));
+  }
   // Cloth: what each village has left, and who trades with it
   for (const [h, cloth, linked] of v.villages ?? []) {
     const c = centre(board.island.hexes[h]);
@@ -414,7 +426,8 @@ function drawTargets(v) {
   layers.targets.replaceChildren();
   // On your main turn, only what you picked in the shop lights up; in setup, Road Crew's free
   // Paths and squall moves, every spot does
-  const moves = v.phase === 'main' ? legal().filter(m => mode && m.startsWith(`${mode} `)) : legal();
+  // (Placing a market you took is always shown: it isn't bought in the shop)
+  const moves = v.phase === 'main' ? legal().filter(m => (mode && m.startsWith(`${mode} `)) || m.startsWith('placemarket ')) : legal();
   // Moving a ship: first the ship (its edge lights up), then where it goes
   if (mode === 'moveship') {
     const pairs = moves.map(m => m.split(' ').slice(1).map(Number));
@@ -449,6 +462,11 @@ function drawTargets(v) {
       const { x, y } = cornerAt(Number(m.split(' ')[2]));
       const t = el('circle', { cx: x, cy: y, r: 9, class: 'target corner', 'data-move': m, tabindex: 0 });
       t.append(el('title', {}, 'A Hut for the neutral colour'));
+      layers.targets.append(t);
+    } else if (word === 'placemarket') {
+      const [a, b] = edgeEnds(Number(n));
+      const t = el('line', { x1: a.x, y1: a.y, x2: b.x, y2: b.y, class: 'target edge', 'data-move': m, tabindex: 0 });
+      t.append(el('title', {}, 'Place your market here'));
       layers.targets.append(t);
     } else if (word === 'neutralpath' || word === 'damage' || word === 'repair') {
       const e = Number(m.split(' ')[word === 'neutralpath' ? 2 : 1]);
@@ -1001,6 +1019,7 @@ function describe(entry) {
     case 'damage': return `${who}'s Path was damaged by the earthquake`;
     case 'repair': return `${who} repaired a Path`;
     case 'claimwonder': return `${who} claimed a wonder`;
+    case 'placemarket': return `${who} placed a market`;
     case 'buildwonder': return `${who} built a wonder level`;
     case 'neutralhut': return `${who} built a neutral Hut`;
     case 'neutralpath': return `${who} built a neutral Path`;
