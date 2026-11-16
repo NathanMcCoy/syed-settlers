@@ -58,6 +58,6 @@ test('hands are private: other seats and watchers see counts', () => {
 });
 
 test('bad game settings are refused', () => {
-  assert.throws(() => engine.newGame('x', 5), /5 players isn't allowed/);
+  assert.throws(() => engine.newGame('x', 7), /7 players isn't allowed/);
   assert.throws(() => engine.newGame('x', 3, { 'win': 99 }), /win must be between/);
 });

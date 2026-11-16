@@ -1,7 +1,8 @@
 # Syed Settlers: rules
 
-Version 0.4 (draft, Nov 15 2026: as close as we can make it to the classic game this one is
-modelled on, checked against its rulebook. 0.4: other players' buildings block Paths and break
+Version 0.5 (draft, Nov 16 2026: 5 and 6 players, from the classic game's 5-6 player rules: the
+large island, more cards and projects, and paired turns. 0.4 (Nov 15): as close as we can make it to
+the classic game this one is modelled on, checked against its rulebook: other players' buildings block Paths and break
 Longest Path again; no limit on trade offers; markets spread evenly round the coast; numbers in the
 classic spiral. 0.3: Most Pilots replaces Most Markets; Market Day replaces Good Bargain, with the
 deck re-counted; the squall goes to any land hex after a 7; 9 markets; a bank of 19; a short bank
@@ -11,8 +12,20 @@ They're first guesses: playtesting and bot simulations will tune them.
 
 ## Players
 
-2–4 seats ⚙. **Each seat is a person or a bot, in any mix**: you and 3 bots, you and a friend and
-a bot, four friends. People play from their own devices.
+2–6 seats ⚙. **Each seat is a person or a bot, in any mix**: you and 3 bots, you and a friend and
+a bot, six friends. People play from their own devices.
+
+**With 5 or 6 players** the game grows (these are the defaults for 5-6 seats; any can still be
+changed):
+- **The large island** ⚙ (`island.large`): 30 hexes in rows of 3, 4, 5, 6, 5, 4, 3: 6 Forest,
+  5 Quarry, 6 Fields, 5 Mine, 6 Paddy, 2 Dunes. Its 28 numbers are two 2s, two 12s and three of every
+  other. (The classic game lays them in a spiral too, but its order for this island isn't in the
+  rulebook we have, so they're shuffled with the fairness checks below.)
+- **11 markets:** 5 general (3:1) and one 2:1 market for each resource plus a second 2:1 Fish
+  market ⚙ (`markets.extraFish`).
+- **24 cards of each resource** in the bank, and **34 projects**: 20 Pilot, 5 Lighthouse,
+  3 Road Crew, 3 Good Harvest, 3 Market Day.
+- **Paired turns** ⚙ (`turns.paired`): see "A turn".
 
 ## Goal
 
@@ -106,6 +119,12 @@ resource from each producing hex around it.
 3. Then in any order: trade with the bank and markets, build, buy projects, and use one project (if
    you didn't before rolling).
 4. End your turn.
+
+**Paired turns (5 or 6 players):** when a player ends their turn, the player **3 seats after them**
+takes an **extra build phase**: no roll, but they may trade with the bank and markets, build, buy
+projects and use one project. They may not trade with other players. If they reach the Renown to
+win during it, they win. Then the next player's turn starts as usual. (A project bought in one of
+your phases can be used in your next one, whichever kind it is.)
 
 ## Rolling a 7
 

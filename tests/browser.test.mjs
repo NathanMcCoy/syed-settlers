@@ -20,20 +20,37 @@ const BROWSERS = { chromium, webkit };
 
 // A game against a bot where it's your turn and you can play a project, reached through the API:
 // buy project cards whenever possible, trade with the bank for a missing Stone, Grain or Fish, build
-// Huts and Lodges for more cards. A simple strategy that gets there in ~5 of 6 games within 6 s, so
-// start a fresh game when one doesn't (8 tries: all failing is about 1 in 1.5 million).
+// Huts and Lodges for more cards. A simple strategy that usually gets there within 150 of the tester's
+// turns (median ~35 with a bot opponent, measured Nov 16; 30 was too few), so start a fresh game when
+// one doesn't (8 tries). The budget is turns, not seconds: a time
+// budget failed whenever other test files kept the CPU busy (Nov 16: all 8 tries timed out in
+// Chromium while the 6-seat API game ran alongside).
 // Settings: win at 20 Renown (the most allowed) and a big deck without Lighthouses (never played).
-// `deck`: other deck settings (e.g. only Market Days)
-async function gameWithPlayableProject(deck = {}) {
+// `deck`: other deck settings (e.g. only Market Days). `passive`: the other seat is a friend this
+// helper plays (roll, end, nothing else) instead of a bot. Needed with a Market-Day-only deck: the
+// bot buys Market Days and takes the tester's cards with them, so the tester then got a project in
+// only ~27% of tries (11 of 40, measured Nov 16) and all 8 tries failed now and then. With any deck,
+// a bot opponent sometimes buys the whole deck first (9 of 40 tries never got a project).
+async function gameWithPlayableProject(deck = {}, passive = false) {
   const settings = { win: 20, 'projects.deck.pilot': 30, 'projects.deck.lighthouse': 0, 'projects.deck.roadCrew': 10, 'projects.deck.harvest': 10, 'projects.deck.marketDay': 10, ...deck };
   const PROJECT = [1, 2, 4];
   const tries = [];
   for (let attempt = 0; attempt < 8; attempt++) {
-    const { id, key } = await (await fetch(fastBase + '/api/games', { method: 'POST', body: JSON.stringify({ seats: [{ kind: 'person', name: 'Tester' }, { kind: 'bot' }], settings }) })).json();
+    const other = passive ? { kind: 'person', name: 'Friend' } : { kind: 'bot' };
+    const { id, key, invites } = await (await fetch(fastBase + '/api/games', { method: 'POST', body: JSON.stringify({ seats: [{ kind: 'person', name: 'Tester' }, other], settings }) })).json();
     assert.ok(id, 'the game was made with these settings');
-    for (const end = Date.now() + 6000; Date.now() < end; ) {
+    const friend = passive ? invites[0].key : null;
+    let turns = 0;
+    for (const end = Date.now() + 60_000; turns < 150 && Date.now() < end; ) {
       const v = (await (await fetch(`${fastBase}/api/games/${id}?k=${key}`)).json()).view;
       if (v.phase === 'over') break;
+      if (passive && v.toAct !== v.you) {
+        // The friend's move: setup spots, rolling, discarding, ending; never building or buying
+        const fv = (await (await fetch(`${fastBase}/api/games/${id}?k=${friend}`)).json()).view;
+        const move = fv.legal.find(m => m === 'roll') ?? fv.legal.find(m => m === 'end') ?? fv.legal[0];
+        if (move) await fetch(`${fastBase}/api/games/${id}/move`, { method: 'POST', body: JSON.stringify({ k: friend, move }) });
+        continue;
+      }
       if (v.toAct !== v.you || !v.legal.length) { await new Promise(r => setTimeout(r, 2)); continue; }
       if (v.legal.some(m => m.startsWith('play '))) return { id, key, v };
       const need = PROJECT.find(r => v.hand[r] === 0);
@@ -44,8 +61,9 @@ async function gameWithPlayableProject(deck = {}) {
         ?? v.legal.find(m => m === 'roll') ?? v.legal.find(m => m === 'end') ?? v.legal[0];
       const res = await fetch(`${fastBase}/api/games/${id}/move`, { method: 'POST', body: JSON.stringify({ k: key, move: pick }) });
       assert.equal(res.status, 200, `the server took the legal move ${pick}`);
+      if (pick === 'roll') turns++;
     }
-    tries.push(id);
+    tries.push(`${id} (${turns} turns)`);
   }
   assert.fail(`no playable project in ${tries.length} games`);
 }
@@ -354,7 +372,7 @@ for (const [name, type] of Object.entries(BROWSERS)) {
   });
 
   test(`${name}: a project you can play has a Use button in Your projects, not in the turn bar`, async () => {
-    const { id, key, v } = await gameWithPlayableProject();
+    const { id, key, v } = await gameWithPlayableProject({}, true);
     const { browser, page, errors } = await open(type);
     try {
       await page.goto(`${fastBase}/?g=${id}#k=${key}`);
@@ -376,7 +394,7 @@ for (const [name, type] of Object.entries(BROWSERS)) {
 
   test(`${name}: Market Day takes everyone's cards of one resource and says so in the log`, async () => {
     const only = { 'projects.deck.pilot': 0, 'projects.deck.roadCrew': 0, 'projects.deck.harvest': 0, 'projects.deck.marketDay': 10 };
-    const { id, key } = await gameWithPlayableProject(only);
+    const { id, key } = await gameWithPlayableProject(only, true);
     const { browser, page, errors } = await open(type);
     try {
       await page.goto(`${fastBase}/?g=${id}#k=${key}`);

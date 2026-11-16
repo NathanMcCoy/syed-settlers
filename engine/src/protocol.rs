@@ -228,7 +228,7 @@ pub fn view_json(g: &Game, seat: u8) -> String {
             "{{\"phase\":\"{}\",\"current\":{},\"toAct\":{},\"turn\":{},\"lastRoll\":{},\"squall\":{},\"winner\":{},",
             "\"buildings\":[{}],\"roads\":[{}],\"players\":[{}],\"longestPath\":{},\"mostPilots\":{},",
             "\"row\":{},\"deck\":{},\"lastTake\":{},\"win\":{},\"you\":{},\"hand\":{},\"rates\":{},\"legal\":{},",
-            "\"offer\":{},\"canOffer\":{},\"offersLeft\":{},\"dice\":{},\"bank\":{},\"short\":{},\"handLimit\":{},\"round\":{},\"roundLimit\":{},\"byRounds\":{},\"bought\":{}}}"
+            "\"offer\":{},\"canOffer\":{},\"offersLeft\":{},\"dice\":{},\"bank\":{},\"short\":{},\"handLimit\":{},\"round\":{},\"roundLimit\":{},\"byRounds\":{},\"bought\":{},\"turnOf\":{},\"paired\":{}}}"
         ),
         phase_name(g.phase), g.current, g.to_act(), g.turn,
         if g.last_roll == 0 { "null".into() } else { g.last_roll.to_string() },
@@ -250,6 +250,8 @@ pub fn view_json(g: &Game, seat: u8) -> String {
         g.round(), s.round_limit, g.by_rounds,
         // Projects this seat bought this turn (they can't be played until its next turn)
         if mine && seat == g.current && g.turn > 0 { list(g.bought) } else { list([0u8; 5]) },
+        // Whose turn it is, and whether `current` is the paired player's extra build phase
+        g.owner, g.paired,
     )
 }
 

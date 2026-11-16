@@ -56,6 +56,16 @@ pub fn strong(n: u8) -> bool {
 const BASE_NUMBERS: [u8; 18] = [2, 3, 3, 4, 4, 5, 5, 6, 6, 8, 8, 9, 9, 10, 10, 11, 11, 12];
 const REMOVE_ORDER: [u8; 8] = [2, 12, 3, 11, 4, 10, 5, 9];
 const ADD_ORDER: [u8; 8] = [5, 9, 6, 8, 4, 10, 3, 11];
+// The large island's 28 numbers (5-6 player rules): two 2s and two 12s, three of every other
+const LARGE_NUMBERS: [u8; 28] = [2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5, 6, 6, 6, 8, 8, 8, 9, 9, 9, 10, 10, 10, 11, 11, 11, 12, 12];
+
+// The numbers for an island made with these settings: the large island's own set when it has its
+// usual 28 producing hexes, otherwise number_tokens()
+pub fn tokens_for(s: &Settings) -> Vec<u8> {
+    let producing = main_size(s) - s.island_dunes as usize;
+    if s.island_large && producing == LARGE_NUMBERS.len() { LARGE_NUMBERS.to_vec() } else { number_tokens(producing) }
+}
+
 pub fn number_tokens(count: usize) -> Vec<u8> {
     let mut list = BASE_NUMBERS.to_vec();
     let mut i = 0;
@@ -79,8 +89,10 @@ pub fn number_tokens(count: usize) -> Vec<u8> {
 pub const SPIRAL_NUMBERS: [u8; 18] = [5, 2, 6, 3, 8, 10, 9, 12, 11, 4, 8, 10, 9, 4, 5, 6, 3, 11];
 
 // Does this island get its numbers in the spiral? Only the hexagon with exactly 18 numbered hexes
+// (The large island's spiral order isn't known: the 5-6 rulebook prints only the number sides of its
+// 28 discs, so the large island always uses the fair shuffle.)
 pub fn uses_spiral(s: &Settings) -> bool {
-    s.island_spiral && s.island_hexagon && main_size(s) - s.island_dunes as usize == SPIRAL_NUMBERS.len()
+    s.island_spiral && s.island_hexagon && !s.island_large && main_size(s) - s.island_dunes as usize == SPIRAL_NUMBERS.len()
 }
 
 // The hexagon's cells in spiral order: the outer ring from the corner in direction `start`,
@@ -184,17 +196,44 @@ pub fn generate(settings: &Settings, seed: &str) -> Result<Island, String> {
 pub const HEXAGON_RADIUS: i32 = 2;
 
 pub fn main_size(s: &Settings) -> usize {
-    if s.island_hexagon { within(Cell::new(0, 0), HEXAGON_RADIUS).len() } else { s.island_size as usize }
+    if s.island_large {
+        large_cells().len()
+    } else if s.island_hexagon {
+        within(Cell::new(0, 0), HEXAGON_RADIUS).len()
+    } else {
+        s.island_size as usize
+    }
+}
+
+// The large island (5-6 players): 30 hexes in rows of 3, 4, 5, 6, 5, 4, 3, centred on the middle
+// row's centre. On the lattice (hex.rs) a cell's x is 2q + r; each row's x runs evenly either side of
+// the middle, shifted by 1 so the 6-hex row (even length) lines up with its neighbours.
+pub fn large_cells() -> Vec<Cell> {
+    let mut out = Vec::new();
+    for r in -3i32..=3 {
+        let len = 6 - r.abs();
+        let first = (-(len - 1) - r + 1) / 2;
+        for q in first..first + len {
+            out.push(Cell::new(q, r));
+        }
+    }
+    out
 }
 
 fn attempt_island(s: &Settings, rng: &mut Rng) -> Option<Island> {
-    let main = if s.island_hexagon { within(Cell::new(0, 0), HEXAGON_RADIUS) } else { grow_main(rng, s.island_size as usize) };
+    let main = if s.island_large {
+        large_cells()
+    } else if s.island_hexagon {
+        within(Cell::new(0, 0), HEXAGON_RADIUS)
+    } else {
+        grow_main(rng, s.island_size as usize)
+    };
     let main_set: HashSet<Cell> = main.iter().copied().collect();
     if has_lakes(&main, &main_set) {
         return None;
     }
-    let counts = if s.island_hexagon { Some(s.tile_counts()) } else { None };
-    let land = if uses_spiral(s) { dress_spiral(rng, &main, s) } else { dress_main(rng, &main, s.island_dunes as usize, counts)? };
+    let counts = if s.island_hexagon || s.island_large { Some(s.tile_counts()) } else { None };
+    let land = if uses_spiral(s) { dress_spiral(rng, &main, s) } else { dress_main(rng, &main, s.island_dunes as usize, counts, tokens_for(s))? };
     let main_average = land.iter().map(|h| pips(h.number)).sum::<u32>() as f64
         / land.iter().filter(|h| h.number != 0).count() as f64;
 
@@ -214,7 +253,7 @@ fn attempt_island(s: &Settings, rng: &mut Rng) -> Option<Island> {
     hexes.sort_by_key(|h| (h.cell.r, h.cell.q));
     let graph = Graph::new(&hexes.iter().map(|h| h.cell).collect::<Vec<_>>());
 
-    let markets = place_markets(rng, &hexes, &graph, s.markets_any, s.markets_each)?;
+    let markets = place_markets(rng, &hexes, &graph, s.markets_any, s.markets_each, s.markets_extra_fish)?;
     let squall = *rng.pick(&squall_starts(&hexes));
 
     Some(Island {
@@ -291,7 +330,7 @@ fn has_lakes(land: &[Cell], set: &HashSet<Cell>) -> bool {
 // Main island terrain and numbers, redrawn until the fairness checks pass
 // The hexagon island uses the set number of each tile (`counts`, in PRODUCING's order); a random-
 // shaped one shares its hexes out as evenly as possible
-fn dress_main(rng: &mut Rng, main: &[Cell], dunes: usize, counts: Option<[u8; 5]>) -> Option<Vec<Hex>> {
+fn dress_main(rng: &mut Rng, main: &[Cell], dunes: usize, counts: Option<[u8; 5]>, tokens: Vec<u8>) -> Option<Vec<Hex>> {
     let producing = main.len() - dunes;
     let mut terrains: Vec<Terrain> = match counts {
         Some(c) => PRODUCING.iter().zip(c).flat_map(|(&t, n)| std::iter::repeat_n(t, n as usize)).collect(),
@@ -306,7 +345,8 @@ fn dress_main(rng: &mut Rng, main: &[Cell], dunes: usize, counts: Option<[u8; 5]
     };
     terrains.extend(std::iter::repeat_n(Dunes, dunes));
     debug_assert_eq!(terrains.len(), main.len());
-    let mut tokens = number_tokens(producing);
+    let mut tokens = tokens;
+    debug_assert_eq!(tokens.len(), producing);
     let index: HashMap<Cell, usize> = main.iter().enumerate().map(|(i, &c)| (c, i)).collect();
     let near: Vec<Vec<usize>> = main.iter().map(|c| c.neighbors().iter().filter_map(|n| index.get(n).copied()).collect()).collect();
 
@@ -403,9 +443,10 @@ fn fair_resources(hexes: &[Hex]) -> bool {
 // in order around the island, one market every (edges / markets) of them from a random start, kinds
 // shuffled. If that ever puts two on a shared corner (only possible on a random-shaped coast), the
 // markets go on random coastal edges instead.
-fn place_markets(rng: &mut Rng, hexes: &[Hex], g: &Graph, any: u8, each: u8) -> Option<Vec<Market>> {
+fn place_markets(rng: &mut Rng, hexes: &[Hex], g: &Graph, any: u8, each: u8, extra_fish: u8) -> Option<Vec<Market>> {
     let mut kinds: Vec<u8> = std::iter::repeat_n(ANY, any as usize)
         .chain((0..5u8).flat_map(|r| std::iter::repeat_n(r, each as usize)))
+        .chain(std::iter::repeat_n(4, extra_fish as usize))
         .collect();
     rng.shuffle(&mut kinds);
     let mut coast: Vec<(u16, u8, u16)> = Vec::new();
@@ -505,10 +546,10 @@ mod tests {
 
         // The main island: its size (or exactly the hexagon), all one piece, no lakes
         assert_eq!(main.len(), main_size(s), "{why}");
-        if s.island_hexagon {
+        if s.island_hexagon || s.island_large {
             let mut cells: Vec<Cell> = main.iter().map(|h| h.cell).collect();
             cells.sort();
-            let mut want = within(Cell::new(0, 0), HEXAGON_RADIUS);
+            let mut want = if s.island_large { large_cells() } else { within(Cell::new(0, 0), HEXAGON_RADIUS) };
             want.sort();
             assert_eq!(cells, want, "hexagon: {why}");
         }
@@ -530,7 +571,7 @@ mod tests {
         let dunes = main.iter().filter(|h| h.terrain == Dunes).count();
         assert_eq!(dunes, s.island_dunes as usize, "{why}");
         let counts: Vec<usize> = PRODUCING.iter().map(|&t| main.iter().filter(|h| h.terrain == t).count()).collect();
-        if s.island_hexagon {
+        if s.island_hexagon || s.island_large {
             assert_eq!(counts, s.tile_counts().map(|n| n as usize).to_vec(), "hexagon tiles: {why}");
         } else {
             let (lo, hi) = (*counts.iter().min().unwrap(), *counts.iter().max().unwrap());
@@ -540,7 +581,7 @@ mod tests {
         // Numbers: exactly the tokens, never 7, none on dunes or sea
         let mut numbers: Vec<u8> = main.iter().filter(|h| h.number != 0).map(|h| h.number).collect();
         numbers.sort();
-        let mut tokens = number_tokens(main.len() - dunes);
+        let mut tokens = tokens_for(s);
         tokens.sort();
         assert_eq!(numbers, tokens, "{why}");
         for h in hexes {
@@ -585,7 +626,8 @@ mod tests {
         }
 
         // Markets: how many of each, on the coast, no corner shared
-        assert_eq!(island.markets.len(), s.markets_any as usize + 5 * s.markets_each as usize, "{why}");
+        assert_eq!(island.markets.len(), s.markets_any as usize + 5 * s.markets_each as usize + s.markets_extra_fish as usize, "{why}");
+        assert_eq!(island.markets.iter().filter(|m| m.kind == 4).count(), (s.markets_each + s.markets_extra_fish) as usize, "{why}");
         assert_eq!(island.markets.iter().filter(|m| m.kind == ANY).count(), s.markets_any as usize, "{why}");
         let mut used: Vec<usize> = Vec::new();
         for m in &island.markets {
@@ -715,6 +757,25 @@ mod tests {
             places.sort();
             let gaps: Vec<usize> = (0..9).map(|i| (places[(i + 1) % 9] + 30 - places[i]) % 30).collect();
             assert!(gaps.iter().all(|&d| d == 3 || d == 4), "seed spread{k}: gaps {gaps:?}");
+        }
+    }
+
+    #[test]
+    fn the_large_island_keeps_every_rule() {
+        let cells = large_cells();
+        assert_eq!(cells.len(), 30);
+        let rows: Vec<usize> = (-3..=3).map(|r| cells.iter().filter(|c| c.r == r).count()).collect();
+        assert_eq!(rows, vec![3, 4, 5, 6, 5, 4, 3]);
+        // Each row lines up with the next: every cell but the ends touches 2 cells in the next row
+        let set: HashSet<Cell> = cells.iter().copied().collect();
+        assert!(cells.iter().all(|c| c.neighbors().iter().filter(|n| set.contains(n)).count() >= 3), "no loose cells");
+        let s = Settings::for_players(6);
+        assert_eq!(tokens_for(&s).len(), 28);
+        assert!(!uses_spiral(&s), "the large island's spiral order isn't known: fair shuffle");
+        for k in 0..500 {
+            let island = generate(&s, &format!("large{k}")).unwrap();
+            check(&island, &s);
+            assert_eq!(island.markets.len(), 11);
         }
     }
 
