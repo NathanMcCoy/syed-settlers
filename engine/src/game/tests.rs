@@ -56,7 +56,7 @@ fn check(g: &Game) {
         assert_eq!(huts, g.huts(p), "huts on the board match pieces used");
         assert_eq!(lodges, g.lodges(p));
         assert_eq!(paths + g.pieces[p][P_PATH], s.pieces_path);
-        assert_eq!(g.renown(p), renown_sources(g, p).iter().sum::<u32>());
+        assert_eq!(g.renown(p), renown_sources(g, p).iter().sum::<u32>() + g.token_renown(p));
         assert_eq!(g.line[p], g.longest_line(p as u8));
         for r in 0..5 {
             assert!(g.hands[p][r] < 200, "a hand ran away (or wrapped below zero)");
@@ -83,12 +83,12 @@ fn check(g: &Game) {
         }
     }
     // Titles go only to someone at the minimum who isn't behind anyone
-    if g.longest != NOBODY {
-        let v = g.line[g.longest as usize];
+    if g.holder(Title::LongestPath) != NOBODY {
+        let v = g.line[g.holder(Title::LongestPath) as usize];
         assert!(v >= s.longest_min && g.line[..g.players].iter().all(|&x| x <= v));
     }
-    if g.most_pilots != NOBODY {
-        let v = g.pilots[g.most_pilots as usize];
+    if g.holder(Title::MostPilots) != NOBODY {
+        let v = g.pilots[g.holder(Title::MostPilots) as usize];
         assert!(v >= s.most_pilots_min && g.pilots[..g.players].iter().all(|&x| x <= v));
     }
     if g.over() && !g.by_rounds {
@@ -298,8 +298,8 @@ fn a_seven_halves_big_hands_then_moves_the_squall_then_steals() {
     g.hands = [[3, 3, 3, 0, 0], [2, 2, 2, 1, 0], [5, 0, 0, 0, 3], [0; 5], [0; 5], [0; 5]];
     g.phase = Phase::PreRoll;
     g.rolled(7);
-    assert_eq!(g.phase, Phase::Discard);
-    assert_eq!(&g.discards[..3], &[4, 0, 4], "9 cards lose 4, 7 lose none, 8 lose 4");
+    assert_eq!(g.phase, Phase::Decide);
+    assert_eq!((0..3).map(|p| g.discards_left(p)).collect::<Vec<_>>(), vec![4, 0, 4], "9 cards lose 4, 7 lose none, 8 lose 4");
     assert_eq!(g.to_act(), 0);
     for r in [0, 0, 0, 1] {
         g.apply(Action::Discard(r)).unwrap();
@@ -470,11 +470,11 @@ fn longest_path_takes_the_longest_line_and_other_buildings_break_it() {
         g.edge_kind[e] = PATH;
     }
     g.update_titles();
-    assert_eq!((g.line[0], g.longest), (4, NOBODY), "4 is under the minimum of 5");
+    assert_eq!((g.line[0], g.holder(Title::LongestPath)), (4, NOBODY), "4 is under the minimum of 5");
     g.edge_owner[line[4]] = 0;
     g.edge_kind[line[4]] = PATH;
     g.update_titles();
-    assert_eq!((g.line[0], g.longest), (5, 0));
+    assert_eq!((g.line[0], g.holder(Title::LongestPath)), (5, 0));
     // Another player's Hut on the corner between the 2nd and 3rd edges splits it into 2 and 3
     let gr = &g.board.graph;
     let [a, b] = gr.edge_corners[line[1]];
@@ -482,7 +482,7 @@ fn longest_path_takes_the_longest_line_and_other_buildings_break_it() {
     g.corner_owner[mid] = 1;
     g.corner_kind[mid] = HUT;
     g.update_titles();
-    assert_eq!((g.line[0], g.longest), (3, NOBODY));
+    assert_eq!((g.line[0], g.holder(Title::LongestPath)), (3, NOBODY));
 }
 
 #[test]
@@ -518,21 +518,21 @@ fn most_pilots_goes_to_three_played_and_passes_only_to_more() {
     let renown = g.renown(0);
     play_pilot(&mut g);
     play_pilot(&mut g);
-    assert_eq!((g.pilots[0], g.most_pilots), (2, NOBODY), "2 isn't enough");
+    assert_eq!((g.pilots[0], g.holder(Title::MostPilots)), (2, NOBODY), "2 isn't enough");
     play_pilot(&mut g);
-    assert_eq!((g.pilots[0], g.most_pilots), (3, 0));
+    assert_eq!((g.pilots[0], g.holder(Title::MostPilots)), (3, 0));
     assert_eq!(g.renown(0), renown + 2);
     // Player 2 draws level: player 1 keeps it; one more takes it
     g.current = 1;
     for _ in 0..3 {
         play_pilot(&mut g);
     }
-    assert_eq!(g.most_pilots, 0, "a tie doesn't take it");
+    assert_eq!(g.holder(Title::MostPilots), 0, "a tie doesn't take it");
     play_pilot(&mut g);
-    assert_eq!((g.pilots[1], g.most_pilots), (4, 1));
+    assert_eq!((g.pilots[1], g.holder(Title::MostPilots)), (4, 1));
     // Pilots held but not played don't count
     g.held[0][Project::Pilot as usize] = 5;
-    assert_eq!(g.most_pilots, 1);
+    assert_eq!(g.holder(Title::MostPilots), 1);
 }
 
 #[test]
@@ -1046,7 +1046,7 @@ fn building_a_hut_in_the_middle_of_a_line_takes_longest_path_away() {
         g.edge_kind[e] = PATH;
     }
     g.update_titles();
-    assert_eq!(g.longest, 0);
+    assert_eq!(g.holder(Title::LongestPath), 0);
     // Player 2 reaches the corner between the 2nd and 3rd edges with a Path of their own, then builds there
     let board = g.board.clone();
     let gr = &board.graph;
@@ -1058,7 +1058,7 @@ fn building_a_hut_in_the_middle_of_a_line_takes_longest_path_away() {
     g.current = 1;
     g.hands[1] = HUT_COST;
     g.apply(Action::Hut(mid as u16)).unwrap();
-    assert_eq!((g.line[0], g.longest), (3, NOBODY), "split into 2 and 3: under 5, so nobody holds it");
+    assert_eq!((g.line[0], g.holder(Title::LongestPath)), (3, NOBODY), "split into 2 and 3: under 5, so nobody holds it");
     // Player 1 can't build on past player 2's Hut either
     g.current = 0;
     g.hands[0] = PATH_COST;
@@ -1070,5 +1070,111 @@ fn building_a_hut_in_the_middle_of_a_line_takes_longest_path_away() {
         if g.corner_owner[other] == NOBODY && !listed(&gr.corner_edges[other]).any(|x| g.edge_owner[x] == 0) {
             assert!(!list.contains(&Action::Path(e as u16)), "no Path past another player's Hut");
         }
+    }
+}
+
+// The base game's behaviour, pinned: 500 bot games (2-6 players, each count's defaults) reduced to one
+// number. Refactors of the engine (the expansion groundwork) must leave it unchanged; a rule change
+// that's meant to change play updates it, saying why in the commit.
+#[test]
+fn base_game_fingerprint() {
+    let mut h: u64 = 0xcbf29ce484222325;
+    let mut mix = |x: u64| {
+        h ^= x;
+        h = h.wrapping_mul(0x100000001b3);
+    };
+    for players in 2..=6 {
+        let s = Settings::for_players(players);
+        for seed in 0..100 {
+            let o = play(&s, seed, players, 400).unwrap();
+            mix(o.winner as u64);
+            mix(o.turns as u64);
+            mix(o.actions as u64);
+            for row in &o.sources[..players] {
+                for &x in row {
+                    mix(x as u64);
+                }
+            }
+        }
+    }
+    println!("fingerprint {h:#018x}");
+    assert_eq!(h, FINGERPRINT, "the base game plays differently (see the comment above)");
+}
+const FINGERPRINT: u64 = 0xd709f7234da8d179;
+
+// F13: a new rule only needs its actions in legal() for every bot to finish games. Random bots reach
+// odd corners of the rules fast; none may ever be left with nothing to do (sim::play_with checks).
+#[test]
+fn random_bots_are_never_stuck_and_greedy_beats_them() {
+    use crate::sim::{BotKind, play_with};
+    for players in 2..=6 {
+        let s = Settings::for_players(players);
+        for seed in 0..40 {
+            play_with(&s, seed, players, 300, &[BotKind::Random]).unwrap();
+        }
+    }
+    let s = Settings::default();
+    let mut greedy_wins = 0;
+    for seed in 0..200 {
+        let o = play_with(&s, seed, 2, 400, &[BotKind::Greedy, BotKind::Random]).unwrap();
+        greedy_wins += (o.winner == 0) as u32;
+    }
+    assert!(greedy_wins >= 190, "Greedy won only {greedy_wins} of 200 against random play");
+}
+
+// F14: a game rebuilt from its seed and move list is exactly the game that was played, offers and
+// answers from other seats included
+#[test]
+fn a_replay_rebuilds_the_game_exactly() {
+    use crate::protocol::view_json;
+    for (seed, players) in [(1u32, 3usize), (2, 4), (3, 6), (4, 2)] {
+        let s = Settings::for_players(players);
+        let isl = generate(&s, &format!("replay{seed}")).unwrap();
+        let mut g = Game::new(&isl, &s, players, seed);
+        let mut bots: Vec<Greedy> = (0..players).map(|i| Greedy::new(seed * 10 + i as u32)).collect();
+        let mut rng = Rng::new(seed);
+        let mut moves: Vec<(u8, Action)> = Vec::new();
+        let mut list = Vec::new();
+        for _ in 0..4000 {
+            if g.over() {
+                break;
+            }
+            // Now and then an offer to everyone, answered by each seat's bot
+            if g.phase == Phase::Main && g.offer.is_none() && rng.below(5) == 0 {
+                let me = g.current as usize;
+                if let Some(r) = (0..5).find(|&r| g.hands[me][r] > 0) {
+                    let (mut give, mut get) = ([0u8; 5], [0u8; 5]);
+                    give[r] = 1;
+                    get[(r + 1) % 5] = 1;
+                    let to = ((1u16 << players) - 1) as u8 & !(1 << me);
+                    let a = Action::Offer { give, get, to, open: false };
+                    if g.apply_as(g.current, a).is_ok() {
+                        moves.push((g.current, a));
+                        for seat in 0..players as u8 {
+                            g.legal_for(seat, &mut list);
+                            if list.iter().any(|a| matches!(a, Action::Answer(..))) {
+                                let yes = bots[seat as usize].answer(&g, seat) && list.contains(&Action::Answer(seat, true));
+                                g.apply_as(seat, Action::Answer(seat, yes)).unwrap();
+                                moves.push((seat, Action::Answer(seat, yes)));
+                            }
+                        }
+                    }
+                }
+            }
+            g.legal(&mut list);
+            let seat = g.to_act();
+            let a = bots[seat as usize].choose(&g, &list);
+            g.apply_unchecked(a);
+            moves.push((seat, a));
+        }
+        let again = Game::replay(&isl, &s, players, seed, &moves).unwrap();
+        for seat in (0..players as u8).chain([NOBODY]) {
+            assert_eq!(view_json(&again, seat), view_json(&g, seat), "seat {seat}, game {seed}");
+        }
+        assert_eq!((again.deck.clone(), again.hands, again.turn), (g.deck.clone(), g.hands, g.turn));
+        // A move that wasn't legal stops the replay and says which
+        let mut bad = moves.clone();
+        bad.insert(3, (0, Action::EndTurn));
+        assert!(Game::replay(&isl, &s, players, seed, &bad).err().unwrap().starts_with("move 4"));
     }
 }

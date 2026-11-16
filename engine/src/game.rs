@@ -12,6 +12,14 @@ use crate::rng::Rng;
 use crate::settings::Settings;
 use std::sync::Arc;
 
+mod pending;
+mod titles;
+mod tokens;
+mod turns;
+pub use pending::{Decision, Pending};
+pub use titles::{TITLE_COUNT, TITLES, Title, title};
+pub use tokens::{TOKEN_COUNT, TOKENS, Token};
+
 pub const MAX_PLAYERS: usize = 6;
 pub const NOBODY: u8 = u8::MAX;
 
@@ -76,7 +84,7 @@ pub enum Phase {
     SetupHut,
     SetupPath { hut: u16 },
     PreRoll,
-    Discard,                    // players over the limit lose cards, one action per card
+    Decide,                     // decisions by one or more players (pending.rs), e.g. a 7's discards
     MoveSquall { anywhere: bool },
     Steal,
     Main,
@@ -160,12 +168,13 @@ pub struct Game {
     pub project_used: bool,
     pub deck: Vec<u8>,                // the rest of the deck, top last
     pub row: Vec<u8>,                 // face-up projects (empty when face up is off)
-    pub longest: u8,                  // who holds Longest Path, or NOBODY
-    pub most_pilots: u8,              // who holds Most Pilots, or NOBODY
+    pub holders: [u8; TITLE_COUNT],   // who holds each title (titles.rs), or NOBODY
+    pub tokens: [[u16; TOKEN_COUNT]; MAX_PLAYERS], // each player's tokens (tokens.rs)
     pub line: [u8; MAX_PLAYERS],      // each player's longest line of Paths
     pub pilots: [u8; MAX_PLAYERS],    // Pilots each player has played (everyone sees them)
     pub squall: u16,
-    pub discards: [u8; MAX_PLAYERS],  // cards each player still has to lose
+    pub pending: Vec<Pending>,        // decisions waiting (pending.rs); the first is being made
+    pub after: Phase,                 // where the game goes once they're all made
     pub last_take: [u8; MAX_PLAYERS], // what each player handed over on the last Market Day
     pub last_roll: u8,
     pub winner: u8,
@@ -255,12 +264,13 @@ impl Game {
             project_used: false,
             deck,
             row,
-            longest: NOBODY,
-            most_pilots: NOBODY,
+            holders: [NOBODY; TITLE_COUNT],
+            tokens: [[0; TOKEN_COUNT]; MAX_PLAYERS],
             line: [0; MAX_PLAYERS],
             pilots: [0; MAX_PLAYERS],
             squall: island.squall,
-            discards: [0; MAX_PLAYERS],
+            pending: Vec::new(),
+            after: Phase::PreRoll,
             last_take: [0; MAX_PLAYERS],
             last_roll: 0,
             winner: NOBODY,
@@ -276,16 +286,27 @@ impl Game {
         }
     }
 
+    // A game rebuilt from how it started and every move since (F14 in EXPANSIONS.md): the same island,
+    // settings, seats and seed, then each (seat, action) in order. The dice and hidden draws come
+    // from the game's own random numbers, so the result is exactly the game that was played.
+    pub fn replay(island: &Island, settings: &Settings, players: usize, seed: u32, moves: &[(u8, Action)]) -> Result<Game, String> {
+        let mut g = Game::new(island, settings, players, seed);
+        for (i, &(seat, a)) in moves.iter().enumerate() {
+            g.apply_as(seat, a).map_err(|e| format!("move {} ({a:?} by seat {seat}): {e}", i + 1))?;
+        }
+        Ok(g)
+    }
+
     pub fn settings(&self) -> &Settings {
         &self.board.settings
     }
 
-    // Who has to act now (during a 7's discards, the first player still over the limit)
+    // Who has to act now: the player making the first waiting decision (pending.rs), otherwise the
+    // player whose turn or extra phase it is
     pub fn to_act(&self) -> u8 {
-        if self.phase == Phase::Discard {
-            (0..self.players).find(|&p| self.discards[p] > 0).unwrap_or(self.current as usize) as u8
-        } else {
-            self.current
+        match self.deciding() {
+            Some(d) => d.seat,
+            None => self.current,
         }
     }
 
@@ -307,15 +328,22 @@ impl Game {
     }
 
     pub fn renown(&self, p: usize) -> u32 {
-        let s = self.settings();
-        let mut r = self.huts(p) as u32 + 2 * self.lodges(p) as u32 + self.held[p][Project::Lighthouse as usize] as u32;
-        if self.longest as usize == p {
-            r += s.longest_renown as u32;
-        }
-        if self.most_pilots as usize == p {
-            r += s.most_pilots_renown as u32;
-        }
-        r
+        self.huts(p) as u32 + 2 * self.lodges(p) as u32 + self.held[p][Project::Lighthouse as usize] as u32
+            + self.title_renown(p)
+            + self.token_renown(p)
+    }
+
+    // ---- Winning (F10 in EXPANSIONS.md) ----
+
+    // The Renown player p needs to win (rulesets will add modifiers here, e.g. +1 for an old boot)
+    pub fn win_target(&self, _p: usize) -> u32 {
+        self.settings().win as u32
+    }
+
+    // Has p won? Enough Renown (rulesets will add their own ways here, e.g. finishing a wonder).
+    // Only asked during p's own turn or extra phase.
+    pub fn has_won(&self, p: usize) -> bool {
+        self.renown(p) >= self.win_target(p)
     }
 
     // ---- What may go where ----
@@ -395,11 +423,9 @@ impl Game {
                 out.push(Action::Roll);
                 self.legal_plays(pu, out);
             }
-            Phase::Discard => {
-                for r in 0..5 {
-                    if self.hands[pu][r] > 0 {
-                        out.push(Action::Discard(r as u8));
-                    }
+            Phase::Decide => {
+                if let Some(d) = self.deciding() {
+                    self.legal_decision(d, out);
                 }
             }
             Phase::MoveSquall { anywhere } => {
@@ -666,13 +692,14 @@ impl Game {
                 self.pieces[pu][P_HUT] += 1;
             }
             Action::Path(e) => self.place_path(p, e as usize),
-            Action::Roll => self.roll(),
+            Action::Roll => {
+                let total = self.production_roll();
+                self.rolled(total);
+            }
             Action::Discard(r) => {
                 self.hands[pu][r as usize] -= 1;
-                self.discards[pu] -= 1;
-                if self.discards.iter().all(|&d| d == 0) {
-                    self.phase = Phase::MoveSquall { anywhere: false };
-                }
+                let Some(Pending { decision: Decision::Discard { left }, .. }) = self.deciding() else { unreachable!("a discard is decided") };
+                self.decided(if left > 1 { Some(Decision::Discard { left: left - 1 }) } else { None });
             }
             Action::Squall(h) => {
                 self.squall = h;
@@ -710,7 +737,7 @@ impl Game {
                 self.phase = match k {
                     Project::Pilot => {
                         self.pilots[pu] += 1;
-                        self.most_pilots = title(self.most_pilots, &self.pilots[..self.players], self.settings().most_pilots_min);
+                        self.refresh_title(Title::MostPilots);
                         Phase::MoveSquall { anywhere: true }
                     }
                     Project::RoadCrew => Phase::FreeBuild { left: 2 },
@@ -767,32 +794,14 @@ impl Game {
             }
             Action::Withdraw => self.offer = None,
             Action::EndTurn => {
-                self.offer = None;
-                self.offers_made = 0;
-                self.bought = [0; 5];
-                self.project_used = false;
-                if self.pairs() && !self.paired {
-                    // The paired player's extra build phase: no roll, straight to building
-                    self.paired = true;
-                    self.current = self.partner(self.owner);
-                    self.phase = Phase::Main;
-                    self.back = Phase::Main;
-                } else {
-                    self.paired = false;
-                    self.owner = ((self.owner as usize + 1) % self.players) as u8;
-                    self.current = self.owner;
-                    self.turn += 1;
-                    self.phase = Phase::PreRoll;
-                }
-                let limit = self.settings().round_limit as u32;
-                if limit > 0 && self.turn > limit * self.players as u32 {
-                    self.end_by_rounds();
+                self.end_phase();
+                if self.over() {
                     return;
                 }
             }
         }
         // You win the moment you have enough Renown during your own turn
-        if self.turn > 0 && self.phase != Phase::Over && self.renown(self.current as usize) >= self.settings().win as u32 {
+        if self.turn > 0 && self.phase != Phase::Over && self.has_won(self.current as usize) {
             self.winner = self.current;
             self.phase = Phase::Over;
             self.offer = None;
@@ -881,29 +890,7 @@ impl Game {
         }
     }
 
-    fn roll(&mut self) {
-        let dice = [self.rng.below(6) as u8 + 1, self.rng.below(6) as u8 + 1];
-        self.last_dice = dice;
-        self.rolled(dice[0] + dice[1]);
-    }
 
-    // What a dice total does (separate from the dice so tests can choose the total)
-    fn rolled(&mut self, total: u8) {
-        self.last_roll = total;
-        self.short = 0;
-        self.back = Phase::Main;
-        if total == 7 {
-            let over = self.settings().discard_over as u32;
-            for p in 0..self.players {
-                let n = self.cards(p);
-                self.discards[p] = if n > over { (n / 2) as u8 } else { 0 };
-            }
-            self.phase = if self.discards.iter().any(|&d| d > 0) { Phase::Discard } else { Phase::MoveSquall { anywhere: false } };
-            return;
-        }
-        self.produce(total);
-        self.phase = Phase::Main;
-    }
 
     // Every hex with this number (except under the squall) pays 1 per Hut and 2 per Lodge around it
     // With a limited bank, a resource the bank can't pay in full to everyone owed it goes to nobody
@@ -983,11 +970,10 @@ impl Game {
     // Longest Path, after a Path or a building is placed (Most Pilots changes only when a Pilot is
     // played)
     fn update_titles(&mut self) {
-        let line_min = self.settings().longest_min;
         for p in 0..self.players {
             self.line[p] = self.longest_line(p as u8);
         }
-        self.longest = title(self.longest, &self.line[..self.players], line_min);
+        self.refresh_title(Title::LongestPath);
     }
 
     // The longest unbroken line of p's Paths: no edge twice, and it can't pass through a corner
@@ -1028,21 +1014,6 @@ impl Game {
         best
     }
 
-}
-
-// Who holds a title now: the holder keeps it while nobody has strictly more; otherwise the one player
-// strictly ahead takes it; with a tie for the lead (or nobody at the minimum) nobody holds it
-fn title(holder: u8, values: &[u8], min: u8) -> u8 {
-    let best = *values.iter().max().unwrap();
-    if best < min {
-        return NOBODY;
-    }
-    if holder != NOBODY && values[holder as usize] == best {
-        return holder;
-    }
-    let mut leaders = values.iter().enumerate().filter(|&(_, &v)| v == best);
-    let first = leaders.next().unwrap().0 as u8;
-    if leaders.next().is_some() { NOBODY } else { first }
 }
 
 // Total pips of the producing hexes around a corner (how often it produces), for bots and the page

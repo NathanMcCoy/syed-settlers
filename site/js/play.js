@@ -8,6 +8,9 @@ import { islandSvg, el, centre, point, hexPoints, RESOURCES, SIZE } from './boar
 
 const $ = id => document.getElementById(id);
 const COLOURS = ['Red', 'Blue', 'Orange', 'Purple', 'Green', 'Brown'];
+// Titles and tokens by the names the engine uses (titles.rs, tokens.rs); unknown ones show their name
+const TITLE_NAMES = { longestPath: 'Longest Path', mostPilots: 'Most Pilots' };
+const TOKEN_NAMES = { renown: ['Renown token', 'Renown tokens'], trade: ['trade token', 'trade tokens'] };
 const PROJECTS = { pilot: 'Pilot', lighthouse: 'Lighthouse', roadCrew: 'Road Crew', harvest: 'Good Harvest', marketDay: 'Market Day' };
 const PROJECT_HELP = {
   pilot: 'Move the squall to any land hex, then steal',
@@ -707,12 +710,17 @@ function drawPlayers(v) {
     const facts = [`${p.cards} card${p.cards === 1 ? '' : 's'}`];
     if (p.projectCount) facts.push(`${p.projectCount} project${p.projectCount === 1 ? '' : 's'}`);
     if (p.pilots) facts.push(`${p.pilots} Pilot${p.pilots === 1 ? '' : 's'} played`);
+    for (const [kind, n] of Object.entries(p.tokens ?? {})) {
+      const [one, many] = TOKEN_NAMES[kind] ?? [`${kind} token`, `${kind} tokens`];
+      if (n) facts.push(`${n} ${n === 1 ? one : many}`);
+    }
     info.append(facts.join(' · '));
-    for (const [holder, title] of [[v.longestPath, 'Longest Path'], [v.mostPilots, 'Most Pilots']]) {
-      if (holder !== s) continue;
+    for (const t of v.titles ?? []) {
+      if (t.holder !== s) continue;
       const badge = document.createElement('span');
       badge.className = 'title-badge';
-      badge.textContent = title;
+      badge.textContent = TITLE_NAMES[t.name] ?? t.name;
+      badge.title = `${badge.textContent}: ${t.renown} Renown`;
       info.append(' ', badge);
     }
     li.append(top, bar, info);

@@ -9,6 +9,45 @@ use crate::hex::listed;
 use crate::island::pips;
 use crate::rng::Rng;
 
+// Every bot (F13 in EXPANSIONS.md): it picks one of the legal actions for the seat to act, and answers
+// trade offers made to it. A bot must always be able to pick from whatever legal() offers, so a new
+// rule only needs its actions in legal() for every bot to keep finishing games; Greedy then gets a
+// sensible rule for it.
+pub trait Bot {
+    fn choose(&mut self, g: &Game, legal: &[Action]) -> Action;
+    fn answer(&mut self, g: &Game, seat: u8) -> bool;
+}
+
+// Picks any legal action at random and answers offers at random: the "never stuck" check for new
+// rules (it reaches odd corners of the rules quickly) and the floor every real bot must beat
+pub struct RandomBot {
+    pub rng: Rng,
+}
+
+impl RandomBot {
+    pub fn new(seed: u32) -> RandomBot {
+        RandomBot { rng: Rng::new(seed) }
+    }
+}
+
+impl Bot for RandomBot {
+    fn choose(&mut self, _g: &Game, legal: &[Action]) -> Action {
+        *self.rng.pick(legal)
+    }
+    fn answer(&mut self, _g: &Game, _seat: u8) -> bool {
+        self.rng.below(2) == 0
+    }
+}
+
+impl Bot for Greedy {
+    fn choose(&mut self, g: &Game, legal: &[Action]) -> Action {
+        Greedy::choose(self, g, legal)
+    }
+    fn answer(&mut self, g: &Game, seat: u8) -> bool {
+        Greedy::answer(self, g, seat)
+    }
+}
+
 pub struct Greedy {
     pub rng: Rng,
 }
@@ -39,7 +78,7 @@ impl Greedy {
                 Action::Path(e) => best_spot_beyond(g, p, *e as usize),
                 _ => f64::MIN,
             }),
-            Phase::Discard => {
+            Phase::Decide => {
                 let need = self.plan(g, p).1;
                 let hand = g.hands[p as usize];
                 self.best_by(legal, |a| match a {
@@ -196,7 +235,7 @@ impl Greedy {
         let pu = p as usize;
         let blocked = g.board.graph.hex_corners[g.squall as usize].iter().any(|&c| g.corner_owner[c as usize] == p);
         let next = g.pilots[pu] + 1;
-        let title = g.most_pilots != p
+        let title = g.holder(Title::MostPilots) != p
             && next >= g.settings().most_pilots_min
             && (0..g.players).all(|o| o == pu || g.pilots[o] < next);
         blocked || title

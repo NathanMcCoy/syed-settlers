@@ -125,7 +125,7 @@ fn phase_name(p: Phase) -> &'static str {
         Phase::SetupHut => "setupHut",
         Phase::SetupPath { .. } => "setupPath",
         Phase::PreRoll => "preRoll",
-        Phase::Discard => "discard",
+        Phase::Decide => "decide",
         Phase::MoveSquall { .. } => "moveSquall",
         Phase::Steal => "steal",
         Phase::Main => "main",
@@ -182,8 +182,11 @@ pub fn view_json(g: &Game, seat: u8) -> String {
             let hidden = if face_up || me || g.over() { 0 } else { g.held[p][Project::Lighthouse as usize] as u32 };
             let projects = if face_up || me || g.over() { list(g.held[p]) } else { "null".into() };
             format!(
-                "{{\"cards\":{},\"renown\":{},\"pieces\":{},\"projects\":{projects},\"projectCount\":{held},\"line\":{},\"pilots\":{},\"discard\":{}}}",
-                g.cards(p), g.renown(p) - hidden, list(g.pieces[p]), g.line[p], g.pilots[p], g.discards[p],
+                "{{\"cards\":{},\"renown\":{},\"pieces\":{},\"projects\":{projects},\"projectCount\":{held},\"line\":{},\"pilots\":{},\"discard\":{},\"tokens\":{{{}}},\"target\":{}}}",
+                g.cards(p), g.renown(p) - hidden, list(g.pieces[p]), g.line[p], g.pilots[p], g.discards_left(p),
+                // Tokens by name (tokens.rs), and the Renown this player needs to win
+                TOKENS.iter().map(|&t| format!("\"{}\":{}", t.name(), g.tokens_of(p, t))).collect::<Vec<_>>().join(","),
+                g.win_target(p),
             )
         })
         .collect();
@@ -228,13 +231,14 @@ pub fn view_json(g: &Game, seat: u8) -> String {
             "{{\"phase\":\"{}\",\"current\":{},\"toAct\":{},\"turn\":{},\"lastRoll\":{},\"squall\":{},\"winner\":{},",
             "\"buildings\":[{}],\"roads\":[{}],\"players\":[{}],\"longestPath\":{},\"mostPilots\":{},",
             "\"row\":{},\"deck\":{},\"lastTake\":{},\"win\":{},\"you\":{},\"hand\":{},\"rates\":{},\"legal\":{},",
-            "\"offer\":{},\"canOffer\":{},\"offersLeft\":{},\"dice\":{},\"bank\":{},\"short\":{},\"handLimit\":{},\"round\":{},\"roundLimit\":{},\"byRounds\":{},\"bought\":{},\"turnOf\":{},\"paired\":{}}}"
+            "\"offer\":{},\"canOffer\":{},\"offersLeft\":{},\"dice\":{},\"bank\":{},\"short\":{},\"handLimit\":{},\"round\":{},\"roundLimit\":{},\"byRounds\":{},\"bought\":{},\"turnOf\":{},\"paired\":{},\"titles\":{},\"deciding\":{}}}"
         ),
-        phase_name(g.phase), g.current, g.to_act(), g.turn,
+        // While decisions are being made (pending.rs), the phase is named after the first one ("discard")
+        g.deciding().map_or(phase_name(g.phase), |d| d.decision.name()), g.current, g.to_act(), g.turn,
         if g.last_roll == 0 { "null".into() } else { g.last_roll.to_string() },
         g.squall, seat_or_null(g.winner),
         buildings.join(","), roads.join(","), players.join(","),
-        seat_or_null(g.longest), seat_or_null(g.most_pilots),
+        seat_or_null(g.holder(Title::LongestPath)), seat_or_null(g.holder(Title::MostPilots)),
         row, g.deck.len(),
         // What each seat handed over on the last Market Day (public: everyone saw it happen)
         list(&g.last_take[..g.players]),
@@ -252,6 +256,16 @@ pub fn view_json(g: &Game, seat: u8) -> String {
         if mine && seat == g.current && g.turn > 0 { list(g.bought) } else { list([0u8; 5]) },
         // Whose turn it is, and whether `current` is the paired player's extra build phase
         g.owner, g.paired,
+        // Every title (titles.rs): its name, holder, minimum and Renown, so new titles need no page code
+        list(TITLES.iter().map(|&t| format!(
+            "{{\"name\":\"{}\",\"holder\":{},\"min\":{},\"renown\":{}}}",
+            t.name(), seat_or_null(g.holder(t)), t.min(s), t.renown(s),
+        ))),
+        // The decision being made now (pending.rs): who, and what kind
+        match g.deciding() {
+            Some(d) => format!("{{\"seat\":{},\"decision\":\"{}\"}}", d.seat, d.decision.name()),
+            None => "null".into(),
+        },
     )
 }
 
@@ -356,9 +370,40 @@ mod tests {
         let island = generate(&s, "view").unwrap();
         let mut g = Game::new(&island, &s, 2, 1);
         g.held[1][Project::Lighthouse as usize] = 2;
-        let renown = |v: &str, p: usize| -> String { v.split("\"renown\":").nth(p + 1).unwrap().split(',').next().unwrap().to_string() };
+        let renown = |v: &str, p: usize| -> String { v.split(",\"renown\":").nth(p + 1).unwrap().split(',').next().unwrap().to_string() };
         assert_eq!(renown(&view_json(&g, 0), 1), "0");
         assert_eq!(renown(&view_json(&g, 1), 1), "2");
         assert!(view_json(&g, 0).contains("\"projects\":null"));
+    }
+}
+
+#[cfg(test)]
+mod groundwork_tests {
+    use super::*;
+    use crate::island::generate;
+    use crate::settings::Settings;
+
+    // The view lists titles, tokens, targets and the decision being made generically, so the page
+    // shows new ones without new code
+    #[test]
+    fn the_view_lists_titles_tokens_targets_and_decisions() {
+        let s = Settings::default();
+        let island = generate(&s, "view").unwrap();
+        let mut g = Game::new(&island, &s, 3, 1);
+        g.give_tokens(1, Token::Renown, 2);
+        g.give_tokens(1, Token::Trade, 1);
+        let v = view_json(&g, 0);
+        assert!(v.contains("\"titles\":[{\"name\":\"longestPath\",\"holder\":null,\"min\":5,\"renown\":2},{\"name\":\"mostPilots\",\"holder\":null,\"min\":3,\"renown\":2}]"));
+        assert!(v.contains("\"tokens\":{\"renown\":2,\"trade\":1},\"target\":10"));
+        assert!(v.contains("\"deciding\":null"));
+        assert_eq!(g.renown(1), 2, "Renown tokens count");
+        assert!(!g.spend_tokens(1, Token::Trade, 2) && g.spend_tokens(1, Token::Trade, 1));
+        // A 7 with a big hand: seat 2 decides what to lose
+        g.turn = 1;
+        g.phase = Phase::PreRoll;
+        g.hands[2] = [9, 0, 0, 0, 0];
+        g.rolled(7);
+        let v = view_json(&g, 2);
+        assert!(v.contains("\"phase\":\"discard\"") && v.contains("\"deciding\":{\"seat\":2,\"decision\":\"discard\"}"));
     }
 }
