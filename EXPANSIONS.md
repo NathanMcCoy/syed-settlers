@@ -285,3 +285,22 @@ every scenario map. All seat arrays are `MAX_PLAYERS = 6` already.
   Renown from island bonuses. Tests: 10 sea rules tests (5 of 6 deliberate breaks caught; the 6th was the redundant
   rule, removed), a browser test (setup ship by clicking, both browsers) and an API game. Next milestones: Four Islands,
   Fog Islands (F9 hidden hexes), Through the Desert, then 5–8 and New World.
+- **Nov 16, the rest of the sea expansion (PRs #12–#19, merged):** every scenario, each in its own module under
+  `engine/src/game/` (`variants`, `events`, `two`, `cloth`, `tribe`, `wonders`, `pirates`) with its own `*_tests.rs`.
+  Maps in `sea_maps.rs`. The Pirate Islands' simplifications: all of a player's ships are their one line, ships don't
+  move there, a walled-in line may detour.
+- **Nov 16, the city expansion (branch `city`):** `city=true`, `city.raiders`, `bank.goods`; RULES.md v0.9.
+  - Hands are `Cards = [u8; 8]` (5 resources + Paper, Cloth, Coin); costs stay `Hand`; offers carry Cards (5 or 8
+    counts in move text). Base game unchanged (fingerprint).
+  - `engine/src/game/city.rs`: `CityState` (walls, levels, metropolises, knights per corner, raiders, decks,
+    progress hands, merchant, this turn's card effects), the three-dice roll (`city_roll`), the raiders (`raid`),
+    progress draws, 25 card kinds with 18 new decisions (`Decision::DropProgress` … `TreasonKnight`) and 21 actions.
+  - Hooks in game.rs: the second setup building is a Lodge, Lodges make commodities, knights block Hut spots, Paths
+    and Longest Path, rates for commodities/merchant/Trade Fleet, Medicine's Lodge, hut debt after pillage.
+  - Bot: `bot_city.rs` (defence when the raiders are close, improvements, card play, every decision).
+    Sim (Greedy, 2,000 games each): 3p 36 rounds, 4p 30, 6p 19; all finish; seats within ~2 margins.
+  - Page: a City tab (raiders, tracks with Improve, Fixed Roll picker, progress cards), walls/knights in the shop,
+    knights, walls, metropolises and the merchant on the board, the event die, commodities in the hand, in bank
+    trades and in offers to players (move text stays 5 counts when no commodity is in it).
+  - Tests: 15 rules tests (3 deliberate breaks, all caught after strengthening two tests), browser games (city alone,
+    city + New Shores) in Chromium and WebKit.

@@ -63,7 +63,7 @@ fn strongest_ports_goes_to_three_renown_on_markets_and_adds_one_to_win() {
     let b = *markets.iter().find(|&&c| g.spaced(c) && c != a && !listed(&g.board.graph.corner_corners[a]).any(|n| n == c)).unwrap();
     g.current = 0;
     put(&mut g, a, 0, HUT);
-    g.hands[0] = LODGE_COST;
+    g.hands[0] = cards_of(LODGE_COST);
     g.refresh_ports();
     assert_eq!(g.holder(Title::StrongestPorts), NOBODY, "1 isn't enough");
     g.apply(Action::Lodge(a as u16)).unwrap();
@@ -72,7 +72,7 @@ fn strongest_ports_goes_to_three_renown_on_markets_and_adds_one_to_win() {
     let e = listed(&g.board.graph.corner_edges[b]).find(|&e| g.board.edge_land[e]).unwrap();
     g.edge_owner[e] = 0;
     g.edge_kind[e] = PATH;
-    g.hands[0] = HUT_COST;
+    g.hands[0] = cards_of(HUT_COST);
     g.apply(Action::Hut(b as u16)).unwrap();
     assert_eq!((g.port_renown(0), g.holder(Title::StrongestPorts)), (3, 0));
     let without = game_with(3, "");

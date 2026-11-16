@@ -9,6 +9,9 @@ use crate::hex::listed;
 use crate::island::pips;
 use crate::rng::Rng;
 
+#[path = "bot_city.rs"]
+mod city;
+
 // Every bot (F13 in EXPANSIONS.md): it picks one of the legal actions for the seat to act, and answers
 // trade offers made to it. A bot must always be able to pick from whatever legal() offers, so a new
 // rule only needs its actions in legal() for every bot to keep finishing games; Greedy then gets a
@@ -70,6 +73,12 @@ impl Greedy {
             return legal[0];
         }
         let p = g.to_act();
+        if g.city() {
+            let need = self.plan(g, p).1;
+            if let Some(a) = self.city_choose(g, p, legal, need) {
+                return a;
+            }
+        }
         match g.phase {
             Phase::SetupHut => self.best_by(legal, |a| match a {
                 Action::Hut(c) => spot_value(g, p, *c as usize),
@@ -183,6 +192,32 @@ impl Greedy {
             }
         }
         let short = (0..5).any(|r| g.hands[p as usize][r] < need[r]);
+        // Fishing: the old boot goes to the leader; fish buy a project at 7, send the squall off this
+        // bot's buildings, a Path toward its goal, or a resource it's short of
+        if g.fishing() {
+            if let Some(a) = self.best_of(legal, |a| match a {
+                Action::GiveBoot(s) => Some(g.renown(*s as usize) as f64),
+                _ => None,
+            }) {
+                return a;
+            }
+            let total = g.fish_total(p as usize);
+            let squall_on_me = g.squall != crate::hex::NONE && g.board.graph.hex_corners[g.squall as usize].iter().any(|&c| g.corner_owner[c as usize] == p);
+            let pick = if legal.contains(&Action::Fish(4)) {
+                Some(4)
+            } else if squall_on_me && legal.contains(&Action::Fish(0)) {
+                Some(0)
+            } else if matches!(goal, Goal::Edge(..)) && total >= 6 && legal.contains(&Action::Fish(3)) {
+                Some(3)
+            } else if short && total >= 6 && legal.contains(&Action::Fish(2)) {
+                Some(2)
+            } else {
+                None
+            };
+            if let Some(k) = pick {
+                return Action::Fish(k);
+            }
+        }
         for k in [Project::Harvest, Project::MarketDay, Project::RoadCrew] {
             let worth = match k {
                 Project::RoadCrew => matches!(goal, Goal::Edge(..) | Goal::ShipEdge(..)),
@@ -304,7 +339,8 @@ impl Greedy {
         if let Some((_, _, Some(e))) = spot {
             return (Goal::Edge(e), PATH_COST);
         }
-        (Goal::Project, PROJECT_COST)
+        // The city expansion has no projects: knights instead
+        (Goal::Project, if g.city() { KNIGHT_COST } else { PROJECT_COST })
     }
 
     // When the squall sits on one of its buildings, or one more Pilot would take (or keep a lead
@@ -313,6 +349,9 @@ impl Greedy {
         let pu = p as usize;
         if g.pirate_islands() {
             return g.ship_line.iter().any(|&(o, e)| o == p && !g.warship[e as usize]); // a warship to make
+        }
+        if g.squall == crate::hex::NONE {
+            return false; // (the city expansion: no squall before the raiders land)
         }
         let blocked = g.board.graph.hex_corners[g.squall as usize].iter().any(|&c| g.corner_owner[c as usize] == p);
         let next = g.pilots[pu] + 1;

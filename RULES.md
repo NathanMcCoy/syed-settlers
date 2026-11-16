@@ -1,6 +1,6 @@
 # Syed Settlers: rules
 
-Version 0.8 (draft, Nov 16 2026: sea scenarios Four Islands, Through the Desert and New World. 0.7: the variants box's four variants. 0.6: the sea expansion's first scenario, New Shores. 0.5: 5 and 6 players, from the classic game's 5-6 player rules: the
+Version 0.9 (draft, Nov 16 2026: the city expansion; every sea scenario. 0.8: sea scenarios Four Islands, Through the Desert and New World. 0.7: the variants box's four variants. 0.6: the sea expansion's first scenario, New Shores. 0.5: 5 and 6 players, from the classic game's 5-6 player rules: the
 large island, more cards and projects, and paired turns. 0.4 (Nov 15): as close as we can make it to
 the classic game this one is modelled on, checked against its rulebook: other players' buildings block Paths and break
 Longest Path again; no limit on trade offers; markets spread evenly round the coast; numbers in the
@@ -299,6 +299,67 @@ Each map is made from the seed to the scenario's rules and tile counts; the layo
   each with 5-6 players) on 3 to 5 random islands; 10 markets (5 general) on any coast. Set up anywhere; every island
   beyond your home islands is a bonus of 1.
 - Every sea scenario is in.
+
+## The variants box: scenarios ⚙ (`box.scenario`, chosen when starting a game)
+
+Played on their own: not with the sea, the city expansion, event cards or the two-player variant.
+
+- **1 Fishing** (10 Renown): the Dunes become the **Lake**, moved to the middle (the centre hex or a neighbour; the hex
+  it swaps with takes the Dunes' place and number). It pays on 2, 3, 11 and 12. Six **fishing grounds** (sea hexes
+  touching the island, spread evenly round it, away from the sea hexes the markets face) are numbered 4, 5, 6, 8, 9,
+  10. A rolled number pays every building on the Lake's or a fishing ground's corners in **fish tokens**: Hut 1,
+  Lodge 2, drawn one at a time in turn order from the roller from a bag of 11 one-fish, 10 two-fish, 8 three-fish
+  tokens and the **old boot**. At most 7 tokens (the boot aside); a player at 7 draws no more. The bag refills from
+  spent tokens. A second setup Hut by fishing water draws 1. Fish aren't cards (no hand limit, no stealing, no
+  trading). Spend on your turn after rolling (excess fish lost; the tokens that waste the fewest fish are used):
+  2 the squall leaves the island (it returns with a 7 or a Pilot, anywhere), 3 steal a card from a player of your
+  choice, 4 a resource of your choice, 5 a free Path, 7 a free project (counted as bought this turn). The boot's
+  holder needs 1 more Renown to win and may pass it on their turn to a player with as much public Renown or more.
+  The squall starts off the island; it may stand on the Lake (no fish on its four numbers). (Ours: fishing grounds
+  pay their coast corners; no swap at 7 tokens.)
+- Still to come: 2 Rivers, 3 Merchant trains, 4 Raider attack, 5 Traders and raiders.
+
+## The city expansion ⚙ (`city`, chosen when starting a game)
+
+From the classic game's cities-and-knights expansion, with our own names. 13 Renown to win (with the sea: only
+scenarios 1, 4 and 9, at their target + 2). Not with event cards or the two-player variant. The page's City tab holds
+improvements and progress cards; walls and knights are in the Build shop.
+
+- **Setup:** the second setup building is a Lodge (it collects the starting resources). No projects, no Most Pilots.
+- **Three dice:** red and yellow for production; the **event die** (3 ship faces, a Science, a Trade and a Politics
+  gate) is settled first. A ship moves the **raiders** 1 step (`city.raiders`, 7, to land). A gate gives a progress
+  card of its colour, in turn order from the roller, to everyone with a level of at least 1 on that track and the
+  red die at most their level + 1.
+- **The squall** (and with the sea, the pirate) stays off the island until the raiders first land; before that a 7
+  only makes big hands discard.
+- **Commodities** (`bank.goods`, 12 of each; 18 with 5-6 players): a Lodge on Forest makes 1 Timber + 1 Paper, on
+  Paddy 1 Fish + 1 Cloth, on Quarry 1 Stone + 1 Coin; on Fields and Mines 2 of the resource; gold no commodities.
+  They're cards: in the hand limit, stolen, discarded and traded like resources (bank 4:1, 3:1 at a general market;
+  2:1 markets are for their resource only).
+- **Improvements:** Science (Paper), Trade (Cloth), Politics (Coin); level n costs n of the track's commodity, with a
+  Lodge on the island. Level 3: Science gives a resource of your choice after any roll but a 7 that gives you nothing;
+  Trade trades commodities 2:1; Politics allows mighty knights. The first to level 4 places the track's
+  **metropolis** on a Lodge (+2 Renown, can't be pillaged); the first to level 5 takes it for good. A level that would
+  bring a metropolis needs a Lodge free for it.
+- **Walls** (2 Copper): under a Lodge without one, 3 at most, +2 hand limit each; lost when the Lodge is pillaged.
+- **Knights** (2 each of levels 1-3): recruit (Fish + Stone) a basic knight, inactive, on a free corner touching your
+  Path or ship; promote (Fish + Stone) once per knight a turn, to mighty only at Politics 3; activate (Grain). A knight
+  active since before the turn may move along your Paths and ships (past your pieces, not others') to a free corner,
+  displace a weaker knight of another player (who moves it along their routes, or loses it if it can't move), or
+  chase the squall or pirate from a corner of its hex (then move it and steal). Each action makes it inactive.
+  Knights block Hut spots and other players' Paths and Longest Path.
+- **The raiders land:** strength = Lodges on the island, defence = active knights' levels. Stronger raiders: the
+  players with the lowest defence who have a Lodge that can be pillaged each turn one into a Hut (their choice).
+  Otherwise the single best defender takes a Renown token, or tied best each draw a progress card from a deck of their
+  choice. Then all knights become inactive and the raiders go back.
+- **Progress cards** (54): at most 4 in hand (off your turn: drop at once; your turn: by its end). Play any number on
+  your turn after the roll; Fixed Roll before it. Renown cards (Printing Press, Charter) count at once. Used and
+  dropped cards go under their deck. Science: Fixed Roll 2, Crane 2, Engineer 1, Number Swap 2, Irrigation 2,
+  Medicine 2, Quarrying 2, Printing Press 1, Path Builders 2, Smithing 2. Trade: Harbour Deal 2, Guild Dues 2,
+  Merchant 6, Trade Fleet 2, Monopoly 4, Goods Monopoly 2. Politics: Charter 1, Diplomacy 2, Rally 2, Spy 3, Intrigue 2,
+  Taxes 2, Treason 2, Wedding 2, Sabotage 2. (What each does: the site's rules page.)
+- **Ours:** a metropolis goes on the owner's Lodge with the best dice; Treason places the strongest knight allowed; a
+  pillaged Lodge becomes a Hut even with no Hut piece left (the next Lodge built from it returns the debt).
 
 ## Not in version 1 (planned)
 

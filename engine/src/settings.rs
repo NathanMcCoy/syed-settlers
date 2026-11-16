@@ -136,6 +136,10 @@ settings! {
     variant_ports: bool = false, "variant.ports", 0, 1, "Strongest Ports: 2 Renown for the most Renown in buildings on markets (at least 3); 1 more Renown to win";
     sea: bool = false, "sea", 0, 1, "The sea expansion: ships, the pirate, gold fields and small islands to sail to (sea.scenario picks the map)";
     sea_scenario: u8 = 1, "sea.scenario", 1, 9, "Sea scenario: 1 New Shores, 2 Four Islands, 3 Fog Islands, 4 Through the Desert, 5 The Forgotten Tribe, 6 Cloth, 7 The Pirate Islands, 8 Wonders, 9 New World";
+    box_scenario: u8 = 0, "box.scenario", 0, 5, "A variants box scenario: 1 Fishing (0: none)";
+    city: bool = false, "city", 0, 1, "The city expansion: commodities, city improvements, walls, knights, raiders and progress cards (13 to win)";
+    city_raiders: u8 = 7, "city.raiders", 2, 12, "Steps the raiders take before they land (the city expansion)";
+    bank_goods: u8 = 12, "bank.goods", 0, 40, "Cards of each commodity in the game (the city expansion; 0: never runs out)";
     sea_island_bonus: u8 = 2, "sea.islandBonus", 0, 4, "Renown tokens for your first Hut on each small island (the sea expansion)";
 }
 
@@ -151,6 +155,7 @@ impl Settings {
             (s.island_forest, s.island_quarry, s.island_fields, s.island_mine, s.island_paddy, s.island_dunes) = (6, 5, 6, 5, 6, 2);
             (s.markets_any, s.markets_extra_fish) = (5, 1);
             s.bank_cards = 24;
+            s.bank_goods = 18;
             (s.deck_pilot, s.deck_lighthouse, s.deck_road_crew, s.deck_harvest, s.deck_market_day) = (20, 5, 3, 3, 3);
         }
         s
@@ -166,8 +171,34 @@ impl Settings {
         if s.variant_two && players != 2 {
             return Err("the two-player variant (variant.two) is for 2 players".into());
         }
+        if s.box_scenario != 0 {
+            if s.box_scenario != 1 {
+                return Err(format!("variants box scenario {} isn't ready yet", s.box_scenario));
+            }
+            if s.sea || s.city || s.variant_events || s.variant_two {
+                return Err("a variants box scenario is played on its own (no sea, city, event cards or two-player variant)".into());
+            }
+            if s.island_dunes == 0 {
+                return Err("Fishing needs a Dunes hex (it becomes the Lake)".into());
+            }
+        }
+        if s.city {
+            if s.variant_events || s.variant_two {
+                return Err("the city expansion doesn't combine with event cards or the two-player variant".into());
+            }
+            if s.sea && !matches!(s.sea_scenario, 1 | 4 | 9) {
+                return Err("the city expansion combines with sea scenarios 1 (New Shores), 4 (Through the Desert) and 9 (New World)".into());
+            }
+        }
         if !s.sea {
-            return Ok(s);
+            if !s.city {
+                return Ok(s);
+            }
+            // The city expansion's own defaults: 13 to win, no projects
+            let mut base = Settings::for_players(players);
+            base.city = true;
+            base.apply_city_defaults(0);
+            return Settings::parse_onto(base, text);
         }
         // Expansions bring their own defaults (F1 in EXPANSIONS.md): players' defaults, then the
         // expansion's, then the game's own settings on top
@@ -178,7 +209,17 @@ impl Settings {
         base.sea = true;
         base.sea_scenario = s.sea_scenario;
         base.apply_sea_defaults();
+        if s.city {
+            base.city = true;
+            base.apply_city_defaults(base.win);
+        }
         Settings::parse_onto(base, text)
+    }
+
+    // The city expansion: 13 to win (a sea scenario's target + 2), no project deck
+    fn apply_city_defaults(&mut self, sea_win: u8) {
+        self.win = if sea_win == 0 { 13 } else { sea_win + 2 };
+        (self.deck_pilot, self.deck_lighthouse, self.deck_road_crew, self.deck_harvest, self.deck_market_day) = (0, 0, 0, 0, 0);
     }
 
     // The sea expansion's defaults, by scenario: the Renown to win, the island bonus, the markets
@@ -293,7 +334,7 @@ mod tests {
         let t = Settings::table_json();
         assert!(t.starts_with("[{\"name\":\"players.min\""));
         assert!(t.contains("{\"name\":\"squall.range\",\"kind\":\"whole\",\"default\":0,\"min\":0,\"max\":8,"));
-        assert_eq!(t.matches("\"name\"").count(), 45);
+        assert_eq!(t.matches("\"name\"").count(), 49);
         assert!(Settings::parse("island.dunes=2;island.forest=3").is_ok(), "a Forest traded for a second Dunes");
     }
 }

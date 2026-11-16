@@ -19,8 +19,8 @@
         <li><a href="#six">5 and 6 players</a> <span class="badge ready">Playable</span></li>
         <li><a href="#sea">The sea expansion</a> <span class="badge ready" id="sea-badge">Playable: all 9 scenarios</span></li>
         <li><a href="#variants">The variants box: variants</a> <span class="badge ready" id="variants-badge">Playable</span></li>
-        <li><a href="#city">The city expansion</a> <span class="badge soon" id="city-badge">Coming</span></li>
-        <li><a href="#variant-scenarios">The variants box: scenarios</a> <span class="badge soon" id="tb-badge">Coming</span></li>
+        <li><a href="#city">The city expansion</a> <span class="badge ready" id="city-badge">Playable</span></li>
+        <li><a href="#variant-scenarios">The variants box: scenarios</a> <span class="badge ready" id="tb-badge">Playable: Fishing (more coming)</span></li>
         <li><a href="#exploration">The exploration expansion</a> <span class="badge soon" id="ep-badge">Coming</span></li>
       </ol>
       <p class="note">Every seat can be a person or a bot, in any mix. Settings marked with ⚙ can be changed when you start a game.</p>
@@ -150,22 +150,58 @@
     </section>
 
     <section id="city" class="panel">
-      <h2>The city expansion</h2>
-      <p>Lodges grow into cities that make commodities, knights defend the island from raiders, and progress cards replace projects. Played to 13 Renown.</p>
+      <h2>The city expansion <span class="badge ready">Playable</span></h2>
+      <p>Lodges make commodities, knights defend the island from raiders, and progress cards replace projects. Tick <em>City expansion</em> on the New Game screen. Played to <strong>13 Renown</strong> (with the sea: scenarios 1, 4 or 9, at their target + 2). Your improvements and progress cards are in the game's <strong>City</strong> tab; walls and knights are in the Build tab.</p>
+      <h3>Setup and the turn</h3>
       <ul>
-        <li><strong>Three dice:</strong> two for production and an event die: its ship faces bring the raiders closer, its coloured faces let players with enough city improvements draw progress cards.</li>
-        <li><strong>Commodities:</strong> a Lodge on a Forest, Paddy or Quarry also makes paper, cloth or coin. Spend them on three tracks of city improvements, each with a power at level 3 and a metropolis (2 Renown) for the first to level 4.</li>
-        <li><strong>City walls</strong> (2 Copper) raise your hand limit by 2.</li>
-        <li><strong>Knights</strong> (Fish + Stone to recruit or promote, Grain to activate) stand on your Paths. Active knights move, push weaker knights away, or chase the squall.</li>
-        <li><strong>Raiders:</strong> when they land, their strength is the number of Lodges on the island. If the knights are weaker, the players who helped least lose a Lodge; if stronger, the best defender earns a Renown token.</li>
-        <li><strong>Progress cards:</strong> 54 in three colours (science, trade, politics), from alchemy to a wedding.</li>
+        <li>Your second setup building is a <strong>Lodge</strong>; it collects your starting resources. There are no projects and no Most Pilots (Longest Path stays).</li>
+        <li><strong>Three dice:</strong> the red and yellow dice for production, and an <strong>event die</strong> rolled with them and settled first. Its three ship faces move the raiders a step closer; its three gate faces (Science, Trade, Politics) give a progress card of that colour to everyone whose level on that track is at least 1 and at least the red die minus 1 (level 1: red 1–2, level 2: 1–3, up to level 5: any).</li>
+        <li><strong>The squall waits</strong> beside the island until the raiders first land; until then a 7 only makes big hands lose half. With the sea, the pirate waits too.</li>
       </ul>
+      <h3>Commodities and improvements</h3>
+      <ul>
+        <li>A Lodge on a <strong>Forest</strong> makes 1 Timber + 1 <strong>Paper</strong>; on a <strong>Paddy</strong> 1 Fish + 1 <strong>Cloth</strong>; on a <strong>Quarry</strong> 1 Stone + 1 <strong>Coin</strong>. On Fields and Mines it makes 2 as usual; gold gives no commodities. Commodities count toward the hand limit, can be stolen and traded (with players, and with the bank 4:1 or 3:1 at a general market).</li>
+        <li><strong>Three tracks</strong>, each paid in its commodity: Science (Paper), Trade (Cloth), Politics (Coin). Level n costs n of it, and you need a Lodge on the island. Level 3 powers: Science — a resource of your choice whenever a roll (not a 7) gives you nothing; Trade — commodities 2:1 with the bank; Politics — you may promote strong knights to mighty.</li>
+        <li><strong>Metropolis</strong> (★): the first to level 4 on a track puts its metropolis on one of their Lodges (2 more Renown; it can't be pillaged). The first to level 5 takes it for good, even from a level-4 holder. Without a Lodge free for it you can't buy that level.</li>
+        <li><strong>Walls</strong> (2 Copper): under a Lodge, at most 3; each raises your hand limit by 2. A pillaged Lodge loses its wall.</li>
+      </ul>
+      <h3>Knights</h3>
+      <ul>
+        <li>Each player has 2 basic (1), 2 strong (2) and 2 mighty (3) knights. <strong>Recruit</strong> (Fish + Stone): a basic knight, inactive, on a free corner by your Path (no spacing rule). <strong>Promote</strong> (Fish + Stone): one level up, once per knight a turn (mighty needs Politics 3). <strong>Activate</strong> (Grain).</li>
+        <li>A knight that was active when your turn began may <strong>move</strong> along your Paths (past your own pieces, not others'), <strong>displace</strong> a weaker knight of another player (who moves theirs along their own Paths, or takes it back if it can't), or <strong>chase the squall</strong> from a corner of its hex (you move it and steal as after a 7). Each action makes the knight inactive.</li>
+        <li>Knights block Hut spots, other players' Paths, and break their Longest Path, like buildings.</li>
+      </ul>
+      <h3>The raiders</h3>
+      <ul>
+        <li>After 7 ship faces they <strong>land</strong>. Their strength is the number of Lodges on the island; the defence is every active knight's level added up.</li>
+        <li><strong>Raiders stronger:</strong> the players who gave the least defence (nothing counts as least) each choose a Lodge that becomes a Hut; if none of them has a Lodge that can be pillaged, the next lowest do. <strong>Defence as strong or stronger:</strong> the single best defender gets a Renown token; tied best each draw a progress card from a deck of their choice.</li>
+        <li>Then every knight becomes inactive and the raiders start again.</li>
+      </ul>
+      <h3>Progress cards</h3>
+      <p>54 cards in three decks. Hold at most 4: drawn off your turn, drop down to 4 at once; on your turn, by the end of it. Play any number on your turn after rolling (Fixed Roll before rolling). Renown cards are shown as soon as they're drawn. Played and dropped cards go under their deck.</p>
+      <ul>
+        <li><strong>Science:</strong> Fixed Roll ×2 (choose the production dice, then roll the event die), Crane ×2 (next improvement 1 cheaper), Engineer (a free wall), Number Swap ×2 (swap two numbers, not 2, 6, 8 or 12), Irrigation ×2 (2 Grain per Fields hex by your buildings), Medicine ×2 (a Lodge for 2 Stone + 1 Grain), Quarrying ×2 (2 Stone per Quarry hex by your buildings), Printing Press (1 Renown), Path Builders ×2 (2 free Paths or ships), Smithing ×2 (promote up to 2 knights free).</li>
+        <li><strong>Trade:</strong> Harbour Deal ×2 (offer each player with commodities a resource; they give a commodity of their choice), Guild Dues ×2 (take 2 cards of your choice from a player with more Renown), Merchant ×6 (place the merchant on a hex by your building: 1 Renown while you hold it, that hex's resource 2:1), Trade Fleet ×2 (name a card kind: 2:1 with the bank this turn), Monopoly ×4 (name a resource: everyone gives you 2, or their 1), Goods Monopoly ×2 (name a commodity: everyone gives you 1).</li>
+        <li><strong>Politics:</strong> Charter (1 Renown), Diplomacy ×2 (remove an open Path — your own: build one free), Rally ×2 (activate all your knights free), Spy ×3 (see a player's progress cards and take one), Intrigue ×2 (push off a knight touching your Paths), Taxes ×2 (after the first landing: move the squall and take a card from everyone there), Treason ×2 (a player removes a knight; you may place one of yours no stronger, same status), Wedding ×2 (everyone with more Renown gives you 2 cards of their choice), Sabotage ×2 (everyone with as much Renown or more discards half).</li>
+      </ul>
+      <p class="note">Our simplifications: a metropolis goes on your Lodge with the best dice; Treason places your strongest knight allowed; a pillaged Lodge becomes a Hut even with no Hut left in hand. With 5–6 players: 18 of each commodity and the large island, otherwise the same.</p>
     </section>
 
     <section id="variant-scenarios" class="panel">
       <h2>The variants box: scenarios</h2>
+      <p>Each scenario is played on its own (no sea or city expansion). Pick one under <em>Variants box scenario</em> on the New Game screen.</p>
+      <h3>Fishing <span class="badge ready">Playable</span></h3>
       <ul>
-        <li><strong>Fishing:</strong> a lake and fishing grounds catch fish tokens, spent to remove the squall, steal, take a resource, build a free Path or a free project. Beware the old boot. 10 Renown.</li>
+        <li><strong>The Lake</strong> replaces the Dunes, in the middle of the island (the centre hex or one next to it). It pays on <strong>2, 3, 11 and 12</strong>. Six <strong>fishing grounds</strong>, numbered 4, 5, 6, 8, 9 and 10, lie in the sea round the coast.</li>
+        <li>When their number is rolled, every building on their corners draws <strong>fish tokens</strong> from the bag: a Hut 1, a Lodge 2, in turn order from the roller. The bag holds 11 one-fish, 10 two-fish and 8 three-fish tokens, and the <strong>old boot</strong>. Your tokens' values are secret; everyone sees how many you have. Hold at most 7 (the boot aside). A second setup Hut by the Lake or a fishing ground draws one token.</li>
+        <li>Fish aren't cards: they don't count on a 7, can't be stolen and can't be traded. Spent tokens go back in the bag when it runs out.</li>
+        <li>On your turn, after rolling, <strong>spend fish</strong> (extra fish on the tokens you hand in are lost): <strong>2</strong> sends the squall off the island (it comes back with the next 7 or Pilot), <strong>3</strong> steals a card from a player of your choice, <strong>4</strong> takes a resource of your choice, <strong>5</strong> builds a free Path, <strong>7</strong> gives you a free project.</li>
+        <li><strong>The old boot:</strong> whoever draws it shows it at once and needs <strong>1 more Renown to win</strong>. On your turn you may pass it to a player with as much Renown as you, or more.</li>
+        <li>The squall starts off the island and enters with the first 7 or Pilot. It may sit on the Lake (blocking all four of its numbers), never on a fishing ground. <strong>10 Renown</strong> to win.</li>
+      </ul>
+      <p class="note">Our simplifications: a fishing ground pays every building on its coast corners; spending hands in the tokens that waste the fewest fish; at 7 tokens you simply draw no more (the rulebook lets you swap one).</p>
+      <h3>More scenarios <span class="badge soon">Coming</span></h3>
+      <ul>
         <li><strong>Rivers:</strong> bridges cross two rivers; building near them earns coins. The richest player gains 1 Renown, the poorest loses 2. 10 Renown.</li>
         <li><strong>Merchant trains:</strong> every building adds a wagon to a train from the watering hole, placed by vote. Buildings between wagons are worth more. 12 Renown.</li>
         <li><strong>Raider attack:</strong> raiders land on the coast each time someone builds; knights on edges drive them off and take prisoners. 12 Renown.</li>

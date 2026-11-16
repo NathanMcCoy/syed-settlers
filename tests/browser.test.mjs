@@ -183,6 +183,9 @@ for (const [name, type] of Object.entries(BROWSERS)) {
     ['the sea scenario Wonders', 3, { sea: true, 'sea.scenario': 8 }],
     ['the sea scenario The Forgotten Tribe', 3, { sea: true, 'sea.scenario': 5 }],
     ['the sea scenario The Pirate Islands', 3, { sea: true, 'sea.scenario': 7 }],
+    ['the variants box scenario Fishing', 3, { 'box.scenario': 1 }],
+    ['the city expansion', 3, { city: true }],
+    ['the city expansion and the sea (New Shores)', 3, { city: true, sea: true, 'sea.scenario': 1 }],
   ]) {
     test(`${name}: a game with ${label}, played by clicking`, async () => {
       const others = Array.from({ length: seats - 1 }, () => ({ kind: 'bot' }));
@@ -213,6 +216,21 @@ for (const [name, type] of Object.entries(BROWSERS)) {
         if (settings['sea.scenario'] === 7) {
           assert.equal(await page.locator('#board [data-fleet]').count(), 1, 'the fleet');
           assert.equal(await page.locator('#board .squall').count(), 0, 'no squall');
+        }
+        if (settings['box.scenario'] === 1) {
+          assert.equal(await page.locator('#board [data-lake]').count(), 1, 'the Lake with its numbers');
+          assert.equal(await page.locator('#board polygon.t-sea title', { hasText: 'Fishing ground' }).count(), 6, 'six fishing grounds');
+        }
+        if (settings.city) {
+          assert.equal(await page.locator('#tab-city').isHidden(), false, 'the City tab');
+          await page.click('#tab-city');
+          assert.match(await page.textContent('#raiders'), /Raiders: \d of 7 steps/);
+          assert.equal(await page.locator('#tracks li').count(), 3, 'three improvement tracks');
+          assert.equal(await page.locator('#hand li').count(), 8, 'resources and commodities in the hand');
+          if ((await page.evaluate(() => document.body.dataset.phase)) !== 'over') assert.equal(await page.locator('#dice .event-die').count(), 1, 'the event die');
+          await page.click('#tab-build');
+          assert.ok(await page.locator('#shop [data-build="recruit"]').count() === 1, 'knights in the shop');
+          if (settings.sea) assert.ok(await page.locator('#shop [data-build="ship"]').count() === 1, 'ships in the shop before the pirate arrives');
         }
         if (settings['sea.scenario'] === 5) assert.ok(await page.locator('#board .prize').count() > 0, 'prizes on the sea');
         if (settings['sea.scenario'] === 8) {

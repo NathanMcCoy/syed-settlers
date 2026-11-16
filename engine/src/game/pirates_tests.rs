@@ -36,7 +36,7 @@ fn the_line_grows_from_its_tip_one_step_nearer_and_pilots_make_warships() {
     g.turn = 1;
     g.phase = Phase::Main;
     g.current = 0;
-    g.hands[0] = [5, 0, 0, 0, 5];
+    g.hands[0] = [5, 0, 0, 0, 5, 0, 0, 0];
     let tip = g.line_tip[0] as usize;
     let ships: Vec<Action> = legal(&g).into_iter().filter(|a| matches!(a, Action::Ship(_))).collect();
     assert!(!ships.is_empty());
@@ -89,8 +89,8 @@ fn a_seven_has_no_squall_the_roller_robs_anyone() {
     g.turn = 1;
     g.current = 0;
     g.phase = Phase::PreRoll;
-    g.hands = [[0; 5]; MAX_PLAYERS];
-    g.hands[2] = [0, 0, 2, 0, 0];
+    g.hands = [[0; 8]; MAX_PLAYERS];
+    g.hands[2] = [0, 0, 2, 0, 0, 0, 0, 0];
     g.rolled(7);
     assert_eq!(g.deciding().unwrap(), Pending { seat: 0, decision: Decision::Rob });
     g.apply(Action::Rob(2)).unwrap();
@@ -104,7 +104,7 @@ fn the_fleet_strips_the_undefended_and_feeds_the_well_defended() {
     let hut = (0..g.corner_owner.len()).find(|&c| g.corner_owner[c] == 0).unwrap();
     let k = g.fleet.iter().position(|&h| g.board.graph.hex_corners[h as usize].contains(&(hut as u16))).expect("the fleet passes seat 1's Hut");
     g.fleet_at = ((k + g.fleet.len() - 1) % g.fleet.len()) as u8;
-    g.hands[0] = [3, 0, 0, 0, 0];
+    g.hands[0] = [3, 0, 0, 0, 0, 0, 0, 0];
     let winners = g.fleet_sails(1);
     assert!(winners.is_empty());
     assert_eq!(g.cards(0), 2, "no warships: 1 card lost (no Lodges)");

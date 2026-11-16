@@ -16,6 +16,10 @@
 //   counter S G,G,G,G,G R,R,R,R,R          seat S proposes instead: what the offerer would give and get
 //   accept S                               the offerer takes seat S's counter-offer
 //   deal S | withdraw                      complete the offer with seat S (who accepted), or take it back
+// The city expansion (K a progress card by name, e.g. irrigation; T a track 0 science, 1 trade, 2 politics):
+//   wall C | improve T | recruit C | promote C | activate C | knightmove C D | displace C D | chase C
+//   card K | fixedroll R Y | dropcard K | choose X | takecard S R | takeprogress S K | swap H H
+//   removepath E | merchant H | expel C | removeknight C | pillage C | skip
 use crate::game::*;
 use crate::island::{ANY, Island, RESOURCES};
 use crate::json;
@@ -57,20 +61,50 @@ pub fn action_text(a: Action) -> String {
         Action::Answer(s, yes) => format!("answer {s} {}", if yes { "yes" } else { "no" }),
         Action::Deal(s) => format!("deal {s}"),
         Action::Withdraw => "withdraw".into(),
+        Action::Wall(c) => format!("wall {c}"),
+        Action::Improve(t) => format!("improve {t}"),
+        Action::Recruit(c) => format!("recruit {c}"),
+        Action::Promote(c) => format!("promote {c}"),
+        Action::Activate(c) => format!("activate {c}"),
+        Action::KnightMove(a, b) => format!("knightmove {a} {b}"),
+        Action::Displace(a, b) => format!("displace {a} {b}"),
+        Action::Chase(c) => format!("chase {c}"),
+        Action::PlayCard(k) => format!("card {}", CARDS[k as usize].0),
+        Action::FixedRoll(a, b) => format!("fixedroll {a} {b}"),
+        Action::DropCard(k) => format!("dropcard {}", CARDS[k as usize].0),
+        Action::Choose(x) => format!("choose {x}"),
+        Action::TakeCard(s, k) => format!("takecard {s} {k}"),
+        Action::TakeProgress(s, k) => format!("takeprogress {s} {}", CARDS[k as usize].0),
+        Action::SwapNumbers(a, b) => format!("swap {a} {b}"),
+        Action::RemovePath(e) => format!("removepath {e}"),
+        Action::Merchant(h) => format!("merchant {h}"),
+        Action::Expel(c) => format!("expel {c}"),
+        Action::RemoveKnight(c) => format!("removeknight {c}"),
+        Action::Pillage(c) => format!("pillage {c}"),
+        Action::Skip => "skip".into(),
+        Action::Fish(k) => format!("fish {k}"),
+        Action::GiveBoot(s) => format!("giveboot {s}"),
     }
 }
 
-fn counts(h: &Hand) -> String {
-    h.iter().map(|n| n.to_string()).collect::<Vec<_>>().join(",")
+// A progress card by name
+fn card_named(word: Option<&&str>, text: &str) -> Result<u8, String> {
+    word.and_then(|w| CARDS.iter().position(|c| c.0 == *w)).map(|k| k as u8).ok_or_else(|| format!("unknown progress card in \"{text}\""))
 }
 
-fn parse_counts(word: Option<&&str>, text: &str) -> Result<Hand, String> {
-    let bad = || format!("expected 5 counts like 1,0,0,2,0 in \"{text}\"");
+// 5 counts (resources), or 8 when commodities are in it (the city expansion)
+fn counts(h: &Cards) -> String {
+    let n = if h[5..].iter().all(|&x| x == 0) { 5 } else { 8 };
+    h[..n].iter().map(|n| n.to_string()).collect::<Vec<_>>().join(",")
+}
+
+fn parse_counts(word: Option<&&str>, text: &str) -> Result<Cards, String> {
+    let bad = || format!("expected 5 counts like 1,0,0,2,0 (or 8, with commodities) in \"{text}\"");
     let parts: Vec<&str> = word.ok_or_else(bad)?.split(',').collect();
-    if parts.len() != 5 {
+    if parts.len() != 5 && parts.len() != 8 {
         return Err(bad());
     }
-    let mut h = [0u8; 5];
+    let mut h = [0u8; 8];
     for (i, p) in parts.iter().enumerate() {
         h[i] = p.parse().map_err(|_| bad())?;
         if h[i] > 30 {
@@ -136,11 +170,35 @@ pub fn parse_action(text: &str) -> Result<Action, String> {
         }),
         Some("deal") => Action::Deal(small(1)?),
         Some("withdraw") => Action::Withdraw,
+        Some("wall") => Action::Wall(num(1)?),
+        Some("improve") => Action::Improve(small(1)?),
+        Some("recruit") => Action::Recruit(num(1)?),
+        Some("promote") => Action::Promote(num(1)?),
+        Some("activate") => Action::Activate(num(1)?),
+        Some("knightmove") => Action::KnightMove(num(1)?, num(2)?),
+        Some("displace") => Action::Displace(num(1)?, num(2)?),
+        Some("chase") => Action::Chase(num(1)?),
+        Some("card") => Action::PlayCard(card_named(words.get(1), text)?),
+        Some("fixedroll") => Action::FixedRoll(small(1)?, small(2)?),
+        Some("dropcard") => Action::DropCard(card_named(words.get(1), text)?),
+        Some("choose") => Action::Choose(small(1)?),
+        Some("takecard") => Action::TakeCard(small(1)?, small(2)?),
+        Some("takeprogress") => Action::TakeProgress(small(1)?, card_named(words.get(2), text)?),
+        Some("swap") => Action::SwapNumbers(num(1)?, num(2)?),
+        Some("removepath") => Action::RemovePath(num(1)?),
+        Some("merchant") => Action::Merchant(num(1)?),
+        Some("expel") => Action::Expel(num(1)?),
+        Some("removeknight") => Action::RemoveKnight(num(1)?),
+        Some("pillage") => Action::Pillage(num(1)?),
+        Some("skip") => Action::Skip,
+        Some("fish") => Action::Fish(small(1)?),
+        Some("giveboot") => Action::GiveBoot(small(1)?),
         _ => return Err(format!("unknown move \"{text}\"")),
     };
     let expected = match a {
-        Action::Roll | Action::EndTurn | Action::Withdraw | Action::BuildWonder | Action::CashPilot | Action::ForceTrade | Action::SquallHome => 1,
+        Action::Roll | Action::EndTurn | Action::Withdraw | Action::BuildWonder | Action::CashPilot | Action::ForceTrade | Action::SquallHome | Action::Skip => 1,
         Action::Trade(..) | Action::Answer(..) | Action::MoveShip(..) | Action::Gift(..) | Action::NeutralHut(..) | Action::NeutralPath(..) => 3,
+        Action::KnightMove(..) | Action::Displace(..) | Action::FixedRoll(..) | Action::TakeCard(..) | Action::TakeProgress(..) | Action::SwapNumbers(..) => 3,
         Action::Offer { open, .. } => if open { 5 } else { 4 },
         Action::Counter { .. } => 4,
         _ => 2,
@@ -225,7 +283,7 @@ pub fn view_json(g: &Game, seat: u8) -> String {
         .collect();
     let mine = seat != NOBODY && (seat as usize) < g.players;
     let (hand, rates) = if mine {
-        (list(g.hands[seat as usize]), list((0..5).map(|r| g.rate(seat, r))))
+        (list(g.hands[seat as usize][..5].iter()), list((0..5).map(|r| g.rate(seat, r))))
     } else {
         ("null".into(), "null".into())
     };
@@ -237,12 +295,15 @@ pub fn view_json(g: &Game, seat: u8) -> String {
     } else {
         "[]".into()
     };
-    // The open offer, which everyone sees, with each seat's answer (null: none yet)
+    // The open offer, which everyone sees, with each seat's answer (null: none yet). Counts: 5
+    // resources, or 8 with the city expansion's commodities
+    let kinds = if g.city() { CARD_KINDS } else { 5 };
+    let cards = |h: &Cards| list(h[..kinds].iter());
     let offer = match &g.offer {
         None => "null".into(),
         Some(o) => format!(
             "{{\"by\":{},\"give\":{},\"get\":{},\"to\":{},\"open\":{},\"answers\":{},\"counters\":{}}}",
-            g.current, list(o.give), list(o.get),
+            g.current, cards(&o.give), cards(&o.get),
             list((0..g.players).filter(|&s| o.to & (1 << s) != 0)),
             o.open,
             list((0..g.players).map(|s| match o.answers[s] {
@@ -250,7 +311,7 @@ pub fn view_json(g: &Game, seat: u8) -> String {
             })),
             // Each seat's counter-offer: what the offerer would give and get instead
             list((0..g.players).map(|s| match o.counters[s] {
-                Some((give, get)) => format!("{{\"give\":{},\"get\":{}}}", list(give), list(get)),
+                Some((give, get)) => format!("{{\"give\":{},\"get\":{}}}", cards(&give), cards(&get)),
                 None => "null".into(),
             })),
         ),
@@ -264,7 +325,7 @@ pub fn view_json(g: &Game, seat: u8) -> String {
             "{{\"phase\":\"{}\",\"current\":{},\"toAct\":{},\"turn\":{},\"lastRoll\":{},\"squall\":{},\"winner\":{},",
             "\"buildings\":[{}],\"roads\":[{}],\"players\":[{}],\"longestPath\":{},\"mostPilots\":{},",
             "\"row\":{},\"deck\":{},\"lastTake\":{},\"win\":{},\"you\":{},\"hand\":{},\"rates\":{},\"legal\":{},",
-            "\"offer\":{},\"canOffer\":{},\"offersLeft\":{},\"dice\":{},\"bank\":{},\"short\":{},\"handLimit\":{},\"round\":{},\"roundLimit\":{},\"byRounds\":{},\"bought\":{},\"turnOf\":{},\"paired\":{},\"titles\":{},\"deciding\":{},\"pirate\":{},\"shipMoved\":{},\"event\":{},\"damaged\":{},\"revealed\":{},\"villages\":{},\"clothEnded\":{},\"wonders\":{},\"markers\":{},\"prizes\":{},\"heldMarkets\":{},\"markets\":{},\"fleet\":{},\"forts\":{},\"warships\":{},\"lastAttack\":{}}}"
+            "\"offer\":{},\"canOffer\":{},\"offersLeft\":{},\"dice\":{},\"bank\":{},\"short\":{},\"handLimit\":{},\"round\":{},\"roundLimit\":{},\"byRounds\":{},\"bought\":{},\"turnOf\":{},\"paired\":{},\"titles\":{},\"deciding\":{},\"pirate\":{},\"shipMoved\":{},\"event\":{},\"damaged\":{},\"revealed\":{},\"villages\":{},\"clothEnded\":{},\"wonders\":{},\"markers\":{},\"prizes\":{},\"heldMarkets\":{},\"markets\":{},\"fleet\":{},\"forts\":{},\"warships\":{},\"lastAttack\":{},\"city\":{},\"fishing\":{}}}"
         ),
         // While decisions are being made (pending.rs), the phase is named after the first one ("discard")
         g.deciding().map_or(phase_name(g.phase), |d| d.decision.name()), g.current, g.to_act(), g.turn,
@@ -337,6 +398,74 @@ pub fn view_json(g: &Game, seat: u8) -> String {
         },
         list((0..g.warship.len()).filter(|&e| g.warship[e])),
         if g.last_attack[0] == NOBODY { "null".into() } else { list(g.last_attack) },
+        city_json(g, seat, mine),
+        fishing_json(g, seat, mine),
+    )
+}
+
+// Fishing's part of the view (null without it): the Lake and its numbers, how many tokens each player
+// holds (their values only to their owner), who has the old boot, the bag, and the costs
+fn fishing_json(g: &Game, seat: u8, mine: bool) -> String {
+    if !g.fishing() {
+        return "null".into();
+    }
+    format!(
+        "{{\"lake\":{},\"lakeNumbers\":{},\"tokens\":{},\"mine\":{},\"fish\":{},\"boot\":{},\"bag\":{},\"costs\":{}}}",
+        g.lake, list(LAKE_NUMBERS),
+        list((0..g.players).map(|p| g.fish[p].len())),
+        if mine { list(g.fish[seat as usize].iter()) } else { "null".into() },
+        if mine { g.fish_total(seat as usize).to_string() } else { "null".into() },
+        seat_or_null(g.boot), g.fish_bag.len(), list(FISH_COSTS),
+    )
+}
+
+// The city expansion's part of the view (null without it). A seat sees its own progress cards and
+// commodities; for everyone else only counts.
+fn city_json(g: &Game, seat: u8, mine: bool) -> String {
+    if !g.city() {
+        return "null".into();
+    }
+    let cs = &g.cs;
+    let names = |cards: &[u8]| list(cards.iter().map(|&k| json::string(CARDS[k as usize].0)));
+    let me = seat as usize;
+    // While this seat makes a Spy decision, it sees that player's progress cards
+    let spied = match g.deciding() {
+        Some(Pending { seat: s, decision: Decision::Spy { from } }) if mine && s == seat => names(&cs.progress[from as usize]),
+        _ => "null".into(),
+    };
+    format!(
+        concat!(
+            "{{\"levels\":{},\"walls\":{},\"metro\":{},\"knights\":{},\"raiders\":{},\"raidersAt\":{},\"landed\":{},",
+            "\"lastRaid\":{},\"eventDie\":{},\"decks\":{},\"progress\":{},\"progressCounts\":{},\"cardRenown\":{},",
+            "\"merchant\":{},\"goods\":{},\"goodsRates\":{},\"goodsBank\":{},\"improveCost\":{},\"crane\":{},\"medicine\":{},",
+            "\"fleet\":{},\"spied\":{},\"drawn\":{},\"handLimits\":{},\"defence\":{},\"strength\":{}}}"
+        ),
+        list((0..g.players).map(|p| list(cs.levels[p]))),
+        list((0..cs.walls.len()).filter(|&c| cs.walls[c])),
+        list((0..3).map(|t| if cs.metro_owner[t] == NOBODY { "null".to_string() } else { format!("[{},{}]", cs.metro[t], cs.metro_owner[t]) })),
+        // [corner, owner, level, active, activated this turn]
+        list((0..cs.knight_owner.len()).filter(|&c| cs.knight_owner[c] != NOBODY).map(|c| {
+            format!("[{c},{},{},{},{}]", cs.knight_owner[c], cs.knight_level[c], cs.knight_active[c], cs.knight_fresh[c])
+        })),
+        cs.raiders, g.settings().city_raiders, cs.landed,
+        if cs.last_raid == [0, 0, 0] { "null".into() } else { list(cs.last_raid) },
+        if cs.event_die == NOBODY { "null".into() } else { cs.event_die.to_string() },
+        list(cs.decks.iter().map(|d| d.len())),
+        if mine { names(&cs.progress[me]) } else { "null".into() },
+        list((0..g.players).map(|p| cs.progress[p].len())),
+        list(&cs.card_renown[..g.players]),
+        if cs.merchant_owner == NOBODY { "null".into() } else { format!("[{},{}]", cs.merchant, cs.merchant_owner) },
+        if mine { list(g.hands[me][5..].iter()) } else { "null".into() },
+        if mine { list((5..8).map(|k| g.rate(seat, k))) } else { "null".into() },
+        if g.settings().bank_goods == 0 { "null".into() } else { list((5..8).map(|k| g.bank(k))) },
+        if mine { list((0..3).map(|t| g.improve_cost(me, t))) } else { "null".into() },
+        cs.crane, cs.medicine,
+        if cs.fleet == NOBODY { "null".into() } else { cs.fleet.to_string() },
+        spied,
+        list(cs.drawn.iter().map(|&(s, d)| format!("[{s},{d}]"))),
+        list((0..g.players).map(|p| g.hand_limit(p))),
+        list((0..g.players).map(|p| g.defence(p))),
+        g.raider_strength(),
     )
 }
 
@@ -374,15 +503,15 @@ mod tests {
         assert!(seen.len() >= 10, "most kinds of move came up ({})", seen.len());
         for a in [
             Action::Play(Project::MarketDay), Action::Play(Project::RoadCrew), Action::Take(4), Action::Steal(2), Action::Discard(0),
-            Action::Offer { give: [2, 0, 0, 0, 1], get: [0, 0, 0, 1, 0], to: 6, open: false },
-            Action::Offer { give: [1, 0, 0, 0, 0], get: [0, 0, 0, 0, 2], to: 14, open: true },
-            Action::Counter { seat: 2, give: [1, 0, 1, 0, 0], get: [0, 0, 0, 1, 0] }, Action::Accept(3),
+            Action::Offer { give: [2, 0, 0, 0, 1, 0, 0, 0], get: [0, 0, 0, 1, 0, 0, 0, 0], to: 6, open: false },
+            Action::Offer { give: [1, 0, 0, 0, 0, 0, 0, 0], get: [0, 0, 0, 0, 2, 0, 0, 0], to: 14, open: true },
+            Action::Counter { seat: 2, give: [1, 0, 1, 0, 0, 0, 0, 0], get: [0, 0, 0, 1, 0, 0, 0, 0] }, Action::Accept(3),
             Action::Answer(2, true), Action::Answer(1, false), Action::Deal(3), Action::Withdraw,
         ] {
             assert_eq!(parse_action(&action_text(a)), Ok(a));
         }
-        assert_eq!(action_text(Action::Offer { give: [2, 0, 0, 0, 1], get: [0, 0, 0, 1, 0], to: 6, open: false }), "offer 2,0,0,0,1 0,0,0,1,0 6");
-        assert_eq!(action_text(Action::Offer { give: [2, 0, 0, 0, 1], get: [0, 0, 0, 1, 0], to: 6, open: true }), "offer 2,0,0,0,1 0,0,0,1,0 6 open");
+        assert_eq!(action_text(Action::Offer { give: [2, 0, 0, 0, 1, 0, 0, 0], get: [0, 0, 0, 1, 0, 0, 0, 0], to: 6, open: false }), "offer 2,0,0,0,1 0,0,0,1,0 6");
+        assert_eq!(action_text(Action::Offer { give: [2, 0, 0, 0, 1, 0, 0, 0], get: [0, 0, 0, 1, 0, 0, 0, 0], to: 6, open: true }), "offer 2,0,0,0,1 0,0,0,1,0 6 open");
     }
 
     #[test]
@@ -401,8 +530,8 @@ mod tests {
         let s = Settings::default();
         let island = generate(&s, "view").unwrap();
         let mut g = Game::new(&island, &s, 3, 1);
-        g.hands[0] = [1, 2, 3, 4, 5];
-        g.hands[1] = [9, 0, 0, 0, 0];
+        g.hands[0] = [1, 2, 3, 4, 5, 0, 0, 0];
+        g.hands[1] = [9, 0, 0, 0, 0, 0, 0, 0];
         let v0 = view_json(&g, 0);
         assert!(v0.contains("\"you\":0,\"hand\":[1,2,3,4,5]"));
         assert!(!v0.contains("[9,0,0,0,0]"), "not player 2's hand");
@@ -420,7 +549,7 @@ mod tests {
         let mut g = Game::new(&island, &s, 2, 1);
         g.turn = 1;
         g.phase = Phase::Main;
-        g.hands[0] = PROJECT_COST;
+        g.hands[0] = cards_of(PROJECT_COST);
         let top = *g.deck.last().unwrap() as usize;
         g.apply(Action::Buy(0)).unwrap();
         let mut want = [0u8; 5];
@@ -472,7 +601,7 @@ mod groundwork_tests {
         // A 7 with a big hand: seat 2 decides what to lose
         g.turn = 1;
         g.phase = Phase::PreRoll;
-        g.hands[2] = [9, 0, 0, 0, 0];
+        g.hands[2] = [9, 0, 0, 0, 0, 0, 0, 0];
         g.rolled(7);
         let v = view_json(&g, 2);
         assert!(v.contains("\"phase\":\"discard\"") && v.contains("\"deciding\":{\"seat\":2,\"decision\":\"discard\"}"));

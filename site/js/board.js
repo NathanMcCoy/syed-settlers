@@ -5,7 +5,9 @@ export const SIZE = 34;                                                    // pi
 export const X = SIZE * Math.sqrt(3) / 2, Y = SIZE / 2;
 export const CORNERS = [[0, -2], [1, -1], [1, 1], [0, 2], [-1, 1], [-1, -1]];
 export const RESOURCES = ['Timber', 'Stone', 'Grain', 'Copper', 'Fish'];
-export const TERRAIN_RESOURCE = { forest: 'Timber', quarry: 'Stone', fields: 'Grain', mine: 'Copper', paddy: 'Fish', gold: 'any resource', village: 'cloth, to players linked to it', fog: 'hidden: reach it with a Path or ship' };
+export const TERRAIN_RESOURCE = { forest: 'Timber', quarry: 'Stone', fields: 'Grain', mine: 'Copper', paddy: 'Fish', gold: 'any resource', village: 'cloth, to players linked to it', fog: 'hidden: reach it with a Path or ship', lake: 'fish tokens on 2, 3, 11 and 12' };
+// Fishing: the Lake pays on these four numbers (engine fishing.rs LAKE_NUMBERS)
+const LAKE_NUMBERS = [2, 3, 11, 12];
 const MARKET = { any: '3:1 any', timber: '2:1 Timber', stone: '2:1 Stone', grain: '2:1 Grain', copper: '2:1 Copper', fish: '2:1 Fish' };
 const SVG = 'http://www.w3.org/2000/svg';
 
@@ -86,7 +88,10 @@ export function islandSvg(island) {
     if (!shown.has(i)) return;
     const c = centre(h);
     const resource = TERRAIN_RESOURCE[h.terrain];
-    const title = h.terrain === 'sea' ? 'Sea' : `${terrainName(h.terrain)}${resource ? ` (${resource})` : ''}${h.number ? `, ${h.number}` : ''}`;
+    // (A numbered sea hex is a fishing ground: Fishing)
+    const title = h.terrain === 'sea'
+      ? (h.number ? `Fishing ground (fish tokens), ${h.number}` : 'Sea')
+      : `${terrainName(h.terrain)}${resource ? ` (${resource})` : ''}${h.number ? `, ${h.number}` : ''}`;
     const poly = el('polygon', { points: hexPoints(h), class: `hex t-${h.terrain}`, 'data-terrain': h.terrain, 'data-hex': i });
     poly.append(el('title', {}, title));
     svg.append(poly);
@@ -94,6 +99,9 @@ export function islandSvg(island) {
       svg.append(el('circle', { cx: c.x, cy: c.y, r: SIZE * 0.42, class: 'token', 'data-number': h.number, 'data-token': i }));
       svg.append(el('text', { x: c.x, y: c.y - 2, class: `number${pips(h.number) === 5 ? ' strong' : ''}` }, h.number));
       svg.append(el('text', { x: c.x, y: c.y + 12, class: 'pips' }, '•'.repeat(pips(h.number))));
+    }
+    if (h.terrain === 'lake') {
+      svg.append(el('text', { x: c.x, y: c.y + 4, class: 'lake-numbers', 'data-lake': i }, LAKE_NUMBERS.join(' · ')));
     }
   });
 
