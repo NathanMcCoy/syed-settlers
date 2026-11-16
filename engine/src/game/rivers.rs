@@ -80,7 +80,7 @@ impl Game {
 
     // (coins also come with Raider attack)
     pub(super) fn legal_rivers(&self, p: u8, out: &mut Vec<Action>) {
-        if !self.rivers() && !self.raider_attack() {
+        if !self.rivers() && !self.raider_attack() && !self.traders() {
             return;
         }
         let pu = p as usize;

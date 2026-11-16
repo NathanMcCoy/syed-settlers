@@ -43,6 +43,12 @@ button { font: inherit; padding: 6px 12px; border-radius: 6px; border: 1px solid
 .fleet { fill: #1d2228; stroke: #fffaf0; stroke-width: 2; }
 .road.warship { stroke-width: 9; }
 .marker.fort { font-size: 13px; }
+/* Traders and raiders: the works and wagons */
+.t-glassworks { fill: #8fc9d9; } .t-stoneworks { fill: #c8b79a; }
+.cart rect { stroke: #fffaf0; stroke-width: 1.5; }
+.cart text { font: 800 8px system-ui, sans-serif; fill: #fffaf0; text-anchor: middle; pointer-events: none; }
+.cart.p0 rect { fill: var(--p0); } .cart.p1 rect { fill: var(--p1); } .cart.p2 rect { fill: var(--p2); }
+.cart.p3 rect { fill: var(--p3); } .cart.p4 rect { fill: var(--p4); } .cart.p5 rect { fill: var(--p5); }
 /* Raider attack: the Keep, raiders, conquered hexes, knights on edges */
 .t-keep { fill: #9a8f7a; }
 .hex.conquered { filter: grayscale(0.85) brightness(0.8); }

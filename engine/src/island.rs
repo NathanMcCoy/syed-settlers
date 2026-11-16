@@ -25,7 +25,9 @@ pub enum Terrain {
     Village, // the sea scenario Cloth: a village trading cloth (a number, no resource)
     Lake,    // the variants box's Fishing: fish tokens on 2, 3, 11 and 12 (no resource)
     Oasis,   // the variants box's Merchant trains: the watering hole the trains start from (no resource)
-    Keep,    // the variants box's Raider attack: the castle in the middle (no resource)
+    Keep,    // the variants box's Raider attack: the castle in the middle (no resource); Traders and raiders' castle works
+    Glassworks, // Traders and raiders: wants Sand, supplies Glass and Tools
+    Stoneworks, // Traders and raiders: wants Tools, supplies Sand and Marble
 }
 use Terrain::*;
 
@@ -42,11 +44,11 @@ impl Terrain {
             Fields => Some(2),
             Mine => Some(3),
             Paddy => Some(4),
-            Sea | Dunes | Gold | Fog | Village | Lake | Oasis | Keep => None,
+            Sea | Dunes | Gold | Fog | Village | Lake | Oasis | Keep | Glassworks | Stoneworks => None,
         }
     }
     pub fn name(self) -> &'static str {
-        ["sea", "forest", "quarry", "fields", "mine", "paddy", "dunes", "gold", "fog", "village", "lake", "oasis", "keep"][self as usize]
+        ["sea", "forest", "quarry", "fields", "mine", "paddy", "dunes", "gold", "fog", "village", "lake", "oasis", "keep", "glassworks", "stoneworks"][self as usize]
     }
 }
 
@@ -279,6 +281,33 @@ fn attempt_island(s: &Settings, rng: &mut Rng) -> Option<Island> {
     }
     if s.box_scenario == 3 {
         fishing_lake(rng, &mut land, 0, Oasis)?; // the watering hole: the very middle
+    }
+    if s.box_scenario == 5 {
+        // Traders and raiders: the three Dunes become the three works, moved to the coast at least 3
+        // hexes apart (each swaps places with the hex there, number and all)
+        let reach = land.iter().map(|h| h.cell.distance(Cell::new(0, 0))).max().unwrap();
+        let outer: Vec<usize> = (0..land.len()).filter(|&i| land[i].cell.distance(Cell::new(0, 0)) == reach).collect();
+        let mut spots: Vec<usize> = Vec::new();
+        for _ in 0..200 {
+            spots = (0..3).map(|_| *rng.pick(&outer)).collect();
+            let apart = (0..3).all(|a| (a + 1..3).all(|b| land[spots[a]].cell.distance(land[spots[b]].cell) >= 3));
+            if apart {
+                break;
+            }
+            spots.clear();
+        }
+        if spots.is_empty() {
+            return None;
+        }
+        for (k, t) in [Keep, Glassworks, Stoneworks].into_iter().enumerate() {
+            let dunes = land.iter().position(|h| h.terrain == Dunes)?;
+            let at = spots[k];
+            let (terrain, number) = (land[at].terrain, land[at].number);
+            land[dunes].terrain = terrain;
+            land[dunes].number = number;
+            land[at].terrain = t;
+            land[at].number = 0;
+        }
     }
     if s.box_scenario == 4 {
         fishing_lake(rng, &mut land, 0, Keep)?;  // the Keep in the middle,

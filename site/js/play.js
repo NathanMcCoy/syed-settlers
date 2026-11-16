@@ -404,6 +404,23 @@ function drawPieces(v, before) {
       layers.squall.append(k);
     }
   }
+  // Traders and raiders: raiders on edges, and each wagon (its cargo's first letter)
+  if (v.traders) {
+    for (const e of v.traders.barbarians) {
+      const [a, b] = edgeEnds(e);
+      const t = el('text', { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 + 4, class: 'marker raiders', 'data-barbarian': e }, '☗');
+      t.append(el('title', {}, 'A raider: 2 more move points to pass; a wagon may try to drive it off'));
+      layers.squall.append(t);
+    }
+    v.traders.wagons.forEach(([c, level, cargo, delivered], s) => {
+      if (c === 65535) return;
+      const { x, y } = cornerAt(c);
+      const g = el('g', { class: `cart p${s}`, 'data-cart': s });
+      g.append(el('rect', { x: x - 8 + s * 2, y: y + 6, width: 16, height: 10, rx: 2 }), el('text', { x: x + s * 2, y: y + 14 }, cargo ? cargo[0].toUpperCase() : ''));
+      g.append(el('title', {}, `${nameOf(s)}'s wagon (level ${level}${cargo ? `, carrying ${cargo}` : ', empty'}, ${delivered} delivered)`));
+      layers.squall.append(g);
+    });
+  }
   // Merchant trains: each wagon, a short block along its edge
   for (const e of v.trains?.wagons ?? []) {
     const [a, b] = edgeEnds(e);
@@ -736,6 +753,7 @@ const TWO_STEP = {
   swap: ['hex', 'Swap this number', 'with this one'],
   moveraider: ['hex', 'Move a raider from here', 'Move it here'],
   guardmove: ['edge', 'Move this knight', 'Move it here (4 or 5 steps cost a Grain)'],
+  barbarianto: ['edge', 'Move this raider', 'Put it here'],
 };
 // Moves on a corner (the city expansion), with their tips
 const CORNER_WORDS = {
@@ -747,6 +765,7 @@ const CORNER_WORDS = {
   pillage: 'The raiders take this Lodge',
   expel: 'Push off this knight',
   removeknight: 'Remove this knight',
+  wagonstep: 'Move your wagon here',
 };
 function targetShape(kind, n, extra = '', sea = false) {
   if (kind === 'corner') {
@@ -830,6 +849,8 @@ function status(v) {
     case 'capture': return mine ? 'Capture: click a coastal hex to take a raider prisoner.' : `${who} is capturing a raider.`;
     case 'placeGuard': return mine ? 'Click an edge for your new knight.' : `${who} is placing a knight.`;
     case 'moveRaider': return mine ? 'Turncoat: move a raider from one coastal hex to another (click the two hexes).' : `${who} is moving raiders.`;
+    case 'drive': return mine ? `End of turn: move your wagon (click a lit corner; ${v.traders.mp} move points left). A works ends the move: deliver what it wants, take one of its goods.` : `${who} is moving their wagon.`;
+    case 'moveBarbarian': return mine ? 'Move a raider: click it, then a free edge (landing on a Path robs its owner, unless you drove it off).' : `${who} is moving a raider.`;
     case 'moveGuards': return mine ? 'End of turn: move your knights (click one, then where it goes), then Done. Knights on the Keep must move.' : `${who} is moving knights.`;
     default: return '';
   }
@@ -860,7 +881,11 @@ function drawChoices(v) {
     if (word === 'takecard') box.append(button(`Take a ${CARD_NAMES[m.split(' ')[2]]}`, m));
     if (word === 'takeprogress') box.append(button(`Take ${cardName(m.split(' ')[2])}`, m));
     if (word === 'dropcard' && v.phase !== 'main') box.append(button(`Drop ${cardName(n)}`, m));
-    if (word === 'skip') box.append(button(v.phase === 'treasonKnight' ? 'Place no knight' : v.phase === 'spy' ? 'Take nothing' : v.phase === 'moveGuards' ? 'Done moving knights' : 'Done', m));
+    if (word === 'skip') box.append(button(v.phase === 'treasonKnight' ? 'Place no knight' : v.phase === 'spy' ? 'Take nothing' : v.phase === 'moveGuards' ? 'Done moving knights' : v.phase === 'drive' ? 'Stop the wagon' : 'Done', m));
+    // Traders and raiders: the wagon
+    if (word === 'driveoff') box.append(button(`Try to drive off the raider (a die of ${DRIVE_FROM[v.traders.wagons[v.you][1]]} or more)`, m));
+    if (word === 'boost') box.append(button('Spend a Grain: 2 more move points', m));
+    if (word === 'upgradewagon') box.append(button(`Upgrade your wagon (${cardsText(WAGON_UPGRADES[v.traders.wagons[v.you][1]])})`, m));
     // Merchant trains' vote: pick a bid of Fish and Grain (drawn once, below)
     if (word === 'bid' && !box.querySelector('.bid-pick')) box.append(bidPicker(v));
     // Fishing: spend fish, pass the old boot
@@ -906,6 +931,10 @@ function bidPicker(v) {
   return wrap;
 }
 
+// Traders and raiders' wagon board (engine traders.rs DRIVE_FROM, UPGRADES)
+const DRIVE_FROM = [7, 6, 5, 4, 3];
+const WAGON_UPGRADES = [[1, 1, 0, 0, 1], [1, 1, 0, 0, 0], [2, 1, 0, 0, 1], [2, 1, 0, 0, 1]];
+
 // Raider attack's orders (engine raiders.rs ORDERS)
 const ORDER_NAMES = { capture: 'Capture', knighthood: 'Knighthood', swiftKnight: 'Swift Knight', turncoat: 'Turncoat' };
 
@@ -923,6 +952,8 @@ function chooseLabel(v, x) {
 
 // Your projects, under your hand: each one, and a Use button on those you can play now. Projects
 // bought this turn wait for your next turn; a Lighthouse is never played, it counts at once.
+// Traders and raiders call the projects by their own names
+const projectName = (v, k) => (v.traders ? { pilot: 'Knight', harvest: 'Swift Journey', lighthouse: 'Renown', roadCrew: 'Path Builders' }[k] ?? PROJECTS[k] : PROJECTS[k]);
 function drawMyProjects(v) {
   const held = v.players[v.you].projects;
   const any = held && held.some(n => n > 0);
@@ -935,7 +966,7 @@ function drawMyProjects(v) {
       const li = document.createElement('li');
       li.className = `my-project ${k}`;
       const name = document.createElement('strong');
-      name.textContent = PROJECTS[k];
+      name.textContent = projectName(v, k);
       const when = document.createElement('span');
       const fresh = n < (v.bought?.[i] ?? 0);
       const usable = !fresh && legal().includes(`play ${k}`);
@@ -971,7 +1002,7 @@ function showBought(v, before) {
   const k = Object.keys(PROJECTS)[i];
   toast(k === 'lighthouse'
     ? 'You drew a Lighthouse: +1 Renown, counted now.'
-    : `You drew a ${PROJECTS[k]}: ${PROJECT_HELP[k].toLowerCase()}. Playable from your next turn.`);
+    : `You drew a ${projectName(v, k)}: ${PROJECT_HELP[k].toLowerCase()}. Playable from your next turn.`);
 }
 
 // ---------- The Build shop ----------
@@ -1106,10 +1137,12 @@ function projectItems(v) {
     return [shopRow(v, { ...card, cost: PROJECT_COST, project: true }, b, reason)];
   }
   const cards = v.row.length
-    ? v.row.map((k, slot) => ({ key: `project-${slot}`, move: `buy ${slot}`, name: PROJECTS[k], note: PROJECT_HELP[k] }))
+    ? v.row.map((k, slot) => ({ key: `project-${slot}`, move: `buy ${slot}`, name: projectName(v, k), note: PROJECT_HELP[k] }))
     : [{
         key: 'project', move: 'buy 0', name: 'Project card',
-        note: `Drawn unseen: Pilot, Lighthouse, Road Crew, Good Harvest or Market Day · ${v.deck} left`,
+        note: v.traders
+          ? `Drawn unseen: Knight (move a raider), Path Builders, Swift Journey (the wagon moves twice) or Renown · ${v.deck} left`
+          : `Drawn unseen: Pilot, Lighthouse, Road Crew, Good Harvest or Market Day · ${v.deck} left`,
       }];
   return cards.map(card => {
     const reason = projectReason(v, card.move);
@@ -1286,6 +1319,11 @@ function drawPlayers(v) {
       facts.push(`knights ${v.city.defence[s]} active`);
       if (v.city.progressCounts[s]) facts.push(`${v.city.progressCounts[s]} progress`);
     }
+    // Traders and raiders: the wagon and its deliveries, coins
+    if (v.traders) {
+      const [, level, cargo, delivered] = v.traders.wagons[s];
+      facts.push(`wagon level ${level}`, cargo ? `carrying ${cargo}` : 'empty wagon', `${delivered} delivered`, `${v.traders.coins[s]} coins`);
+    }
     // Raider attack: knights out, prisoners (2 = 1 Renown), coins
     if (v.raiders) {
       const k = v.raiders.knights.filter(([, o]) => o === s).length;
@@ -1392,7 +1430,7 @@ function drawProjects(v) {
     const li = document.createElement('li');
     li.className = 'project';
     const name = document.createElement('strong');
-    name.textContent = PROJECTS[k];
+    name.textContent = projectName(v, k);
     const help = document.createElement('span');
     help.textContent = PROJECT_HELP[k];
     li.append(name, help);
@@ -1402,13 +1440,13 @@ function drawProjects(v) {
   if (!v.row.length && buys.includes('buy 0')) $('row').append(button('Buy a project (unseen)', 'buy 0'));
   const mine = v.you === null ? null : v.players[v.you].projects;
   $('held').textContent = mine
-    ? `Yours: ${Object.keys(PROJECTS).map((k, i) => (mine[i] ? `${PROJECTS[k]} ×${mine[i]}` : null)).filter(Boolean).join(', ') || 'none'} · ${v.deck} left in the deck`
+    ? `Yours: ${Object.keys(PROJECTS).map((k, i) => (mine[i] ? `${projectName(v, k)} ×${mine[i]}` : null)).filter(Boolean).join(', ') || 'none'} · ${v.deck} left in the deck`
     : `${v.deck} left in the deck`;
 }
 
 // Rivers' coins, in the Trade tab: buy one with a resource (at your rate), or spend 2 for a resource
 function drawCoins(v) {
-  const r = v.rivers ?? v.raiders;
+  const r = v.rivers ?? v.raiders ?? v.traders;
   $('coin-box').hidden = !r || v.you === null;
   if (!r || v.you === null) return;
   const standing = r.wealthiest === v.you ? ' You are the Wealthiest (+1 Renown).' : (r.poor ?? []).includes(v.you) ? ' You are Poor (−2 Renown): get more coins than someone.' : '';
@@ -1501,7 +1539,7 @@ function describe(entry) {
     case 'steal': return `${who} stole a card from ${Number(a) === snap.view.you ? 'you' : nameOf(Number(a))}`;
     case 'trade': return `${who} traded ${CARD_NAMES[a]} for ${CARD_NAMES[b]}`;
     case 'buy': return `${who} bought a project`;
-    case 'play': return `${who} played ${PROJECTS[a]}`;
+    case 'play': return `${who} played ${projectName(snap.view, a)}`;
     case 'take': return entry.got === undefined
       ? `${who} took ${RESOURCES[a]}`
       : `${who} called a Market Day and took ${entry.got} ${RESOURCES[a]} from the others`;
@@ -1538,6 +1576,11 @@ function describe(entry) {
     case 'bid': return `${who} bid ${Number(a) + Number(b)} for the wagon`;
     case 'wagon': return `${who} placed a wagon`;
     case 'capture': return `${who} took a raider prisoner`;
+    case 'wagonstep': return `${who} moved their wagon`;
+    case 'driveoff': return `${who} tried to drive off a raider`;
+    case 'boost': return `${who} spent a Grain on the wagon`;
+    case 'barbarianto': return `${who} moved a raider`;
+    case 'upgradewagon': return `${who} upgraded their wagon`;
     case 'placeguard': return `${who} placed a knight`;
     case 'moveraider': return `${who} moved a raider`;
     case 'guardmove': case 'guardrun': return `${who} moved a knight`;

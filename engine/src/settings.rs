@@ -136,7 +136,7 @@ settings! {
     variant_ports: bool = false, "variant.ports", 0, 1, "Strongest Ports: 2 Renown for the most Renown in buildings on markets (at least 3); 1 more Renown to win";
     sea: bool = false, "sea", 0, 1, "The sea expansion: ships, the pirate, gold fields and small islands to sail to (sea.scenario picks the map)";
     sea_scenario: u8 = 1, "sea.scenario", 1, 9, "Sea scenario: 1 New Shores, 2 Four Islands, 3 Fog Islands, 4 Through the Desert, 5 The Forgotten Tribe, 6 Cloth, 7 The Pirate Islands, 8 Wonders, 9 New World";
-    box_scenario: u8 = 0, "box.scenario", 0, 5, "A variants box scenario: 1 Fishing, 2 Rivers, 3 Merchant trains, 4 Raider attack (0: none)";
+    box_scenario: u8 = 0, "box.scenario", 0, 5, "A variants box scenario: 1 Fishing, 2 Rivers, 3 Merchant trains, 4 Raider attack, 5 Traders and raiders (0: none)";
     city: bool = false, "city", 0, 1, "The city expansion: commodities, city improvements, walls, knights, raiders and progress cards (13 to win)";
     city_raiders: u8 = 7, "city.raiders", 2, 12, "Steps the raiders take before they land (the city expansion)";
     bank_goods: u8 = 12, "bank.goods", 0, 40, "Cards of each commodity in the game (the city expansion; 0: never runs out)";
@@ -172,7 +172,7 @@ impl Settings {
             return Err("the two-player variant (variant.two) is for 2 players".into());
         }
         if s.box_scenario != 0 {
-            if !matches!(s.box_scenario, 1..=4) {
+            if !matches!(s.box_scenario, 1..=5) {
                 return Err(format!("variants box scenario {} isn't ready yet", s.box_scenario));
             }
             if s.sea || s.city || s.variant_events || s.variant_two {
@@ -180,6 +180,21 @@ impl Settings {
             }
             if matches!(s.box_scenario, 1 | 3) && s.island_dunes == 0 {
                 return Err("this scenario needs a Dunes hex (it becomes the Lake or the watering hole)".into());
+            }
+            if s.box_scenario == 5 {
+                // Traders and raiders: three works for a Paddy, a Fields and the Dunes; 13 to win; its
+                // own projects (Knight 16 = Pilots, Path Builders 3, Swift Journey 3 = the Good Harvest
+                // slot, Renown 3 = Lighthouses)
+                let mut base = Settings::for_players(players);
+                base.box_scenario = 5;
+                base.win = 13;
+                if !base.island_large {
+                    (base.island_paddy, base.island_fields, base.island_dunes) = (3, 3, 3);
+                } else {
+                    (base.island_fields, base.island_dunes) = (5, 3);
+                }
+                (base.deck_pilot, base.deck_lighthouse, base.deck_road_crew, base.deck_harvest, base.deck_market_day) = (16, 3, 3, 3, 0);
+                return Settings::parse_onto(base, text);
             }
             if s.box_scenario == 4 {
                 // Raider attack: the Keep and the Dunes (2 Dunes, one Forest fewer on the hexagon), 12 to
