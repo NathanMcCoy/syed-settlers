@@ -1,10 +1,12 @@
 # Syed Settlers: rules
 
-Version 0.3 (draft, Nov 15 2026: closer to the classic game this one is modelled on. Most Pilots
-replaces Most Markets; Market Day replaces Good Bargain, with the deck re-counted; the squall goes to
-any land hex after a 7; 9 markets; a bank of 19; a short bank pays its last cards when only one player
-is owed. Earlier the same day: sailing removed; Stone and Copper swapped in every recipe; Paths may
-pass through other players' buildings, which no longer break Longest Path). Numbers marked ⚙ are settings in `engine/src/settings.rs`.
+Version 0.4 (draft, Nov 15 2026: as close as we can make it to the classic game this one is
+modelled on, checked against its rulebook. 0.4: other players' buildings block Paths and break
+Longest Path again; no limit on trade offers; markets spread evenly round the coast; numbers in the
+classic spiral. 0.3: Most Pilots replaces Most Markets; Market Day replaces Good Bargain, with the
+deck re-counted; the squall goes to any land hex after a 7; 9 markets; a bank of 19; a short bank
+pays its last cards when only one player is owed. Earlier the same day: sailing removed; Stone and
+Copper swapped in every recipe). Numbers marked ⚙ are settings in `engine/src/settings.rs`.
 They're first guesses: playtesting and bot simulations will tune them.
 
 ## Players
@@ -53,14 +55,21 @@ island, so a good (or unfair) island can be shared and replayed.
   times (so it needs at least 15 producing hexes).
 - **Numbers** 2–12 (never 7) on every producing hex. The usual spread is one 2, one 12, and two each
   of 3–6 and 8–11. Smaller islands drop the rarest numbers first; bigger ones add middle numbers.
-- **Fairness checks** (the generator redraws until all hold):
+- **How numbers are placed:** on the hexagon with 1 Dunes (the default), the classic way: the
+  numbers 5, 2, 6, 3, 8, 10, 9, 12, 11, 4, 8, 10, 9, 4, 5, 6, 3, 11 go down in that order in a
+  spiral, starting at a random corner of the outer ring and going counterclockwise inwards,
+  skipping the Dunes ⚙ (`island.spiral`). The order keeps 6s and 8s apart; nothing is redrawn.
+- **Fairness checks** for every other island (spiral off, other shapes or Dunes counts): numbers
+  are shuffled and the generator redraws until all hold:
   - no 6 or 8 next to another 6 or 8;
   - no two equal numbers next to each other;
   - each resource's total chance of being produced is 60%–150% of the average resource's.
 - **Sea** surrounds the island (every hex within 2 of land). Nobody builds on it: there's no
   sailing (removed Nov 15 to keep the game simple).
 - **Markets:** 9 ⚙ on the coast, each on one coastal edge: 4 general markets (3:1) and one 2:1
-  market for each resource. No two markets share a corner (they may be on neighbouring corners).
+  market for each resource, spread evenly round the coast like harbours on a sea frame (on the
+  hexagon, 3 or 4 coastal edges apart), starting at a random place, kinds shuffled. No two markets
+  share a corner (they may be on neighbouring corners).
 - **The squall** starts on a Dunes hex. With no Dunes, it starts on one of the weakest hexes (the
   fewest dice rolls produce there).
 
@@ -75,7 +84,7 @@ island, so a good (or unfair) island can be shared and replayed.
 - **Spacing:** no building may be on a corner next to another building, anyone's. Buildings are
   at least 2 edges apart.
 - **Connection:** Huts must touch one of your own Paths (except during setup). Paths must share a
-  corner with one of your buildings or Paths. They may continue through a corner holding another
+  corner with one of your buildings or Paths, and can't continue past a corner holding another
   player's building.
 
 ## Setup
@@ -127,7 +136,8 @@ In this order:
   - **Counter-offers:** instead of accepting or declining, a player offered the trade can send back
     a changed one (any cards they hold, for any of the offerer's). The offerer may take a
     counter-offer, which trades at once, or ignore it. A player can't counter after accepting.
-  At most 3 ⚙ offers a turn (`trade.offers`; 0 turns trading between players off). Players can't
+  As many offers a turn as you like ⚙ (`trade.offers`: a limit, 0 = none, the default;
+  `trade.players` off turns trading between players off). Players can't
   trade with each other outside the offerer's turn. Bots answer offers; they don't make them yet.
 
 ## Projects
@@ -152,7 +162,8 @@ Cost: **Stone + Grain + Fish.** The deck ⚙ has 25 cards:
 ## Titles
 
 - **Longest Path** (2 Renown ⚙): the longest unbroken line of your Paths, at least 5 ⚙ long.
-  Other players' buildings don't break it.
+  Another player's building on one of its corners breaks it there. If that leaves the holder under
+  5, or level with someone, the title goes to whoever is now strictly ahead, or to nobody.
 - **Most Pilots** (2 Renown ⚙): you've played the most Pilots, at least 3 ⚙. Played Pilots stay
   on show to everyone.
 - To take a title from its holder you need strictly more. If two or more players tie for the lead

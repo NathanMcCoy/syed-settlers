@@ -173,7 +173,7 @@ pub struct Game {
     pub short: u8,                    // resources the bank couldn't pay on the last roll (a bit each)
     pub by_rounds: bool,              // the game ended at the round limit (the winner may be NOBODY: a draw)
     pub offer: Option<Offer>,         // the current player's open offer to other players
-    pub offers_made: u8,              // this turn
+    pub offers_made: u8,              // this turn (counts up to 255; only a limit compares with it)
     pub rng: Rng,
 }
 
@@ -326,13 +326,13 @@ impl Game {
         listed(&self.board.graph.corner_edges[c]).any(|e| self.edge_owner[e] == p)
     }
 
-    // An edge p could extend to: free, and one of its ends is p's building or touches p's Path.
-    // Paths may continue through a corner holding another player's building.
+    // An edge p could extend to: free, and one of its ends is p's building, or is free of others'
+    // buildings and touches p's Path (a Path can't continue past another player's building)
     fn edge_connected(&self, p: u8, e: usize) -> bool {
         self.edge_owner[e] == NOBODY
             && self.board.graph.edge_corners[e].iter().any(|&c| {
                 let c = c as usize;
-                self.corner_owner[c] == p || self.touches_own_edge(p, c)
+                self.corner_owner[c] == p || (self.corner_owner[c] == NOBODY && self.touches_own_edge(p, c))
             })
     }
 
@@ -517,7 +517,10 @@ impl Game {
         if self.phase != Phase::Main {
             return Err("offers are made after rolling".into());
         }
-        if self.offers_made >= self.settings().trade_offers {
+        if !self.settings().trade_players {
+            return Err("trading between players is off in this game".into());
+        }
+        if !self.offers_left() {
             return Err(format!("{} offers a turn at most", self.settings().trade_offers));
         }
         trade_shape_ok(give, get)?;
@@ -529,6 +532,12 @@ impl Game {
             return Err("offer to one or more of the other players".into());
         }
         Ok(())
+    }
+
+    // May the current player make another offer this turn? (trade.offers 0: no limit)
+    pub fn offers_left(&self) -> bool {
+        let s = self.settings();
+        s.trade_players && (s.trade_offers == 0 || self.offers_made < s.trade_offers)
     }
 
     // Can the open offer still be completed with seat s (both still hold the cards)?
@@ -711,7 +720,7 @@ impl Game {
             },
             Action::Offer { give, get, to, open } => {
                 self.offer = Some(Offer { give, get, to, open, answers: [0; MAX_PLAYERS], counters: [None; MAX_PLAYERS] });
-                self.offers_made += 1;
+                self.offers_made = self.offers_made.saturating_add(1);
             }
             Action::Answer(s, yes) => {
                 let o = self.offer.as_mut().expect("an offer");
@@ -797,6 +806,8 @@ impl Game {
             }
             self.phase = Phase::SetupPath { hut: c as u16 };
         }
+        // A new building can break other players' lines
+        self.update_titles();
     }
 
     fn place_path(&mut self, p: u8, e: usize) {
@@ -937,7 +948,8 @@ impl Game {
 
     // ---- Titles ----
 
-    // Longest Path, after a Path is placed (Most Pilots changes only when a Pilot is played)
+    // Longest Path, after a Path or a building is placed (Most Pilots changes only when a Pilot is
+    // played)
     fn update_titles(&mut self) {
         let line_min = self.settings().longest_min;
         for p in 0..self.players {
@@ -946,7 +958,8 @@ impl Game {
         self.longest = title(self.longest, &self.line[..self.players], line_min);
     }
 
-    // The longest unbroken line of p's Paths: no edge twice. Other players' buildings don't break it.
+    // The longest unbroken line of p's Paths: no edge twice, and it can't pass through a corner
+    // holding another player's building (it may end there)
     pub fn longest_line(&self, p: u8) -> u8 {
         let g = &self.board.graph;
         let mut used: Vec<u16> = Vec::with_capacity(32);
@@ -964,6 +977,10 @@ impl Game {
     }
 
     fn extend_line(&self, p: u8, c: usize, used: &mut Vec<u16>, len: u8) -> u8 {
+        let owner = self.corner_owner[c];
+        if len > 0 && owner != NOBODY && owner != p {
+            return len;
+        }
         let g = &self.board.graph;
         let mut best = len;
         for e in listed(&g.corner_edges[c]) {

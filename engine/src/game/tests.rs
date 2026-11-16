@@ -99,7 +99,7 @@ fn check(g: &Game) {
     if let Some(o) = &g.offer {
         assert!(g.turn > 0 && !g.over());
         assert_eq!(o.to & (1 << g.current), 0);
-        assert!(g.offers_made >= 1 && g.offers_made <= s.trade_offers);
+        assert!(g.offers_made >= 1 && (s.trade_offers == 0 || g.offers_made <= s.trade_offers));
     }
 }
 
@@ -396,7 +396,7 @@ fn trading_rates_bank_and_markets() {
 }
 
 #[test]
-fn paths_join_your_network_even_through_another_players_building() {
+fn paths_join_your_network_but_not_through_another_players_building() {
     let mut g = after_setup(2);
     g.phase = Phase::Main;
     g.current = 0;
@@ -411,27 +411,23 @@ fn paths_join_your_network_even_through_another_players_building() {
     for e in edges(&g) {
         let ok = gr.edge_corners[e].iter().any(|&c| {
             let c = c as usize;
-            g.corner_owner[c] == 0 || listed(&gr.corner_edges[c]).any(|x| g.edge_owner[x] == 0)
+            g.corner_owner[c] == 0 || (g.corner_owner[c] == NOBODY && listed(&gr.corner_edges[c]).any(|x| g.edge_owner[x] == 0))
         });
         assert!(ok, "every offered edge joins player 1's network");
     }
-    // Put player 2's Hut at the far end of one of player 1's edges: player 1 can still build past it
+    // Put player 2's Hut at the far end of one of player 1's edges: edges beyond it are cut off
     let mine = (0..gr.edges()).find(|&e| g.edge_owner[e] == 0 && gr.edge_corners[e].iter().any(|&c| g.corner_owner[c as usize] == NOBODY)).unwrap();
     let end = gr.edge_corners[mine].iter().map(|&c| c as usize).find(|&c| g.corner_owner[c] == NOBODY).unwrap();
-    let before = edges(&g);
     g.corner_owner[end] = 1;
     g.corner_kind[end] = HUT;
-    let after = edges(&g);
-    assert_eq!(before, after, "another player's Hut takes away no Path spots");
-    let mut past = 0;
     for e in listed(&gr.corner_edges[end]) {
-        if e == mine || g.edge_owner[e] != NOBODY || !board.edge_land[e] {
+        if e == mine || g.edge_owner[e] != NOBODY {
             continue;
         }
-        assert!(after.contains(&e), "edge {e} past another player's Hut is offered");
-        past += 1;
+        let other = gr.edge_corners[e].iter().map(|&c| c as usize).find(|&c| c != end).unwrap();
+        let reachable_otherwise = g.corner_owner[other] == 0 || listed(&gr.corner_edges[other]).any(|x| g.edge_owner[x] == 0);
+        assert_eq!(edges(&g).contains(&e), reachable_otherwise, "edge {e} past another player's Hut");
     }
-    assert!(past > 0, "the test looked at at least one edge past the Hut");
 }
 
 // A chain of `len` edges walking away from a corner, over land edges
@@ -453,7 +449,7 @@ fn chain(g: &Game, start: usize, len: usize) -> Vec<usize> {
 }
 
 #[test]
-fn longest_path_takes_the_longest_line_and_other_buildings_dont_break_it() {
+fn longest_path_takes_the_longest_line_and_other_buildings_break_it() {
     let mut g = game(3);
     g.turn = 1;
     g.phase = Phase::Main;
@@ -469,14 +465,14 @@ fn longest_path_takes_the_longest_line_and_other_buildings_dont_break_it() {
     g.edge_kind[line[4]] = PATH;
     g.update_titles();
     assert_eq!((g.line[0], g.longest), (5, 0));
-    // Another player's Hut on the corner between the 2nd and 3rd edges doesn't split it
+    // Another player's Hut on the corner between the 2nd and 3rd edges splits it into 2 and 3
     let gr = &g.board.graph;
     let [a, b] = gr.edge_corners[line[1]];
     let mid = if gr.edge_corners[line[2]].contains(&a) { a } else { b } as usize;
     g.corner_owner[mid] = 1;
     g.corner_kind[mid] = HUT;
     g.update_titles();
-    assert_eq!((g.line[0], g.longest), (5, 0));
+    assert_eq!((g.line[0], g.longest), (3, NOBODY));
 }
 
 #[test]
@@ -684,12 +680,30 @@ fn offers_must_be_real_trades_the_player_can_pay() {
     let mut before = g.clone();
     before.phase = Phase::PreRoll;
     assert!(before.offer_ok(&one(0), &one(3), 0b110).unwrap_err().contains("after rolling"));
-    let s = Settings::parse("trade.offers=0").unwrap();
+    let s = Settings::parse("trade.players=false").unwrap();
     let mut off = Game::new(&generate(&s, "rules").unwrap(), &s, 3, 7);
     off.phase = Phase::Main;
     off.turn = 1;
     off.hands[0] = [1, 0, 0, 0, 0];
-    assert!(off.offer_ok(&one(0), &one(3), 0b110).unwrap_err().contains("0 offers"), "trade.offers=0 turns it off");
+    assert!(off.offer_ok(&one(0), &one(3), 0b110).unwrap_err().contains("off"), "trade.players=false turns it off");
+    // A limit, when set: trade.offers=2 allows 2 a turn
+    let s = Settings::parse("trade.offers=2").unwrap();
+    let mut two = Game::new(&generate(&s, "rules").unwrap(), &s, 3, 7);
+    two.phase = Phase::Main;
+    two.turn = 1;
+    two.hands[0] = [1, 0, 0, 0, 0];
+    for _ in 0..2 {
+        two.apply(Action::Offer { give: one(0), get: one(3), to: 0b110, open: false }).unwrap();
+        two.apply(Action::Withdraw).unwrap();
+    }
+    assert!(two.offer_ok(&one(0), &one(3), 0b110).unwrap_err().contains("2 offers"));
+    // No limit (the default): 20 offers in one turn are all fine
+    let mut g = trading_game();
+    for _ in 0..20 {
+        g.apply(Action::Offer { give: one(0), get: one(3), to: 0b110, open: false }).unwrap();
+        g.apply(Action::Withdraw).unwrap();
+    }
+    assert!(g.offer_ok(&one(0), &one(3), 0b110).is_ok());
 }
 
 #[test]
@@ -723,7 +737,7 @@ fn offers_are_limited_withdrawn_and_end_with_the_turn() {
         g.apply(Action::Withdraw).unwrap();
         assert!(g.offer.is_none());
     }
-    assert!(g.apply(offer).unwrap_err().contains("3 offers"), "3 a turn by default");
+    assert!(g.apply(offer).is_ok(), "no limit by default");
     g.apply(Action::EndTurn).unwrap();
     assert_eq!(g.offers_made, 0);
 
@@ -920,4 +934,43 @@ fn bot_games_finish_and_are_repeatable() {
     let a = play(&s, 5, 4, 400).unwrap();
     let b = play(&s, 5, 4, 400).unwrap();
     assert_eq!((a.winner, a.turns, a.actions), (b.winner, b.turns, b.actions));
+}
+
+#[test]
+fn building_a_hut_in_the_middle_of_a_line_takes_longest_path_away() {
+    let mut g = game(3);
+    g.turn = 1;
+    g.phase = Phase::Main;
+    let start = (0..g.corner_owner.len()).find(|&c| g.board.corner_land[c] && listed(&g.board.graph.corner_hexes[c]).count() == 3).unwrap();
+    let line = chain(&g, start, 6);
+    for &e in &line[..5] {
+        g.edge_owner[e] = 0;
+        g.edge_kind[e] = PATH;
+    }
+    g.update_titles();
+    assert_eq!(g.longest, 0);
+    // Player 2 reaches the corner between the 2nd and 3rd edges with a Path of their own, then builds there
+    let board = g.board.clone();
+    let gr = &board.graph;
+    let [a, b] = gr.edge_corners[line[1]];
+    let mid = if gr.edge_corners[line[2]].contains(&a) { a } else { b } as usize;
+    let side = listed(&gr.corner_edges[mid]).find(|&e| g.edge_owner[e] == NOBODY && board.edge_land[e]).expect("a free edge at the corner");
+    g.edge_owner[side] = 1;
+    g.edge_kind[side] = PATH;
+    g.current = 1;
+    g.hands[1] = HUT_COST;
+    g.apply(Action::Hut(mid as u16)).unwrap();
+    assert_eq!((g.line[0], g.longest), (3, NOBODY), "split into 2 and 3: under 5, so nobody holds it");
+    // Player 1 can't build on past player 2's Hut either
+    g.current = 0;
+    g.hands[0] = PATH_COST;
+    let beyond = listed(&gr.corner_edges[mid]).filter(|&e| e != line[1] && e != line[2] && e != side).collect::<Vec<_>>();
+    let mut list = Vec::new();
+    g.legal(&mut list);
+    for e in beyond {
+        let other = gr.edge_corners[e].iter().map(|&c| c as usize).find(|&c| c != mid).unwrap();
+        if g.corner_owner[other] == NOBODY && !listed(&gr.corner_edges[other]).any(|x| g.edge_owner[x] == 0) {
+            assert!(!list.contains(&Action::Path(e as u16)), "no Path past another player's Hut");
+        }
+    }
 }

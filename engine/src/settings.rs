@@ -97,6 +97,7 @@ settings! {
     win: u8 = 10, "win", 3, 20, "Renown needed to win";
     island_hexagon: bool = true, "island.hexagon", 0, 1, "Main island is a hexagon 5 hexes across, 19 hexes (off: a random shape of island.size hexes)";
     island_size: u8 = 22, "island.size", 16, 40, "Land hexes on a random-shaped main island";
+    island_spiral: bool = true, "island.spiral", 0, 1, "Numbers laid in the classic spiral order on the hexagon with 1 Dunes (off: shuffled, redrawn until fair)";
     island_dunes: u8 = 1, "island.dunes", 0, 3, "Dunes hexes (produce nothing) on the main island";
     island_forest: u8 = 4, "island.forest", 0, 8, "Forest hexes (Timber) on the hexagon island";
     island_quarry: u8 = 3, "island.quarry", 0, 8, "Quarry hexes (Stone) on the hexagon island";
@@ -108,7 +109,8 @@ settings! {
     squall_range: u8 = 0, "squall.range", 0, 8, "Most steps the squall moves after a 7 (0: to any land hex)";
     discard_over: u8 = 7, "discard.over", 4, 20, "After a 7, holding more than this loses half";
     bank_cards: u8 = 19, "bank.cards", 0, 60, "Cards of each resource in the game (0: the bank never runs out)";
-    trade_offers: u8 = 3, "trade.offers", 0, 10, "Offers to other players each turn (0: no trading between players)";
+    trade_players: bool = true, "trade.players", 0, 1, "Trading between players (off: only with the bank and markets)";
+    trade_offers: u8 = 0, "trade.offers", 0, 10, "Most offers to other players each turn (0: no limit)";
     projects_face_up: bool = false, "projects.faceUp", 0, 1, "Projects lie face up (off, the default: a hidden draw)";
     projects_row: u8 = 3, "projects.row", 1, 6, "Face-up projects showing";
     deck_pilot: u8 = 14, "projects.deck.pilot", 0, 30, "Pilot projects in the deck";
@@ -201,7 +203,7 @@ mod tests {
         let t = Settings::table_json();
         assert!(t.starts_with("[{\"name\":\"players.min\""));
         assert!(t.contains("{\"name\":\"squall.range\",\"kind\":\"whole\",\"default\":0,\"min\":0,\"max\":8,"));
-        assert_eq!(t.matches("\"name\"").count(), 32);
+        assert_eq!(t.matches("\"name\"").count(), 34);
         assert!(Settings::parse("island.dunes=2;island.forest=3").is_ok(), "a Forest traded for a second Dunes");
     }
 }

@@ -219,7 +219,9 @@ pub fn view_json(g: &Game, seat: u8) -> String {
             })),
         ),
     };
-    let can_offer = mine && seat == g.current && g.phase == Phase::Main && g.offers_made < s.trade_offers;
+    let can_offer = mine && seat == g.current && g.phase == Phase::Main && g.offers_left();
+    // Offers left this turn (null: no limit)
+    let offers_left = if s.trade_offers == 0 { "null".into() } else { s.trade_offers.saturating_sub(g.offers_made).to_string() };
     let row = list(g.row.iter().map(|&k| json::string(PROJECT_NAMES[k as usize])));
     format!(
         concat!(
@@ -239,7 +241,7 @@ pub fn view_json(g: &Game, seat: u8) -> String {
         s.win,
         if mine { seat.to_string() } else { "null".into() },
         hand, rates, legal,
-        offer, can_offer, s.trade_offers.saturating_sub(g.offers_made),
+        offer, can_offer, offers_left,
         if g.last_dice[0] == 0 { "null".into() } else { list(g.last_dice) },
         // What's left in the bank (null: it never runs out), and what the last roll couldn't pay
         if s.bank_cards == 0 { "null".into() } else { list((0..5).map(|r| g.bank(r))) },

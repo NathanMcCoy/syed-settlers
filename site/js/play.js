@@ -650,7 +650,7 @@ function drawDeal(v) {
   const show = v.canOffer && !v.offer;
   $('deal-box').hidden = !show;
   if (!show) return;
-  $('offers-left').textContent = `${v.offersLeft} offer${v.offersLeft === 1 ? '' : 's'} left this turn`;
+  $('offers-left').textContent = v.offersLeft === null ? '' : `${v.offersLeft} offer${v.offersLeft === 1 ? '' : 's'} left this turn`;
   deal.give = deal.give.map((n, r) => Math.min(n, v.hand[r]));
   const others = v.players.map((_, s) => s).filter(s => s !== v.you);
   deal.to = deal.to.filter(s => others.includes(s));
