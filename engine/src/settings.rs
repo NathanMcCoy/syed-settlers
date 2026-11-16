@@ -189,8 +189,8 @@ impl Settings {
             if !matches!(s.box_scenario, 1..=5) {
                 return Err(format!("variants box scenario {} isn't ready yet", s.box_scenario));
             }
-            if s.sea || s.city || s.variant_events || s.variant_two {
-                return Err("a variants box scenario is played on its own (no sea, city, event cards or two-player variant)".into());
+            if s.sea || s.city || s.variant_events {
+                return Err("a variants box scenario is played on its own (no sea, city or event cards; the two-player variant is fine)".into());
             }
             if matches!(s.box_scenario, 1 | 3) && s.island_dunes == 0 {
                 return Err("this scenario needs a Dunes hex (it becomes the Lake or the watering hole)".into());
@@ -201,6 +201,7 @@ impl Settings {
                 // slot, Renown 3 = Lighthouses)
                 let mut base = Settings::for_players(players);
                 base.box_scenario = 5;
+                base.variant_two = s.variant_two;
                 base.win = 13;
                 if !base.island_large {
                     (base.island_paddy, base.island_fields, base.island_dunes) = (3, 3, 3);
@@ -215,6 +216,7 @@ impl Settings {
                 // win, the order deck instead of projects
                 let mut base = Settings::for_players(players);
                 base.box_scenario = 4;
+                base.variant_two = s.variant_two;
                 base.win = 12;
                 if !base.island_large {
                     (base.island_forest, base.island_dunes) = (3, 2);
@@ -229,6 +231,7 @@ impl Settings {
                 // Merchant trains: 12 to win
                 let mut base = Settings::for_players(players);
                 base.box_scenario = 3;
+                base.variant_two = s.variant_two;
                 base.win = 12;
                 return Settings::parse_onto(base, text);
             }
@@ -236,6 +239,7 @@ impl Settings {
                 // Rivers: two Swamps (Dunes) and one Paddy fewer on the hexagon (17 numbered hexes)
                 let mut base = Settings::for_players(players);
                 base.box_scenario = 2;
+                base.variant_two = s.variant_two;
                 if !base.island_large {
                     (base.island_paddy, base.island_dunes) = (3, 2);
                 }

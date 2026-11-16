@@ -427,6 +427,8 @@ pub struct Game {
     pub orders_used: Vec<u8>,
     pub last_order: u8,
     pub last_landing: Vec<u8>,
+    pub neutral_placed: bool,         // two players: the neutral knight is out
+    pub neutral_due: bool,            // ... and is being placed now
     // Traders and raiders (traders.rs): raiders on edges, the three works' hexes, their goods stacks,
     // each wagon's corner, cargo (NOBODY: none), level and deliveries; this move's points, raiders tried
     // this turn, the Grain boost and Swift Journey
@@ -619,6 +621,8 @@ impl Game {
             orders_used: Vec::new(),
             last_order: NOBODY,
             last_landing: Vec::new(),
+            neutral_placed: false,
+            neutral_due: false,
             barbarian: Vec::new(),
             works: Vec::new(),
             goods_stacks: Default::default(),
@@ -1253,6 +1257,7 @@ impl Game {
                 self.corner_kind[c as usize] = HUT;
                 self.update_titles();
                 self.decided(None);
+                self.raider_landing(); // Raider attack: a neutral Hut brings its own landing
             }
             Action::NeutralPath(n, e) => {
                 self.edge_owner[e as usize] = n;
@@ -1276,14 +1281,7 @@ impl Game {
                 pay(&mut self.hands[pu], &WONDERS[self.wonder_of[pu] as usize].cost());
                 self.wonder_level[pu] += 1;
             }
-            Action::SquallHome => {
-                let cost = self.token_cost(pu);
-                self.spend_tokens(pu, Token::Trade, cost);
-                self.token_used = true;
-                if let Some(&h) = self.board.land_hexes.iter().find(|&&h| self.board.terrain[h as usize] == Terrain::Dunes) {
-                    self.squall = h;
-                }
-            }
+            Action::SquallHome => self.squall_home(pu),
             Action::Roll if self.city() => {
                 // The city expansion: three dice; the event die's raiders and progress cards come first
                 let (total, decisions) = self.city_roll();

@@ -302,7 +302,15 @@ Each map is made from the seed to the scenario's rules and tile counts; the layo
 
 ## The variants box: scenarios ⚙ (`box.scenario`, chosen when starting a game)
 
-Played on their own: not with the sea, the city expansion, event cards or the two-player variant.
+Played on their own: not with the sea, the city expansion or event cards. **With the two-player variant**
+(`variant.two`, 2 seats): its rules apply, and the token action "squall to the Dunes" takes the squall off the island
+(Merchant trains) or moves a raider (Raider attack: between coastal hexes; Traders: to a free edge). Per scenario:
+Fishing has no trade tokens, each player starts with 5 fish tokens (1, 1, 2, 2, 3), and the player behind in public
+Renown pays 1 fish less per action; Rivers as the variant; Merchant trains place 2 wagons a vote (more votes: both; a
+tie: one each, the player acting first); Raider attack: the first knight built brings a neutral knight (placed by its
+builder on any free edge; either player may move it after their own; never lost; its tie-break roll is 3), each
+neutral Hut brings a landing, and a player left out of prisoners or losing a knight gets 2 coins and a trade token;
+Traders: a Hut by a works earns a trade token, and a neutral Path costs a wagon 1 point and a coin (to the bank).
 
 - **1 Fishing** (10 Renown): the Dunes become the **Lake**, moved to the middle (the centre hex or a neighbour; the hex
   it swaps with takes the Dunes' place and number). It pays on 2, 3, 11 and 12. Six **fishing grounds** (sea hexes

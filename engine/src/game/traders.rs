@@ -81,8 +81,8 @@ impl Game {
         let owner = self.edge_owner[e];
         let (mut mp, coin) = if owner == p {
             (1, 0)
-        } else if owner != NOBODY && (owner as usize) < self.players {
-            (1, 1)
+        } else if owner != NOBODY {
+            (1, 1) // another player's Path (a neutral's too: its coin goes to the bank)
         } else {
             (2, 0)
         };
@@ -152,7 +152,10 @@ impl Game {
                 self.wagon_mp -= mp;
                 if coin > 0 {
                     self.coins[pu] -= 1;
-                    self.coins[self.edge_owner[e] as usize] += 1;
+                    let owner = self.edge_owner[e] as usize;
+                    if owner < self.players {
+                        self.coins[owner] += 1;
+                    }
                 }
                 self.wagon_corner[pu] = n;
             }

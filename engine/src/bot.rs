@@ -213,7 +213,7 @@ impl Greedy {
             return a;
         }
         // The two-player variant: trade tokens send the squall off this bot's own hex
-        if legal.contains(&Action::SquallHome) && g.board.graph.hex_corners[g.squall as usize].iter().any(|&c| g.corner_owner[c as usize] == p) {
+        if legal.contains(&Action::SquallHome) && g.squall != crate::hex::NONE && g.board.graph.hex_corners[g.squall as usize].iter().any(|&c| g.corner_owner[c as usize] == p) {
             return Action::SquallHome;
         }
         // Event cards: a damaged Path stops new Paths; repair it as soon as it can be afforded

@@ -30,6 +30,16 @@ impl Game {
         self.rng.shuffle(&mut bag);
         self.fish_bag = bag;
         self.lake = (0..self.board.terrain.len()).find(|&h| self.board.terrain[h] == Terrain::Lake).map_or(NONE, |h| h as u16);
+        // Two players: each starts with 5 tokens (two 1s, two 2s, a 3) from the bag
+        if self.two() {
+            for p in 0..2 {
+                for v in [1u8, 1, 2, 2, 3] {
+                    let i = self.fish_bag.iter().position(|&t| t == v).unwrap();
+                    self.fish_bag.remove(i);
+                    self.fish[p].push(v);
+                }
+            }
+        }
         self.boot = NOBODY;
         self.squall = NONE;
     }
@@ -108,7 +118,8 @@ impl Game {
         }
         let pu = p as usize;
         let total = self.fish_total(pu);
-        for (k, &cost) in FISH_COSTS.iter().enumerate() {
+        for k in 0..FISH_COSTS.len() {
+            let cost = self.fish_cost(pu, k);
             if total < cost as u32 {
                 continue;
             }
@@ -160,8 +171,14 @@ impl Game {
         }
     }
 
+    // What an action costs p: two players, the one behind (public Renown) pays 1 fish less
+    pub fn fish_cost(&self, p: usize, k: usize) -> u8 {
+        let behind = self.two() && self.public_renown(p) < self.public_renown(1 - p);
+        FISH_COSTS[k] - behind as u8
+    }
+
     pub(super) fn spend_fish(&mut self, p: usize, k: u8) {
-        self.pay_fish(p, FISH_COSTS[k as usize]);
+        self.pay_fish(p, self.fish_cost(p, k as usize));
         let seat = p as u8;
         match k {
             0 => self.squall = NONE,

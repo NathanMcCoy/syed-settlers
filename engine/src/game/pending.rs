@@ -211,6 +211,8 @@ impl Game {
             Phase::Rolled { total } => self.rolled(total),
             Phase::VoteDone => self.resolve_vote(),
             Phase::TurnEnd => self.end_phase(),
+            // (a Road Crew Path that owed a neutral Path: the free build may have nothing left)
+            Phase::FreeBuild { .. } => self.finish_free_build(),
             Phase::ExpelDone => {
                 self.expel();
                 self.end_phase();

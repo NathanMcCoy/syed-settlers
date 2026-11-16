@@ -207,8 +207,11 @@ impl Game {
             Decision::MoveGuards => {
                 let grain = self.hands[p as usize][2] > 0;
                 let mut must = false;
+                // (two players: either may move the neutral knight, after their own)
+                let own_left = (0..g.edges()).any(|e| self.edge_knight[e] == p && !self.knight_moved[e]);
                 for e in 0..g.edges() {
-                    if self.edge_knight[e] != p || self.knight_moved[e] {
+                    let neutral = self.two() && self.edge_knight[e] == NEUTRAL[0] && !own_left;
+                    if (self.edge_knight[e] != p && !neutral) || self.knight_moved[e] {
                         continue;
                     }
                     let (near, far) = self.guard_reach(e);
@@ -259,7 +262,8 @@ impl Game {
     pub(super) fn move_guard(&mut self, from: usize, to: usize, run: bool) {
         let p = self.edge_knight[from];
         if run {
-            self.hands[p as usize][2] -= 1;
+            let mover = self.current as usize; // (the neutral knight's run is paid by whoever moves it)
+            self.hands[mover][2] -= 1;
         }
         self.edge_knight[from] = NOBODY;
         self.edge_knight[to] = p;
@@ -273,7 +277,7 @@ impl Game {
             return false;
         }
         self.knight_moved.iter_mut().for_each(|m| *m = false);
-        if self.edge_knights(self.current) == 0 {
+        if self.edge_knights(self.current) == 0 && !(self.two() && self.neutral_placed) {
             self.expel();
             return false;
         }
@@ -302,20 +306,20 @@ impl Game {
             }
             let count = |o: u8| here.iter().filter(|&&(_, x)| x == o).count();
             if involved.len() == 1 {
-                self.prisoners[involved[0] as usize] += r;
+                self.gain_prisoners(involved[0], r);
             } else if r as usize >= involved.len() {
                 for &o in &involved {
-                    self.prisoners[o as usize] += 1;
+                    self.gain_prisoners(o, 1);
                 }
                 let mut left = r as usize - involved.len();
                 while left > 0 {
                     let most = involved.iter().map(|&o| count(o)).max().unwrap();
                     let top: Vec<u8> = involved.iter().copied().filter(|&o| count(o) == most).collect();
                     let winner = self.dice_order(&top)[0];
-                    self.prisoners[winner as usize] += 1;
+                    self.gain_prisoners(winner, 1);
                     for &o in &top {
                         if o != winner {
-                            self.coins[o as usize] += 3;
+                            self.consolation(o);
                         }
                     }
                     left -= 1;
@@ -324,9 +328,9 @@ impl Game {
                 let order = self.dice_order(&involved);
                 for (i, &o) in order.iter().enumerate() {
                     if i < r as usize {
-                        self.prisoners[o as usize] += 1;
+                        self.gain_prisoners(o, 1);
                     } else {
-                        self.coins[o as usize] += 3;
+                        self.consolation(o);
                     }
                 }
             }
@@ -339,17 +343,40 @@ impl Game {
                 _ => 2,
             };
             for &(side, o) in &here {
-                if side % 3 == pair {
+                if side % 3 == pair && o != NEUTRAL[0] {
                     self.edge_knight[edges[side]] = NOBODY;
-                    self.coins[o as usize] += 3;
+                    self.consolation(o);
                 }
             }
         }
     }
 
+    fn gain_prisoners(&mut self, p: u8, n: u8) {
+        if (p as usize) < self.players {
+            self.prisoners[p as usize] += n;
+        }
+    }
+
+    // A player left out (or losing a knight): 3 coins; two players: 2 coins and a trade token
+    fn consolation(&mut self, p: u8) {
+        if (p as usize) >= self.players {
+            return;
+        }
+        if self.two() {
+            self.coins[p as usize] += 2;
+            self.give_tokens(p as usize, Token::Trade, 1);
+        } else {
+            self.coins[p as usize] += 3;
+        }
+    }
+
     // Players in the order of a die roll each (rerolling ties)
+    // (the neutral's "roll" is always a 3)
     fn dice_order(&mut self, players: &[u8]) -> Vec<u8> {
-        let mut rolled: Vec<(u32, u8)> = players.iter().map(|&p| (self.rng.below(6) as u32 * 64 + self.rng.below(64) as u32, p)).collect();
+        let mut rolled: Vec<(u32, u8)> = players.iter().map(|&p| {
+            let die = if p == NEUTRAL[0] { 2 } else { self.rng.below(6) as u32 };
+            (die * 64 + self.rng.below(64) as u32, p)
+        }).collect();
         rolled.sort_by(|a, b| b.0.cmp(&a.0));
         rolled.into_iter().map(|(_, p)| p).collect()
     }
@@ -363,8 +390,20 @@ impl Game {
                 self.decided(None);
             }
             Action::PlaceGuard(e) => {
-                self.edge_knight[e as usize] = p as u8;
+                let neutral = matches!(self.deciding().map(|d| d.decision), Some(Decision::PlaceGuard { keep: false })) && self.neutral_due;
+                let first = self.two() && !self.neutral_placed && !neutral;
+                self.edge_knight[e as usize] = if neutral { NEUTRAL[0] } else { p as u8 };
+                if neutral {
+                    self.neutral_due = false;
+                    self.neutral_placed = true;
+                }
                 self.decided(None);
+                // Two players: the first knight of the game brings a neutral knight (placed by its builder)
+                if first {
+                    self.neutral_due = true;
+                    let back = self.phase;
+                    self.decide_then([Pending { seat: p as u8, decision: Decision::PlaceGuard { keep: false } }], back);
+                }
             }
             Action::MoveRaider(from, to) => {
                 if from == NONE {

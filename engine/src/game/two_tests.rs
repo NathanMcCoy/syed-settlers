@@ -118,3 +118,83 @@ fn two_player_games_never_get_stuck_and_greedy_finishes_them() {
         }
     }
 }
+
+// The two-player variant with the variants box's scenarios
+fn box_two(scenario: u8) -> Game {
+    let s = Settings::parse_for(&format!("box.scenario={scenario};variant.two=true"), 2).unwrap();
+    Game::new(&crate::island::generate(&s, "two").unwrap(), &s, 2, 3)
+}
+
+#[test]
+fn two_player_fishing_starts_with_fish_has_no_trade_tokens_and_helps_the_one_behind() {
+    let mut g = box_two(1);
+    for p in 0..2 {
+        let mut f = g.fish[p].clone();
+        f.sort();
+        assert_eq!(f, vec![1, 1, 2, 2, 3]);
+    }
+    let mut v = Vec::new();
+    g.legal_tokens(0, &mut v);
+    assert!(v.is_empty(), "no trade tokens in Fishing");
+    g.pieces[1][P_HUT] -= 1; // seat 2 ahead by a Hut
+    assert_eq!((g.fish_cost(0, 4), g.fish_cost(1, 4)), (6, 7));
+}
+
+#[test]
+fn two_player_merchant_trains_place_two_wagons_a_vote() {
+    let mut g = box_two(3);
+    g.turn = 1;
+    g.current = 0;
+    g.phase = Phase::Main;
+    g.bids = [2, 2, 0, 0, 0, 0];
+    g.resolve_vote();
+    let seats: Vec<u8> = g.pending.iter().map(|d| d.seat).collect();
+    assert_eq!(seats, vec![0, 1], "a tie: one each, the player acting first");
+    let mut g = box_two(3);
+    g.current = 1;
+    g.bids = [3, 1, 0, 0, 0, 0];
+    g.resolve_vote();
+    assert_eq!(g.pending.iter().map(|d| d.seat).collect::<Vec<_>>(), vec![0, 0], "more votes: both");
+}
+
+#[test]
+fn two_player_raider_attack_brings_a_neutral_knight_with_the_first_knight() {
+    let mut g = box_two(4);
+    g.turn = 1;
+    g.current = 0;
+    g.phase = Phase::Main;
+    g.hands[0] = [0, 1, 1, 0, 1, 0, 0, 0];
+    g.orders = vec![SWIFT_KNIGHT];
+    g.apply(Action::Buy(0)).unwrap();
+    let mut l = Vec::new();
+    g.legal(&mut l);
+    g.apply(l[0]).unwrap();
+    assert_eq!(g.deciding().unwrap(), Pending { seat: 0, decision: Decision::PlaceGuard { keep: false } }, "now the neutral knight");
+    g.legal(&mut l);
+    g.apply(l[0]).unwrap();
+    assert!(g.edge_knight.contains(&NEUTRAL[0]) && g.neutral_placed);
+    assert_eq!(g.phase, Phase::Main);
+}
+
+#[test]
+fn two_player_traders_pay_a_trade_token_for_a_hut_by_a_works() {
+    let mut g = box_two(5);
+    let works = g.works[0] as usize;
+    let c = g.board.graph.hex_corners[works].iter().map(|&c| c as usize).find(|&c| !listed(&g.board.graph.corner_hexes[c]).any(|h| g.board.terrain[h] == Terrain::Sea)).unwrap();
+    let before = g.tokens_of(0, Token::Trade);
+    g.hut_tokens(0, c);
+    assert_eq!(g.tokens_of(0, Token::Trade), before + 1);
+}
+
+#[test]
+fn two_player_box_games_never_get_stuck_and_greedy_finishes_them() {
+    use crate::sim::{BotKind, play_with};
+    for scenario in 1..=5u8 {
+        let s = Settings::parse_for(&format!("box.scenario={scenario};variant.two=true"), 2).unwrap();
+        for seed in 0..25 {
+            play_with(&s, seed, 2, 300, &[BotKind::Random]).unwrap();
+            let o = play_with(&s, seed, 2, 900, &[BotKind::Greedy]).unwrap();
+            assert_ne!(o.winner, NOBODY, "scenario {scenario}, game {seed} didn't finish");
+        }
+    }
+}

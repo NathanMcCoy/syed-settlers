@@ -188,6 +188,8 @@ for (const [name, type] of Object.entries(BROWSERS)) {
     ['the variants box scenario Merchant trains', 3, { 'box.scenario': 3 }],
     ['the variants box scenario Raider attack', 3, { 'box.scenario': 4 }],
     ['the variants box scenario Traders and raiders', 3, { 'box.scenario': 5 }],
+    ['Raider attack with the two-player variant', 2, { 'box.scenario': 4, 'variant.two': true }],
+    ['Merchant trains with the two-player variant', 2, { 'box.scenario': 3, 'variant.two': true }],
     ['the exploration expansion: Land Ho!', 3, { explore: 1 }],
     ['the exploration expansion: the full game', 3, { explore: 5 }],
     ['the city expansion', 3, { city: true }],
