@@ -40,6 +40,8 @@ button { font: inherit; padding: 6px 12px; border-radius: 6px; border: 1px solid
 .t-sea { fill: var(--sea); stroke: none; }
 .t-forest { fill: var(--forest); } .t-quarry { fill: var(--quarry); } .t-fields { fill: var(--fields); }
 .t-mine { fill: var(--mine); } .t-paddy { fill: var(--paddy); } .t-dunes { fill: var(--dunes); }
+.t-village { fill: #d9b98c; stroke: #7a5a2e; stroke-width: 2; }
+.village-cloth { font: 700 9px system-ui, sans-serif; fill: #1d2228; text-anchor: middle; }
 .t-fog { fill: #c9ced3; stroke: #8b939b; stroke-width: 2; stroke-dasharray: 4 3; }
 .hex.revealed { animation: reveal 1.2s ease-out; }
 @keyframes reveal { from { opacity: 0.2; } to { opacity: 1; } }

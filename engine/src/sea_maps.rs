@@ -162,6 +162,21 @@ pub fn scenario_land(rng: &mut Rng, s: &Settings) -> Option<Vec<Hex>> {
             let mut numbers = number_tokens(total);
             dress(rng, &cells, &mut tiles, &mut numbers)
         }
+        6 => {
+            // Cloth: two large islands (12 hexes each: 2 Gold, 3 Mine, 4 Forest, 4 Paddy, 5 Fields,
+            // 4 Quarry, 2 Dunes between them) and four small islands of 2 villages each
+            let shapes = islands(rng, &[12, 12, 2, 2, 2, 2], if big { 8 } else { 7 })?;
+            let large: Vec<(Cell, u8)> = shapes[..2].iter().enumerate().flat_map(|(k, cs)| cs.iter().map(move |&c| (c, k as u8))).collect();
+            let mut tiles: Vec<Terrain> = Vec::new();
+            for (t, n) in [(Gold, 2), (Mine, 3), (Forest, 4), (Paddy, 4), (Fields, 5), (Quarry, 4), (Dunes, 2)] {
+                tiles.extend(std::iter::repeat_n(t, n));
+            }
+            let mut numbers = number_tokens(22);
+            let mut hexes = dress(rng, &large, &mut tiles, &mut numbers)?;
+            let villages: Vec<(Cell, u8)> = shapes[2..].iter().enumerate().flat_map(|(k, cs)| cs.iter().map(move |&c| (c, 2 + k as u8))).collect();
+            hexes.extend(dress(rng, &villages, &mut [Village; 8], &mut [3, 4, 5, 6, 8, 9, 10, 11])?);
+            Some(hexes)
+        }
         3 => {
             // Fog Islands: two start islands face up (17 tiles: 3 Mine, 4 Forest, 4 Paddy, 3 Fields,
             // 3 Quarry) and two hidden areas of 6 hexes, a sea hex away from them
@@ -195,5 +210,5 @@ pub fn fog_stacks() -> (Vec<Terrain>, Vec<u8>) {
 
 // Does this scenario let players set up anywhere (their home islands), or only on the main island?
 pub fn setup_anywhere(scenario: u8) -> bool {
-    matches!(scenario, 2 | 3 | 9)
+    matches!(scenario, 2 | 3 | 6 | 9)
 }

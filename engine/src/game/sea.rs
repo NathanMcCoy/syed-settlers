@@ -59,7 +59,7 @@ impl Game {
             self.corner_owner[c] != p && !listed(&g.corner_edges[c]).any(|f| f != e && self.edge_owner[f] == p && self.edge_kind[f] == SHIP)
         };
         let [a, b] = g.edge_corners[e];
-        open(a as usize) || open(b as usize)
+        (open(a as usize) || open(b as usize)) && !self.on_village_route(p, e)
     }
 
     // Every legal ship move for p: a movable ship to any other legal ship spot (with it lifted off)
@@ -108,7 +108,17 @@ impl Game {
 
     // May a setup Hut go on corner c? On the main island, or in scenarios that allow it, anywhere
     pub(super) fn setup_spot(&self, c: usize) -> bool {
-        !self.sea() || crate::sea_maps::setup_anywhere(self.settings().sea_scenario) || self.board.corner_region[c] == 0
+        self.hut_spot(c) && (!self.sea() || crate::sea_maps::setup_anywhere(self.settings().sea_scenario) || self.board.corner_region[c] == 0)
+    }
+
+    // May any Hut go on corner c? (Cloth: not on the small islands, regions 2 and up)
+    pub(super) fn hut_spot(&self, c: usize) -> bool {
+        !self.cloth() || self.board.corner_region[c] <= 1
+    }
+
+    // Setup rounds: 2, or 3 in Cloth (only the last round's Hut collects)
+    pub(super) fn setup_rounds(&self) -> usize {
+        if self.cloth() { 3 } else { 2 }
     }
 
     // Gold owed after a production roll (or a setup Hut), as decisions: each player picks that many

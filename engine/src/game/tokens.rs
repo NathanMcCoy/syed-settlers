@@ -9,8 +9,9 @@ use super::*;
 pub enum Token {
     Renown, // 1 Renown each (island bonuses, defended raids, captured prizes)
     Trade,  // trade tokens (the two-player variant: forced trades, sending the squall away)
+    Cloth,  // the sea scenario Cloth: 2 cloth = 1 Renown
 }
-pub const TOKENS: [Token; 2] = [Token::Renown, Token::Trade];
+pub const TOKENS: [Token; 3] = [Token::Renown, Token::Trade, Token::Cloth];
 pub const TOKEN_COUNT: usize = TOKENS.len();
 
 impl Token {
@@ -18,13 +19,14 @@ impl Token {
         match self {
             Token::Renown => "renown",
             Token::Trade => "trade",
+            Token::Cloth => "cloth",
         }
     }
     // Renown each token is worth
     pub fn renown(self) -> u32 {
         match self {
             Token::Renown => 1,
-            Token::Trade => 0,
+            Token::Trade | Token::Cloth => 0, // (cloth counts in pairs: token_renown)
         }
     }
     // Counts toward the hand limit when a 7 is rolled
@@ -61,6 +63,7 @@ impl Game {
 
     // Renown from tokens for player p
     pub fn token_renown(&self, p: usize) -> u32 {
-        TOKENS.iter().map(|&t| t.renown() * self.tokens_of(p, t) as u32).sum()
+        // (Cloth counts in pairs: 2 cloth = 1 Renown)
+        TOKENS.iter().map(|&t| t.renown() * self.tokens_of(p, t) as u32).sum::<u32>() + self.tokens_of(p, Token::Cloth) as u32 / 2
     }
 }

@@ -434,3 +434,69 @@ fn fog_games_never_get_stuck_and_greedy_finishes_them() {
         }
     }
 }
+
+#[test]
+fn cloth_villages_trade_to_linked_players_and_five_empty_end_the_game() {
+    let s = Settings::parse_for("sea=true;sea.scenario=6", 3).unwrap();
+    assert_eq!((s.win, Title::LongestPath.active(&s)), (14, false), "14 to win, no Longest Path");
+    let island = generate(&s, "cloth").unwrap();
+    let mut g = Game::new(&island, &s, 3, 7);
+    let villages = g.villages();
+    assert_eq!((villages.len(), g.village_cloth.clone()), (8, vec![5; 8]));
+    // Setup: three rounds (forward, back, forward), never on the small islands
+    for step in 0..9 {
+        let list = legal(&g);
+        assert!(list.iter().all(|a| matches!(a, Action::Hut(c) if g.board.corner_region[*c as usize] <= 1)), "step {step}");
+        let expected = [0, 1, 2, 2, 1, 0, 0, 1, 2][step];
+        assert_eq!(g.current, expected, "setup order at step {step}");
+        g.apply(list[0]).unwrap();
+        while g.phase == Phase::Decide {
+            let a = legal(&g)[0];
+            g.apply(a).unwrap(); // a third-round Hut on gold: its choice first
+        }
+        let path = legal(&g).into_iter().find(|a| matches!(a, Action::Path(_) | Action::Ship(_))).unwrap();
+        g.apply(path).unwrap();
+        while g.phase == Phase::Decide {
+            let a = legal(&g)[0];
+            g.apply(a).unwrap();
+        }
+    }
+    assert_eq!(g.turn, 1, "play starts after 9 Huts");
+    // A ship touching a village links it: 1 cloth at once; its number then pays 1 more
+    let v = villages[0];
+    let c = g.board.graph.hex_corners[v][0] as usize;
+    let e = listed(&g.board.graph.corner_edges[c]).find(|&e| g.board.edge_sea[e] && g.edge_owner[e] == NOBODY).unwrap();
+    let far = if g.board.graph.edge_corners[e][0] as usize == c { g.board.graph.edge_corners[e][1] } else { g.board.graph.edge_corners[e][0] } as usize;
+    g.corner_owner[far] = 0;
+    g.corner_kind[far] = HUT;
+    g.edge_owner[e] = 0;
+    g.edge_kind[e] = SHIP;
+    g.check_villages(0);
+    assert_eq!((g.tokens_of(0, Token::Cloth), g.village_cloth[0], g.village_links[0] & 1), (1, 4, 1));
+    g.village_production(g.board.number[v]);
+    assert_eq!(g.tokens_of(0, Token::Cloth), 2);
+    assert_eq!(g.token_renown(0), 1, "2 cloth = 1 Renown");
+    assert!(!g.ship_movable(0, e), "a ship on a route to a village can't move");
+    // Five empty villages end the game at the end of a turn: the most Renown wins
+    for k in 0..5 {
+        g.village_cloth[k] = 0;
+    }
+    g.phase = Phase::Main;
+    g.current = g.owner;
+    g.apply(Action::EndTurn).unwrap();
+    assert!(g.over() && g.cloth_ended);
+}
+
+#[test]
+fn cloth_games_end_and_never_get_stuck() {
+    use crate::sim::{BotKind, play_with};
+    for players in [2, 4, 6] {
+        let s = Settings::parse_for("sea=true;sea.scenario=6", players).unwrap();
+        for seed in 0..20 {
+            play_with(&s, seed, players, 300, &[BotKind::Random]).unwrap();
+            let o = play_with(&s, seed, players, 600, &[BotKind::Greedy]).unwrap();
+            // A winner, or a draw when 5 villages emptied (long before the turn limit), never a stall
+            assert!(o.winner != NOBODY || o.turns < 600, "{players} players, game {seed} stalled");
+        }
+    }
+}

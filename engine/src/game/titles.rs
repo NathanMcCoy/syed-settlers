@@ -27,7 +27,8 @@ impl Title {
     // Is this title in play in this game?
     pub fn active(self, s: &Settings) -> bool {
         match self {
-            Title::LongestPath | Title::MostPilots => true,
+            Title::LongestPath => !(s.sea && s.sea_scenario == 6), // no Longest Path in Cloth
+            Title::MostPilots => true,
             Title::StrongestPorts => s.variant_ports,
         }
     }
@@ -66,6 +67,9 @@ impl Game {
 
     // Work out who holds this title now, from the players' current values
     pub(super) fn refresh_title(&mut self, t: Title) {
+        if !t.active(self.settings()) {
+            return;
+        }
         // (With the two-player variant, the neutral colours can hold titles too)
         let owners = self.title_owners();
         let mut values = [0u8; MAX_PLAYERS];
