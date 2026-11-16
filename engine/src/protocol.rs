@@ -87,6 +87,8 @@ pub fn action_text(a: Action) -> String {
         Action::Bridge(e) => format!("bridge {e}"),
         Action::BuyCoin(r) => format!("buycoin {r}"),
         Action::SpendCoins(r) => format!("spendcoins {r}"),
+        Action::Bid(f, g) => format!("bid {f} {g}"),
+        Action::Wagon(e) => format!("wagon {e}"),
     }
 }
 
@@ -199,12 +201,14 @@ pub fn parse_action(text: &str) -> Result<Action, String> {
         Some("bridge") => Action::Bridge(num(1)?),
         Some("buycoin") => Action::BuyCoin(small(1)?),
         Some("spendcoins") => Action::SpendCoins(small(1)?),
+        Some("bid") => Action::Bid(small(1)?, small(2)?),
+        Some("wagon") => Action::Wagon(num(1)?),
         _ => return Err(format!("unknown move \"{text}\"")),
     };
     let expected = match a {
         Action::Roll | Action::EndTurn | Action::Withdraw | Action::BuildWonder | Action::CashPilot | Action::ForceTrade | Action::SquallHome | Action::Skip => 1,
         Action::Trade(..) | Action::Answer(..) | Action::MoveShip(..) | Action::Gift(..) | Action::NeutralHut(..) | Action::NeutralPath(..) => 3,
-        Action::KnightMove(..) | Action::Displace(..) | Action::FixedRoll(..) | Action::TakeCard(..) | Action::TakeProgress(..) | Action::SwapNumbers(..) => 3,
+        Action::KnightMove(..) | Action::Displace(..) | Action::FixedRoll(..) | Action::TakeCard(..) | Action::TakeProgress(..) | Action::SwapNumbers(..) | Action::Bid(..) => 3,
         Action::Offer { open, .. } => if open { 5 } else { 4 },
         Action::Counter { .. } => 4,
         _ => 2,
@@ -229,6 +233,7 @@ fn phase_name(p: Phase) -> &'static str {
         Phase::FreeBuild { .. } => "freeBuild",
         Phase::Harvest { .. } => "harvest",
         Phase::MarketDay => "marketDay",
+        Phase::VoteDone | Phase::TurnEnd => "main",
         Phase::Over => "over",
     }
 }
@@ -331,7 +336,7 @@ pub fn view_json(g: &Game, seat: u8) -> String {
             "{{\"phase\":\"{}\",\"current\":{},\"toAct\":{},\"turn\":{},\"lastRoll\":{},\"squall\":{},\"winner\":{},",
             "\"buildings\":[{}],\"roads\":[{}],\"players\":[{}],\"longestPath\":{},\"mostPilots\":{},",
             "\"row\":{},\"deck\":{},\"lastTake\":{},\"win\":{},\"you\":{},\"hand\":{},\"rates\":{},\"legal\":{},",
-            "\"offer\":{},\"canOffer\":{},\"offersLeft\":{},\"dice\":{},\"bank\":{},\"short\":{},\"handLimit\":{},\"round\":{},\"roundLimit\":{},\"byRounds\":{},\"bought\":{},\"turnOf\":{},\"paired\":{},\"titles\":{},\"deciding\":{},\"pirate\":{},\"shipMoved\":{},\"event\":{},\"damaged\":{},\"revealed\":{},\"villages\":{},\"clothEnded\":{},\"wonders\":{},\"markers\":{},\"prizes\":{},\"heldMarkets\":{},\"markets\":{},\"fleet\":{},\"forts\":{},\"warships\":{},\"lastAttack\":{},\"city\":{},\"fishing\":{},\"rivers\":{}}}"
+            "\"offer\":{},\"canOffer\":{},\"offersLeft\":{},\"dice\":{},\"bank\":{},\"short\":{},\"handLimit\":{},\"round\":{},\"roundLimit\":{},\"byRounds\":{},\"bought\":{},\"turnOf\":{},\"paired\":{},\"titles\":{},\"deciding\":{},\"pirate\":{},\"shipMoved\":{},\"event\":{},\"damaged\":{},\"revealed\":{},\"villages\":{},\"clothEnded\":{},\"wonders\":{},\"markers\":{},\"prizes\":{},\"heldMarkets\":{},\"markets\":{},\"fleet\":{},\"forts\":{},\"warships\":{},\"lastAttack\":{},\"city\":{},\"fishing\":{},\"rivers\":{},\"trains\":{}}}"
         ),
         // While decisions are being made (pending.rs), the phase is named after the first one ("discard")
         g.deciding().map_or(phase_name(g.phase), |d| d.decision.name()), g.current, g.to_act(), g.turn,
@@ -407,6 +412,22 @@ pub fn view_json(g: &Game, seat: u8) -> String {
         city_json(g, seat, mine),
         fishing_json(g, seat, mine),
         rivers_json(g),
+        trains_json(g),
+    )
+}
+
+// Merchant trains' part of the view (null without it): wagon edges, wagons left, the watering hole and
+// its start corners, each train [start, front, ended], this vote's bids so far, and the wagon spots
+fn trains_json(g: &Game) -> String {
+    if !g.merchant_trains() {
+        return "null".into();
+    }
+    format!(
+        "{{\"wagons\":{},\"left\":{},\"oasis\":{},\"starts\":{},\"trains\":{},\"bids\":{},\"due\":{}}}",
+        list((0..g.wagon.len()).filter(|&e| g.wagon[e])),
+        g.wagons_left, g.oasis, list(g.train_starts()),
+        list(g.trains.iter().map(|&(s, f, ended)| format!("[{s},{f},{ended}]"))),
+        list(&g.bids[..g.players]), g.wagon_due,
     )
 }
 

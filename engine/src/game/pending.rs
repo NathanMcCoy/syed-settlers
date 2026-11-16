@@ -33,6 +33,9 @@ pub enum Decision {
     Expel,                 // Intrigue: push off a knight touching your routes (Expel)
     GiveUpKnight { to: u8 }, // Treason: remove one of your knights (RemoveKnight)
     TreasonKnight { level: u8, active: bool }, // Treason: place a knight of yours no stronger (Recruit / Skip)
+    // Merchant trains (merchant.rs)
+    Bid,                   // bid Fish and Grain for where the wagon goes (Bid)
+    PlaceWagon,            // place the wagon (Wagon)
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -70,6 +73,8 @@ impl Decision {
             Decision::Expel => "expel",
             Decision::GiveUpKnight { .. } => "giveUpKnight",
             Decision::TreasonKnight { .. } => "treasonKnight",
+            Decision::Bid => "bid",
+            Decision::PlaceWagon => "placeWagon",
         }
     }
 }
@@ -81,10 +86,8 @@ impl Game {
         self.after = after;
         self.drop_impossible();
         self.phase = if self.pending.is_empty() { after } else { Phase::Decide };
-        // Nothing to decide after all: an event card's or the fleet's number produces now
-        if let Phase::Rolled { total } = self.phase {
-            self.rolled(total);
-        }
+        // Nothing to decide after all: go on (an event card's or the fleet's number produces now)
+        self.settle();
     }
 
     // Decisions that can't be made any more go: gold or a pick with nothing left in the bank, a gift
@@ -164,7 +167,27 @@ impl Game {
                     }
                 }
             }
+            Decision::Bid => {
+                let (fish, grain) = (hand[4].min(MOST_BID), hand[2].min(MOST_BID));
+                for f in 0..=fish {
+                    for g in 0..=grain {
+                        out.push(Action::Bid(f, g));
+                    }
+                }
+            }
+            Decision::PlaceWagon => out.extend(self.wagon_spots().into_iter().map(|(e, _, _)| Action::Wagon(e as u16))),
             _ => self.legal_city_decision(d, out),
+        }
+    }
+
+    // Phases that only mark what happens once the decisions are made: an event card's number produces;
+    // Merchant trains' vote is counted; the turn ends
+    fn settle(&mut self) {
+        match self.phase {
+            Phase::Rolled { total } => self.rolled(total),
+            Phase::VoteDone => self.resolve_vote(),
+            Phase::TurnEnd => self.end_phase(),
+            _ => {}
         }
     }
 
@@ -179,10 +202,7 @@ impl Game {
         self.drop_impossible();
         if self.pending.is_empty() {
             self.phase = self.after;
-            // An event card's number produces once its decisions are made
-            if let Phase::Rolled { total } = self.phase {
-                self.rolled(total);
-            }
+            self.settle();
         }
     }
 }

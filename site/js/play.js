@@ -385,6 +385,13 @@ function drawPieces(v, before) {
   }
   drawCityPieces(v);
   layers.squall.replaceChildren();
+  // Merchant trains: each wagon, a short block along its edge
+  for (const e of v.trains?.wagons ?? []) {
+    const [a, b] = edgeEnds(e);
+    const w = el('line', { x1: a.x + (b.x - a.x) * 0.25, y1: a.y + (b.y - a.y) * 0.25, x2: a.x + (b.x - a.x) * 0.75, y2: a.y + (b.y - a.y) * 0.75, class: 'wagon', 'data-wagon': e });
+    w.append(el('title', {}, 'A wagon: buildings with 2 wagons at their corner are worth 1 more; a Path under it counts 1 more'));
+    layers.squall.append(w);
+  }
   // (The Pirate Islands has no squall)
   if (board.island.hexes[v.squall]) {
     const sq = centre(board.island.hexes[v.squall]);
@@ -655,6 +662,11 @@ function drawTargets(v) {
       t.dataset.move = m;
       t.append(el('title', {}, CORNER_WORDS[word]));
       layers.targets.append(t);
+    } else if (word === 'wagon') {
+      const t = targetShape('edge', Number(n));
+      t.dataset.move = m;
+      t.append(el('title', {}, 'Put the wagon here'));
+      layers.targets.append(t);
     } else if (word === 'bridge') {
       const t = targetShape('edge', Number(n));
       t.dataset.move = m;
@@ -776,6 +788,9 @@ function status(v) {
     case 'expel': return mine ? 'Intrigue: click a knight touching your Paths to push it off.' : `${who} is pushing off a knight.`;
     case 'giveUpKnight': return mine ? 'Treason: click one of your knights to remove.' : `${who} is removing a knight (Treason).`;
     case 'treasonKnight': return mine ? 'Treason: place a knight of yours (no stronger), or skip.' : `${who} is placing a knight.`;
+    // Merchant trains
+    case 'bid': return mine ? `A wagon to place: bid Fish and Grain (spent) for the say in where it goes. Bids so far: ${v.trains.bids.map((b, s) => `${nameOf(s)} ${b}`).join(', ')}.` : `Wagon vote: ${who} is bidding.`;
+    case 'placeWagon': return mine ? 'You won the vote: click where the wagon goes.' : `${who} is placing the wagon.`;
     default: return '';
   }
 }
@@ -806,6 +821,8 @@ function drawChoices(v) {
     if (word === 'takeprogress') box.append(button(`Take ${cardName(m.split(' ')[2])}`, m));
     if (word === 'dropcard' && v.phase !== 'main') box.append(button(`Drop ${cardName(n)}`, m));
     if (word === 'skip') box.append(button(v.phase === 'treasonKnight' ? 'Place no knight' : v.phase === 'spy' ? 'Take nothing' : 'Done', m));
+    // Merchant trains' vote: pick a bid of Fish and Grain (drawn once, below)
+    if (word === 'bid' && !box.querySelector('.bid-pick')) box.append(bidPicker(v));
     // Fishing: spend fish, pass the old boot
     if (word === 'fish') box.append(button(`${v.fishing.costs[n]} fish: ${FISH_ACTIONS[n]}`, m));
     if (word === 'giveboot') box.append(button(`Give ${nameOf(Number(n))} the old boot`, m));
@@ -819,6 +836,34 @@ function drawChoices(v) {
     // Projects are played from Your projects, under the hand (drawMyProjects)
   }
   if (moves.includes('end')) box.append(button('End turn', 'end', 'primary'));
+}
+
+// Merchant trains: the vote's bid, as Fish and Grain steppers and a Bid button
+const bidPick = { f: 0, g: 0 };
+function bidPicker(v) {
+  const moves = legal().filter(m => m.startsWith('bid '));
+  const max = [0, 0];
+  for (const m of moves) {
+    const [, f, g] = m.split(' ').map(Number);
+    max[0] = Math.max(max[0], f);
+    max[1] = Math.max(max[1], g);
+  }
+  bidPick.f = Math.min(bidPick.f, max[0]);
+  bidPick.g = Math.min(bidPick.g, max[1]);
+  const wrap = document.createElement('span');
+  wrap.className = 'bid-pick';
+  const n = bidPick.f + bidPick.g;
+  wrap.append(button(n ? `Bid ${n}` : 'Bid nothing', `bid ${bidPick.f} ${bidPick.g}`, 'primary'));
+  for (const [k, name, i] of [['f', 'Fish', 0], ['g', 'Grain', 1]]) {
+    const less = Object.assign(document.createElement('button'), { type: 'button', textContent: '−', disabled: bidPick[k] === 0 });
+    less.setAttribute('aria-label', `One less ${name}`);
+    less.addEventListener('click', () => { bidPick[k]--; drawChoices(snap.view); });
+    const more = Object.assign(document.createElement('button'), { type: 'button', textContent: '+', disabled: bidPick[k] >= max[i] });
+    more.setAttribute('aria-label', `One more ${name}`);
+    more.addEventListener('click', () => { bidPick[k]++; drawChoices(snap.view); });
+    wrap.append(less, Object.assign(document.createElement('span'), { textContent: ` ${name} ${bidPick[k]} ` }), more);
+  }
+  return wrap;
 }
 
 // Fishing's spending (engine fishing.rs FISH_COSTS order)
@@ -1432,6 +1477,8 @@ function describe(entry) {
     case 'skip': return `${who} finished`;
     case 'fish': return `${who} spent fish: ${FISH_ACTIONS[a]}`;
     case 'bridge': return `${who} built a bridge (3 coins)`;
+    case 'bid': return `${who} bid ${Number(a) + Number(b)} for the wagon`;
+    case 'wagon': return `${who} placed a wagon`;
     case 'buycoin': return `${who} bought a coin with ${RESOURCES[a]}`;
     case 'spendcoins': return `${who} spent 2 coins on ${RESOURCES[a]}`;
     case 'giveboot': return `${who} gave ${Number(a) === snap.view.you ? 'you' : nameOf(Number(a))} the old boot`;

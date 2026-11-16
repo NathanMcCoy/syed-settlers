@@ -17,6 +17,7 @@ mod city;
 mod cloth;
 mod fishing;
 mod rivers;
+mod merchant;
 mod pending;
 mod pirates;
 mod sea;
@@ -33,6 +34,7 @@ pub use two::NEUTRAL;
 pub use city::*;
 pub use fishing::{FISH_COSTS, LAKE_NUMBERS};
 pub use rivers::{BRIDGE_COST, BRIDGES};
+pub use merchant::{MOST_BID, WAGONS};
 pub use events::{EVENTS, Event, event_card};
 pub use pending::{Decision, Pending};
 pub use sea::{GOLD, P_SHIP, SHIP, SHIP_COST};
@@ -116,6 +118,9 @@ pub enum Action {
     Bridge(u16),          // a bridge on this bridge site
     BuyCoin(u8),          // give the bank this resource (at your rate) for a coin
     SpendCoins(u8),       // 2 coins for this resource (twice a turn)
+    // The variants box's Merchant trains (merchant.rs)
+    Bid(u8, u8),          // bid this much Fish and Grain in the wagon vote
+    Wagon(u16),           // place the wagon on this edge
     NeutralHut(u8, u16),  // the two-player variant: a Hut for this neutral colour on this corner
     NeutralPath(u8, u16), // ... a Path for this neutral colour on this edge
     CashPilot,       // discard a played Pilot for 2 trade tokens
@@ -160,6 +165,8 @@ pub enum Phase {
     FreeBuild { left: u8 },     // Road Crew
     Harvest { left: u8 },       // Good Harvest
     MarketDay,                  // Market Day: choose the resource everyone hands over
+    VoteDone,                   // only as `after`: Merchant trains' vote is counted (merchant.rs)
+    TurnEnd,                    // only as `after`: the phase ends once the decisions are made
     Over,
 }
 
@@ -362,6 +369,14 @@ pub struct Game {
     pub bridges_left: [u8; MAX_PLAYERS],
     pub coins: [u8; MAX_PLAYERS],
     pub coin_buys: u8,
+    // Merchant trains (merchant.rs): wagons per edge, the watering hole, wagons left, each train as
+    // (start corner, front corner, ended), a wagon earned this phase, this vote's bids
+    pub wagon: Vec<bool>,
+    pub oasis: u16,
+    pub wagons_left: u8,
+    pub trains: Vec<(u16, u16, bool)>,
+    pub wagon_due: bool,
+    pub bids: [u8; MAX_PLAYERS],
     pub rng: Rng,
 }
 
@@ -522,6 +537,12 @@ impl Game {
             bridges_left: [0; MAX_PLAYERS],
             coins: [0; MAX_PLAYERS],
             coin_buys: 0,
+            wagon: Vec::new(),
+            oasis: NONE,
+            wagons_left: 0,
+            trains: Vec::new(),
+            wagon_due: false,
+            bids: [0; MAX_PLAYERS],
             rng,
             board,
         };
@@ -536,6 +557,9 @@ impl Game {
         }
         if g.rivers() {
             g.rivers_setup(island);
+        }
+        if g.merchant_trains() {
+            g.merchant_setup();
         }
         if g.settings().variant_two {
             g.place_neutrals();
@@ -608,7 +632,8 @@ impl Game {
         let r = self.huts(p) as u32 + 2 * self.lodges(p) as u32 + self.held[p][Project::Lighthouse as usize] as u32
             + self.title_renown(p)
             + self.token_renown(p)
-            + self.city_renown(p);
+            + self.city_renown(p)
+            + self.wagon_renown(p);
         // Rivers: +1 the Wealthiest, -2 the Poor (never below 0)
         (r as i32 + self.wealth_renown(p)).max(0) as u32
     }
@@ -874,7 +899,7 @@ impl Game {
                     out.push(Action::Take(r));
                 }
             }
-            Phase::Over | Phase::Rolled { .. } => {}
+            Phase::Over | Phase::Rolled { .. } | Phase::VoteDone | Phase::TurnEnd => {}
         }
     }
 
@@ -1061,6 +1086,7 @@ impl Game {
                 }
                 self.corner_kind[c as usize] = LODGE;
                 self.pieces[pu][P_LODGE] -= 1;
+                self.wagon_due |= self.merchant_trains(); // Merchant trains: building earns a wagon
                 if self.cs.hut_debt[pu] > 0 {
                     self.cs.hut_debt[pu] -= 1; // a pillaged Lodge's Hut that had no piece
                 } else {
@@ -1312,6 +1338,11 @@ impl Game {
                 self.hands[pu][r as usize] -= rate;
                 self.coins[pu] += 1;
             }
+            Action::Bid(f, gr) => self.bid(pu, f, gr),
+            Action::Wagon(e) => {
+                self.place_wagon(e as usize);
+                self.decided(None);
+            }
             Action::SpendCoins(r) => {
                 self.coins[pu] -= 2;
                 self.hands[pu][r as usize] += 1;
@@ -1328,7 +1359,10 @@ impl Game {
                 }
             }
             Action::EndTurn => {
-                self.end_phase();
+                // Merchant trains: a wagon earned this phase is voted on and placed first
+                if !self.start_vote() {
+                    self.end_phase();
+                }
                 if self.over() {
                     return;
                 }
@@ -1364,6 +1398,7 @@ impl Game {
         let setup = self.phase == Phase::SetupHut;
         if !setup {
             pay(&mut self.hands[pu], &HUT_COST);
+            self.wagon_due |= self.merchant_trains(); // Merchant trains: building earns a wagon
         }
         self.corner_owner[c] = p;
         self.river_coins_corner(pu, c); // Rivers: a coin for a Hut on a river hex
@@ -1620,7 +1655,9 @@ impl Game {
             let [a, b] = g.edge_corners[e];
             let next = if a as usize == c { b } else { a } as usize;
             used.push(e as u16);
-            best = best.max(self.extend_line(p, next, used, len + 1, self.edge_kind[e]));
+            // (Merchant trains: a wagon on the Path counts 1 more)
+            let step = 1 + self.wagon_on(e) as u8;
+            best = best.max(self.extend_line(p, next, used, len + step, self.edge_kind[e]));
             used.pop();
         }
         best
