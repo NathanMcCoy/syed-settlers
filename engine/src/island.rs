@@ -28,6 +28,9 @@ pub enum Terrain {
     Keep,    // the variants box's Raider attack: the castle in the middle (no resource); Traders and raiders' castle works
     Glassworks, // Traders and raiders: wants Sand, supplies Glass and Tools
     Stoneworks, // Traders and raiders: wants Tools, supplies Sand and Marble
+    Spice,   // the exploration expansion: a spice farm (no resource)
+    Shoal,   // ... a fish shoal (sea, for fish hauls)
+    Council, // ... the Council hex, where hauls and sacks are delivered
 }
 use Terrain::*;
 
@@ -44,11 +47,11 @@ impl Terrain {
             Fields => Some(2),
             Mine => Some(3),
             Paddy => Some(4),
-            Sea | Dunes | Gold | Fog | Village | Lake | Oasis | Keep | Glassworks | Stoneworks => None,
+            Sea | Dunes | Gold | Fog | Village | Lake | Oasis | Keep | Glassworks | Stoneworks | Spice | Shoal | Council => None,
         }
     }
     pub fn name(self) -> &'static str {
-        ["sea", "forest", "quarry", "fields", "mine", "paddy", "dunes", "gold", "fog", "village", "lake", "oasis", "keep", "glassworks", "stoneworks"][self as usize]
+        ["sea", "forest", "quarry", "fields", "mine", "paddy", "dunes", "gold", "fog", "village", "lake", "oasis", "keep", "glassworks", "stoneworks", "spice", "shoal", "council"][self as usize]
     }
 }
 
@@ -180,6 +183,10 @@ pub struct Island {
     // their bridge sites (edges), 3 a river: the mouth, then between its hexes
     pub rivers: Vec<u16>,
     pub bridge_sites: Vec<u16>,
+    // The exploration expansion: what lies under each hidden hex (hex, terrain, region 1 parrot or 2
+    // goose), and the Council hex
+    pub hidden: Vec<(u16, Terrain, u8)>,
+    pub council: u16,
     pub info: Info,
 }
 
@@ -260,6 +267,9 @@ pub fn large_cells() -> Vec<Cell> {
 }
 
 fn attempt_island(s: &Settings, rng: &mut Rng) -> Option<Island> {
+    if s.explore != 0 {
+        return explore_island(s, rng);
+    }
     let main = if s.island_large {
         large_cells()
     } else if s.island_hexagon {
@@ -366,6 +376,8 @@ fn attempt_island(s: &Settings, rng: &mut Rng) -> Option<Island> {
         fleet,
         rivers,
         bridge_sites,
+        hidden: Vec::new(),
+        council: NONE,
         info: Info { main_size: main.len(), main_average, attempts: 0 },
     })
 }
@@ -452,6 +464,92 @@ fn river_layout(rng: &mut Rng, hexes: &[Hex], g: &Graph) -> Option<(Vec<u16>, Ve
         taken.extend(chain);
     }
     (rivers.len() == 6).then_some((rivers, sites))
+}
+
+// The exploration expansion's map: a start island of 15 hexes (its east coast taking the harbours),
+// the Council hex out to sea, and two hidden regions beyond (north-east and south-east), each a mix
+// for the scenario turned over as ships reach it
+fn explore_island(s: &Settings, rng: &mut Rng) -> Option<Island> {
+    let removed = [Cell::new(2, 0), Cell::new(1, 1), Cell::new(2, -1), Cell::new(2, -2)];
+    let start: Vec<Cell> = within(Cell::new(0, 0), 2).into_iter().filter(|c| !removed.contains(c)).collect();
+    let mut terrains: Vec<Terrain> = [(Mine, 2), (Forest, 4), (Paddy, 3), (Fields, 3), (Quarry, 3)].iter().flat_map(|&(t, n)| std::iter::repeat_n(t, n)).collect();
+    let mut numbers: Vec<u8> = vec![3, 3, 4, 4, 5, 6, 6, 8, 8, 9, 10, 10, 11, 11, 12];
+    let mut ok = false;
+    for _ in 0..NUMBER_TRIES {
+        rng.shuffle(&mut terrains);
+        rng.shuffle(&mut numbers);
+        let red = |i: usize| strong(numbers[i]);
+        ok = (0..start.len()).all(|i| !red(i) || (0..start.len()).all(|j| i == j || !red(j) || start[i].distance(start[j]) > 1));
+        if ok {
+            break;
+        }
+    }
+    if !ok {
+        return None;
+    }
+    let council = Cell::new(3, 0);
+    let x = |c: Cell| 2 * c.q + c.r;
+    let candidates: Vec<Cell> = within(Cell::new(0, 0), 9)
+        .into_iter()
+        .filter(|&c| x(c) >= 6 && c != council && start.iter().all(|&s| s.distance(c) >= 2))
+        .collect();
+    let sc = s.explore;
+    let mut lands = vec![Vec::new(), vec![Quarry, Quarry, Fields, Paddy, Forest, Mine], vec![Quarry, Fields, Fields, Paddy, Forest, Mine]];
+    let mut hidden_cells: Vec<(Cell, Terrain, u8)> = Vec::new();
+    for region in 1..=2u8 {
+        let mut tiles = std::mem::take(&mut lands[region as usize]);
+        tiles.extend(std::iter::repeat_n(Sea, if sc == 5 { 1 } else { 2 }));
+        if sc == 2 || sc == 5 {
+            tiles.extend([Gold; 3]);
+        }
+        if sc == 3 || sc == 5 {
+            tiles.extend([Shoal; 3]);
+        }
+        if sc == 4 || sc == 5 {
+            tiles.extend([Spice; 3]);
+        }
+        rng.shuffle(&mut tiles);
+        let mut cells: Vec<Cell> = candidates.iter().copied().filter(|c| if region == 1 { c.r < 0 } else { c.r > 0 }).collect();
+        cells.sort_by_key(|&c| (c.distance(council), c.r.abs(), c.q));
+        cells.truncate(tiles.len());
+        hidden_cells.extend(cells.into_iter().zip(tiles).map(|(c, t)| (c, t, region)));
+    }
+    let mut hexes: Vec<Hex> = start.iter().zip(&terrains).zip(&numbers).map(|((&cell, &terrain), &number)| Hex { cell, terrain, number, region: 0 }).collect();
+    hexes.push(Hex { cell: council, terrain: Council, number: 0, region: 0 });
+    hexes.extend(hidden_cells.iter().map(|&(cell, _, region)| Hex { cell, terrain: Fog, number: 0, region }));
+    let taken: HashSet<Cell> = hexes.iter().map(|h| h.cell).collect();
+    let mut sea = Vec::new();
+    let mut seen = HashSet::new();
+    for h in &hexes {
+        for c in within(h.cell, SEA_REACH) {
+            if !taken.contains(&c) && seen.insert(c) {
+                sea.push(Hex { cell: c, terrain: Sea, number: 0, region: SEA });
+            }
+        }
+    }
+    hexes.extend(sea);
+    hexes.sort_by_key(|h| (h.cell.r, h.cell.q));
+    let at: HashMap<Cell, usize> = hexes.iter().enumerate().map(|(i, h)| (h.cell, i)).collect();
+    let hidden = hidden_cells.iter().map(|&(c, t, region)| (at[&c] as u16, t, region)).collect();
+    let main_average = start.len() as f64;
+    Some(Island {
+        seed: String::new(),
+        hexes,
+        markets: Vec::new(),
+        squall: NONE,
+        pirate: NONE,
+        fog_tiles: Vec::new(),
+        fog_numbers: Vec::new(),
+        markers: Vec::new(),
+        prizes: Vec::new(),
+        forts: Vec::new(),
+        fleet: Vec::new(),
+        rivers: Vec::new(),
+        bridge_sites: Vec::new(),
+        hidden,
+        council: at[&council] as u16,
+        info: Info { main_size: start.len(), main_average, attempts: 0 },
+    })
 }
 
 // Where the squall may start: the island's Dunes, or with none, its weakest hexes (fewest pips)

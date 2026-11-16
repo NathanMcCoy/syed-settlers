@@ -136,6 +136,7 @@ settings! {
     variant_ports: bool = false, "variant.ports", 0, 1, "Strongest Ports: 2 Renown for the most Renown in buildings on markets (at least 3); 1 more Renown to win";
     sea: bool = false, "sea", 0, 1, "The sea expansion: ships, the pirate, gold fields and small islands to sail to (sea.scenario picks the map)";
     sea_scenario: u8 = 1, "sea.scenario", 1, 9, "Sea scenario: 1 New Shores, 2 Four Islands, 3 Fog Islands, 4 Through the Desert, 5 The Forgotten Tribe, 6 Cloth, 7 The Pirate Islands, 8 Wonders, 9 New World";
+    explore: u8 = 0, "explore", 0, 5, "The exploration expansion: 1 Land Ho!, 2 Pirate lairs, 3 Fish, 4 Spices, 5 the full game (0: none)";
     box_scenario: u8 = 0, "box.scenario", 0, 5, "A variants box scenario: 1 Fishing, 2 Rivers, 3 Merchant trains, 4 Raider attack, 5 Traders and raiders (0: none)";
     city: bool = false, "city", 0, 1, "The city expansion: commodities, city improvements, walls, knights, raiders and progress cards (13 to win)";
     city_raiders: u8 = 7, "city.raiders", 2, 12, "Steps the raiders take before they land (the city expansion)";
@@ -170,6 +171,22 @@ impl Settings {
         let s = Settings::parse_onto(Settings::for_players(players), text)?;
         if s.variant_two && players != 2 {
             return Err("the two-player variant (variant.two) is for 2 players".into());
+        }
+        if s.explore != 0 {
+            if s.sea || s.city || s.box_scenario != 0 || s.variant_events || s.variant_two {
+                return Err("the exploration expansion is played on its own".into());
+            }
+            if players > 4 {
+                return Err("the exploration expansion is for 2 to 4 players (its 5-6 player map isn't in yet)".into());
+            }
+            // Its own game: the win by scenario, no projects, no markets
+            let mut base = Settings::for_players(players);
+            base.explore = s.explore;
+            base.win = [0, 8, 12, 15, 15, 17][s.explore as usize];
+            (base.deck_pilot, base.deck_lighthouse, base.deck_road_crew, base.deck_harvest, base.deck_market_day) = (0, 0, 0, 0, 0);
+            (base.markets_any, base.markets_each, base.markets_extra_fish) = (0, 0, 0);
+            base.island_large = false;
+            return Settings::parse_onto(base, text);
         }
         if s.box_scenario != 0 {
             if !matches!(s.box_scenario, 1..=5) {
@@ -384,7 +401,7 @@ mod tests {
         let t = Settings::table_json();
         assert!(t.starts_with("[{\"name\":\"players.min\""));
         assert!(t.contains("{\"name\":\"squall.range\",\"kind\":\"whole\",\"default\":0,\"min\":0,\"max\":8,"));
-        assert_eq!(t.matches("\"name\"").count(), 49);
+        assert_eq!(t.matches("\"name\"").count(), 50);
         assert!(Settings::parse("island.dunes=2;island.forest=3").is_ok(), "a Forest traded for a second Dunes");
     }
 }

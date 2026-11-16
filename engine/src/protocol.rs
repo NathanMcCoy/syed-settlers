@@ -21,7 +21,7 @@
 //   card K | fixedroll R Y | dropcard K | choose X | takecard S R | takeprogress S K | swap H H
 //   removepath E | merchant H | expel C | removeknight C | pillage C | skip
 use crate::game::*;
-use crate::island::{ANY, Island, RESOURCES};
+use crate::island::{ANY, Island, RESOURCES, Terrain};
 use crate::json;
 
 pub const PROJECT_NAMES: [&str; 5] = ["pilot", "lighthouse", "roadCrew", "harvest", "marketDay"];
@@ -99,6 +99,21 @@ pub fn action_text(a: Action) -> String {
         Action::Boost => "boost".into(),
         Action::BarbarianTo(f, t) => format!("barbarianto {f} {t}"),
         Action::UpgradeWagon => "upgradewagon".into(),
+        Action::Harbour(c) => format!("harbour {c}"),
+        Action::BuildShip(e) => format!("buildship {e}"),
+        Action::BuildCargo(i, k) => format!("cargo {i} {k}"),
+        Action::FastGold(r) => format!("fastgold {r}"),
+        Action::Sail(i, e) => format!("sail {i} {e}"),
+        Action::SailFar(i) => format!("sailfar {i}"),
+        Action::Settle(i, c) => format!("settle {i} {c}"),
+        Action::CrewAshore(i, h) => format!("crewashore {i} {h}"),
+        Action::TakeHaul(i, h) => format!("takehaul {i} {h}"),
+        Action::TakeSack(i, h) => format!("takesack {i} {h}"),
+        Action::Deliver(i) => format!("deliver {i}"),
+        Action::FishDie => "fishdie".into(),
+        Action::PiratePlace(h) => format!("pirateplace {h}"),
+        Action::ChasePirate(i) => format!("chase-pirate {i}"),
+        Action::DropCargo(i) => format!("dropcargo {i}"),
     }
 }
 
@@ -223,13 +238,29 @@ pub fn parse_action(text: &str) -> Result<Action, String> {
         Some("boost") => Action::Boost,
         Some("barbarianto") => Action::BarbarianTo(num(1)?, num(2)?),
         Some("upgradewagon") => Action::UpgradeWagon,
+        Some("harbour") => Action::Harbour(num(1)?),
+        Some("buildship") => Action::BuildShip(num(1)?),
+        Some("cargo") => Action::BuildCargo(small(1)?, small(2)?),
+        Some("fastgold") => Action::FastGold(small(1)?),
+        Some("sail") => Action::Sail(small(1)?, num(2)?),
+        Some("sailfar") => Action::SailFar(small(1)?),
+        Some("settle") => Action::Settle(small(1)?, num(2)?),
+        Some("crewashore") => Action::CrewAshore(small(1)?, num(2)?),
+        Some("takehaul") => Action::TakeHaul(small(1)?, num(2)?),
+        Some("takesack") => Action::TakeSack(small(1)?, num(2)?),
+        Some("deliver") => Action::Deliver(small(1)?),
+        Some("fishdie") => Action::FishDie,
+        Some("pirateplace") => Action::PiratePlace(num(1)?),
+        Some("chase-pirate") => Action::ChasePirate(small(1)?),
+        Some("dropcargo") => Action::DropCargo(small(1)?),
         _ => return Err(format!("unknown move \"{text}\"")),
     };
     let expected = match a {
-        Action::Roll | Action::EndTurn | Action::Withdraw | Action::BuildWonder | Action::CashPilot | Action::ForceTrade | Action::SquallHome | Action::Skip | Action::Boost | Action::UpgradeWagon => 1,
+        Action::Roll | Action::EndTurn | Action::Withdraw | Action::BuildWonder | Action::CashPilot | Action::ForceTrade | Action::SquallHome | Action::Skip | Action::Boost | Action::UpgradeWagon | Action::FishDie => 1,
         Action::Trade(..) | Action::Answer(..) | Action::MoveShip(..) | Action::Gift(..) | Action::NeutralHut(..) | Action::NeutralPath(..) => 3,
         Action::KnightMove(..) | Action::Displace(..) | Action::FixedRoll(..) | Action::TakeCard(..) | Action::TakeProgress(..) | Action::SwapNumbers(..) | Action::Bid(..) => 3,
         Action::MoveRaider(..) | Action::GuardMove(..) | Action::GuardRun(..) | Action::BarbarianTo(..) => 3,
+        Action::BuildCargo(..) | Action::Sail(..) | Action::Settle(..) | Action::CrewAshore(..) | Action::TakeHaul(..) | Action::TakeSack(..) => 3,
         Action::Offer { open, .. } => if open { 5 } else { 4 },
         Action::Counter { .. } => 4,
         _ => 2,
@@ -357,7 +388,7 @@ pub fn view_json(g: &Game, seat: u8) -> String {
             "{{\"phase\":\"{}\",\"current\":{},\"toAct\":{},\"turn\":{},\"lastRoll\":{},\"squall\":{},\"winner\":{},",
             "\"buildings\":[{}],\"roads\":[{}],\"players\":[{}],\"longestPath\":{},\"mostPilots\":{},",
             "\"row\":{},\"deck\":{},\"lastTake\":{},\"win\":{},\"you\":{},\"hand\":{},\"rates\":{},\"legal\":{},",
-            "\"offer\":{},\"canOffer\":{},\"offersLeft\":{},\"dice\":{},\"bank\":{},\"short\":{},\"handLimit\":{},\"round\":{},\"roundLimit\":{},\"byRounds\":{},\"bought\":{},\"turnOf\":{},\"paired\":{},\"titles\":{},\"deciding\":{},\"pirate\":{},\"shipMoved\":{},\"event\":{},\"damaged\":{},\"revealed\":{},\"villages\":{},\"clothEnded\":{},\"wonders\":{},\"markers\":{},\"prizes\":{},\"heldMarkets\":{},\"markets\":{},\"fleet\":{},\"forts\":{},\"warships\":{},\"lastAttack\":{},\"city\":{},\"fishing\":{},\"rivers\":{},\"trains\":{},\"raiders\":{},\"traders\":{}}}"
+            "\"offer\":{},\"canOffer\":{},\"offersLeft\":{},\"dice\":{},\"bank\":{},\"short\":{},\"handLimit\":{},\"round\":{},\"roundLimit\":{},\"byRounds\":{},\"bought\":{},\"turnOf\":{},\"paired\":{},\"titles\":{},\"deciding\":{},\"pirate\":{},\"shipMoved\":{},\"event\":{},\"damaged\":{},\"revealed\":{},\"villages\":{},\"clothEnded\":{},\"wonders\":{},\"markers\":{},\"prizes\":{},\"heldMarkets\":{},\"markets\":{},\"fleet\":{},\"forts\":{},\"warships\":{},\"lastAttack\":{},\"city\":{},\"fishing\":{},\"rivers\":{},\"trains\":{},\"raiders\":{},\"traders\":{},\"explore\":{}}}"
         ),
         // While decisions are being made (pending.rs), the phase is named after the first one ("discard")
         g.deciding().map_or(phase_name(g.phase), |d| d.decision.name()), g.current, g.to_act(), g.turn,
@@ -436,6 +467,35 @@ pub fn view_json(g: &Game, seat: u8) -> String {
         trains_json(g),
         raiders_json(g),
         traders_json(g),
+        explore_json(g),
+    )
+}
+
+// The exploration expansion's part of the view (null without it): ships [owner, edge, [cargo], moved],
+// the Council, each mission track's steps per player and its tile holder, coins, pirate ships
+// [owner, hex], fish hauls, lairs [hex, crews, taken], farms [hex, ability, crews], shoals [hex, number]
+fn explore_json(g: &Game) -> String {
+    if !g.explore() {
+        return "null".into();
+    }
+    let e = &g.ex;
+    let n = g.board.terrain.len();
+    format!(
+        concat!("{{\"scenario\":{},\"ships\":{},\"council\":{},\"tracks\":{},\"leaders\":{},\"coins\":{},\"coinBuysLeft\":{},",
+            "\"pirates\":{},\"hauls\":{},\"lairs\":{},\"farms\":{},\"shoals\":{},\"fished\":{},\"lastFish\":{},\"settlers\":{},\"crews\":{}}}"),
+        e.scenario,
+        list(e.ships.iter().map(|s| format!("[{},{},{},{}]", s.owner, s.edge, list(s.cargo), s.moved))),
+        e.council,
+        list(e.tracks.iter().map(|t| list(&t[..g.players]))),
+        list(e.leaders.iter().map(|&l| seat_or_null(l))),
+        list(&g.coins[..g.players]), 2u8.saturating_sub(g.coin_buys),
+        list((0..g.players).filter(|&p| e.pirate_of[p] != crate::hex::NONE).map(|p| format!("[{p},{}]", e.pirate_of[p]))),
+        list((0..n).filter(|&h| e.haul[h])),
+        list((0..n).filter(|&h| g.board.terrain[h] == Terrain::Gold).map(|h| format!("[{h},{},{}]", list(e.lair_crews[h].iter()), e.lair_taken[h]))),
+        list((0..n).filter(|&h| g.board.terrain[h] == Terrain::Spice).map(|h| format!("[{h},{},{}]", e.farm_kind[h], list(e.farm_crews[h].iter())))),
+        list((0..n).filter(|&h| g.board.terrain[h] == Terrain::Shoal).map(|h| format!("[{h},{}]", e.shoal[h]))),
+        e.fished, e.last_fish,
+        list(&e.settlers_left[..g.players]), list(&e.crews_left[..g.players]),
     )
 }
 

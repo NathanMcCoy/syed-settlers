@@ -11,6 +11,8 @@ use crate::rng::Rng;
 
 #[path = "bot_city.rs"]
 mod city;
+#[path = "bot_explore.rs"]
+mod explore;
 
 // Every bot (F13 in EXPANSIONS.md): it picks one of the legal actions for the seat to act, and answers
 // trade offers made to it. A bot must always be able to pick from whatever legal() offers, so a new
@@ -73,6 +75,11 @@ impl Greedy {
             return legal[0];
         }
         let p = g.to_act();
+        if g.explore() {
+            if let Some(a) = self.explore_choose(g, p, legal) {
+                return a;
+            }
+        }
         if g.city() {
             let need = self.plan(g, p).1;
             if let Some(a) = self.city_choose(g, p, legal, need) {
@@ -231,7 +238,7 @@ impl Greedy {
             return Action::Buy(0);
         }
         // Rivers: coins buy what's short; a spare resource buys a coin when this bot is Poor
-        if g.rivers() || g.raider_attack() {
+        if g.rivers() || g.raider_attack() || g.traders() || g.explore() {
             let hand = g.hands[p as usize];
             if let Some(r) = (0..5).filter(|&r| hand[r] < need[r]).max_by_key(|&r| need[r] - hand[r]) {
                 if legal.contains(&Action::SpendCoins(r as u8)) {
@@ -340,6 +347,13 @@ impl Greedy {
         let spot = if pieces[P_HUT] > 0 { reachable_spot(g, p) } else { None };
         if let Some((_, 0, _)) = spot {
             return (Goal::Hut, HUT_COST);
+        }
+        // The exploration expansion: settlers are how the island grows
+        if g.explore() && pieces[P_HUT] > 0 && g.ex.settlers_left[pu] > 0 && g.settle_spot_left(p) {
+            if pieces[P_LODGE] > 0 && g.huts(pu) > 1 && afford(&g.hands[pu], &SETTLER_COST) {
+                return (Goal::Project, HARBOUR_COST);
+            }
+            return (Goal::Project, SETTLER_COST);
         }
         // Raider attack: with raiders gathering on this bot's coast, orders (knights) come first
         if g.raider_attack() && g.edge_knights(p) < EDGE_KNIGHTS {

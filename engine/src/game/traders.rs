@@ -150,7 +150,7 @@ impl Game {
                     let cargo = self.cargo[pu];
                     if cargo != NOBODY && WORKS[w].1.contains(&cargo) {
                         self.delivered[pu] += 1;
-                        self.coins[pu] += DELIVERY_COINS[self.wagon_level[pu] as usize];
+                        self.coins[pu] += DELIVERY_COINS[self.wagon_level[pu] as usize] as u16;
                         self.cargo[pu] = NOBODY;
                     }
                     if self.cargo[pu] == NOBODY {

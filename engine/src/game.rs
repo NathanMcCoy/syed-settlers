@@ -20,6 +20,7 @@ mod rivers;
 mod merchant;
 mod raiders;
 mod traders;
+mod explore;
 mod pending;
 mod pirates;
 mod sea;
@@ -38,6 +39,7 @@ pub use fishing::{FISH_COSTS, LAKE_NUMBERS};
 pub use rivers::{BRIDGE_COST, BRIDGES};
 pub use merchant::{MOST_BID, WAGONS};
 pub use raiders::{CAPTURE, EDGE_KNIGHTS, KNIGHTHOOD, ORDERS, RAIDERS, SWIFT_KNIGHT, TURNCOAT};
+pub use explore::{CREW, CREW_COST, ExploreState, FISH, HARBOUR_COST, HAUL, LAIRS, SACK, SETTLER, SETTLER_COST, SPICES, Ship, TRACK_RENOWN, XSHIP_COST};
 pub use traders::{DELIVERY_COINS, DRIVE_FROM, GOODS, UPGRADES, WAGON_MP, WORKS};
 pub use events::{EVENTS, Event, event_card};
 pub use pending::{Decision, Pending};
@@ -137,6 +139,22 @@ pub enum Action {
     Boost,                // a Grain for 2 more move points (once a turn)
     BarbarianTo(u16, u16), // a raider from this edge to that one
     UpgradeWagon,         // your wagon's next level
+    // The exploration expansion (explore.rs)
+    Harbour(u16),         // a harbour building in place of your Hut on this corner
+    BuildShip(u16),       // a ship on this sea edge by your harbour (in setup: free, with a settler)
+    BuildCargo(u8, u8),   // a settler (1) or crew (2) onto your ship i
+    FastGold(u8),         // the Fast Gold farm: this resource for a coin
+    Sail(u8, u16),        // ship i to this edge
+    SailFar(u8),          // a Fish: ship i may go 6 this turn
+    Settle(u8, u16),      // ship i's settler founds a Hut on this corner
+    CrewAshore(u8, u16),  // a crew from ship i onto this hex (a pirate lair or spice farm)
+    TakeHaul(u8, u16),    // ship i takes the fish haul on this shoal
+    TakeSack(u8, u16),    // ship i takes your spice sack from this farm
+    Deliver(u8),          // ship i delivers its hauls and sacks at the Council
+    FishDie,              // roll for a fish haul
+    PiratePlace(u16),     // your pirate ship to this sea hex
+    ChasePirate(u8),      // ship i tries to chase off another player's pirate ship
+    DropCargo(u8),        // ship i's cargo goes home (to make room)
     NeutralHut(u8, u16),  // the two-player variant: a Hut for this neutral colour on this corner
     NeutralPath(u8, u16), // ... a Path for this neutral colour on this edge
     CashPilot,       // discard a played Pilot for 2 trade tokens
@@ -384,7 +402,7 @@ pub struct Game {
     pub bridge_site: Vec<bool>,
     pub bridge: Vec<bool>,
     pub bridges_left: [u8; MAX_PLAYERS],
-    pub coins: [u8; MAX_PLAYERS],
+    pub coins: [u16; MAX_PLAYERS],
     pub coin_buys: u8,
     // Merchant trains (merchant.rs): wagons per edge, the watering hole, wagons left, each train as
     // (start corner, front corner, ended), a wagon earned this phase, this vote's bids
@@ -422,6 +440,7 @@ pub struct Game {
     pub driven: Vec<u16>,
     pub boosted: bool,
     pub swift: bool,
+    pub ex: ExploreState,             // the exploration expansion (explore.rs); empty without it
     pub rng: Rng,
 }
 
@@ -610,6 +629,7 @@ impl Game {
             driven: Vec::new(),
             boosted: false,
             swift: false,
+            ex: ExploreState::default(),
             rng,
             board,
         };
@@ -633,6 +653,9 @@ impl Game {
         }
         if g.traders() {
             g.traders_setup();
+        }
+        if g.explore() {
+            g.explore_setup(island);
         }
         if g.settings().variant_two {
             g.place_neutrals();
@@ -707,7 +730,8 @@ impl Game {
             + self.token_renown(p)
             + self.city_renown(p)
             + self.wagon_renown(p)
-            + self.trade_renown(p);
+            + self.trade_renown(p)
+            + self.explore_renown(p);
         // Rivers: +1 the Wealthiest, -2 the Poor (never below 0)
         // (Raider attack: prisoners, and conquered buildings counting nothing)
         (r as i32 + self.wealth_renown(p) + self.raid_renown(p)).max(0) as u32
@@ -764,6 +788,9 @@ impl Game {
     // The city expansion: commodities 4 or 3 (general market), 2 at Trade level 3; Trade Fleet's kind
     // 2 this turn; the merchant's hex resource 2 for its owner
     pub fn rate(&self, p: u8, r: usize) -> u8 {
+        if self.explore() {
+            return 3; // the exploration expansion: 3:1 for anything
+        }
         let mut best = 4;
         if self.city() {
             let cs = &self.cs;
@@ -819,6 +846,14 @@ impl Game {
                 for c in 0..g.corners() {
                     if self.spaced(c) && self.setup_spot(c) {
                         out.push(Action::Hut(c as u16));
+                    }
+                }
+            }
+            Phase::SetupPath { hut } if self.explore() && self.corner_kind[hut as usize] == LODGE => {
+                // The exploration expansion: a ship with a settler by the new harbour
+                for e in listed(&g.corner_edges[hut as usize]) {
+                    if self.explore_sea_edge(e) {
+                        out.push(Action::BuildShip(e as u16));
                     }
                 }
             }
@@ -878,7 +913,7 @@ impl Game {
                 let hand = &self.hands[pu];
                 let pieces = &self.pieces[pu];
                 let medicine = self.cs.medicine && afford(hand, &MEDICINE_COST);
-                if (medicine || afford(hand, &LODGE_COST)) && pieces[P_LODGE] > 0 {
+                if (medicine || afford(hand, &LODGE_COST)) && pieces[P_LODGE] > 0 && !self.explore() {
                     for c in 0..g.corners() {
                         if self.corner_owner[c] == p && self.corner_kind[c] == HUT && !self.by_conquered_corner(c) {
                             out.push(Action::Lodge(c as u16));
@@ -894,7 +929,7 @@ impl Game {
                 }
                 if afford(hand, &HUT_COST) && pieces[P_HUT] > 0 {
                     for c in 0..g.corners() {
-                        if self.spaced(c) && self.touches_own_edge(p, c) && !self.by_damage(c) && self.hut_spot(c) && self.pirate_hut_ok(p, c) && !self.by_conquered_corner(c) {
+                        if self.spaced(c) && self.touches_own_edge(p, c) && !self.by_damage(c) && self.hut_spot(c) && self.pirate_hut_ok(p, c) && !self.by_conquered_corner(c) && !self.explore_blocked_corner(p, c) {
                             out.push(Action::Hut(c as u16));
                         }
                     }
@@ -937,6 +972,7 @@ impl Game {
                 self.legal_fish(p, out);
                 self.legal_rivers(p, out);
                 self.legal_upgrade(pu, out);
+                self.legal_explore_main(p, out);
                 if let Some(o) = &self.offer {
                     out.push(Action::Withdraw);
                     for s in 0..self.players {
@@ -986,7 +1022,7 @@ impl Game {
             return; // an earthquake: repair first
         }
         for e in 0..self.edge_owner.len() {
-            if self.board.edge_land[e] && !self.is_bridge_site(e) && !self.by_conquered_edge(e) && self.edge_connected(p, e) {
+            if self.board.edge_land[e] && !self.is_bridge_site(e) && !self.by_conquered_edge(e) && !self.explore_blocked_edge(p, e) && self.edge_connected(p, e) {
                 out.push(Action::Path(e as u16));
             }
         }
@@ -1431,6 +1467,18 @@ impl Game {
             Action::Bid(f, gr) => self.bid(pu, f, gr),
             Action::Capture(_) | Action::PlaceGuard(_) | Action::MoveRaider(..) | Action::GuardMove(..) | Action::GuardRun(..) => self.raid_decided(a),
             Action::WagonStep(_) | Action::DriveOff(_) | Action::Boost | Action::BarbarianTo(..) | Action::UpgradeWagon => self.trade_decided(a),
+            Action::BuildShip(e) if matches!(self.phase, Phase::SetupPath { .. }) => {
+                self.ex.ships.push(Ship { owner: p, edge: e, cargo: [SETTLER, 0], moved: false });
+                self.ex.boosted.push(false);
+                self.ex.chased.push(false);
+                self.ex.settlers_left[pu] -= 1;
+                self.next_setup_step();
+            }
+            Action::Harbour(_) | Action::BuildShip(_) | Action::BuildCargo(..) | Action::FastGold(_) | Action::Sail(..) | Action::SailFar(_)
+            | Action::Settle(..) | Action::CrewAshore(..) | Action::TakeHaul(..) | Action::TakeSack(..) | Action::Deliver(_) | Action::FishDie
+            | Action::PiratePlace(_) | Action::ChasePirate(_) | Action::DropCargo(_) => self.explore_act(a),
+            Action::Skip if self.deciding().map(|d| d.decision) == Some(Decision::Sail) => self.explore_act(a),
+
             Action::Skip if self.deciding().map(|d| d.decision) == Some(Decision::Drive) => self.trade_decided(a),
             Action::Wagon(e) => {
                 self.place_wagon(e as usize);
@@ -1454,7 +1502,7 @@ impl Game {
             Action::EndTurn => {
                 // Merchant trains: a wagon earned this phase is voted on and placed first
                 // Raider attack: knights move and the raiders are driven off first
-                if !self.start_vote() && !self.start_guard_moves() && !self.start_drive() {
+                if !self.start_vote() && !self.start_guard_moves() && !self.start_drive() && !self.start_sailing() {
                     self.end_phase();
                 }
                 if self.over() {
@@ -1497,7 +1545,8 @@ impl Game {
         self.corner_owner[c] = p;
         self.river_coins_corner(pu, c); // Rivers: a coin for a Hut on a river hex
         // The city expansion: the second setup building is a Lodge
-        if setup && (self.city() || self.raider_attack() || self.traders()) && self.setup_step as usize >= self.players {
+        let explore_harbour = setup && self.explore() && (self.setup_step as usize) < self.players;
+        if explore_harbour || (setup && (self.city() || self.raider_attack() || self.traders()) && self.setup_step as usize >= self.players) {
             self.corner_kind[c] = LODGE;
             self.pieces[pu][P_LODGE] -= 1;
             if self.traders() {
@@ -1569,19 +1618,7 @@ impl Game {
         }
         self.update_titles();
         if let Phase::SetupPath { .. } = self.phase {
-            self.setup_step += 1;
-            let n = self.players as u8;
-            if self.setup_step == self.setup_rounds() as u8 * n {
-                self.current = 0;
-                self.owner = 0;
-                self.turn = 1;
-                self.phase = Phase::PreRoll;
-            } else {
-                // Snake order: forward, back, (Cloth: forward again)
-                let (round, k) = (self.setup_step / n, self.setup_step % n);
-                self.current = if round % 2 == 1 { n - 1 - k } else { k };
-                self.phase = Phase::SetupHut;
-            }
+            self.next_setup_step();
         }
         self.finish_free_build();
         // Fog Islands: hidden hexes at its corners are revealed (after setup has moved on, so a gold
@@ -1596,6 +1633,25 @@ impl Game {
             if let Some(d) = self.owe_neutral(p, false) {
                 let after = self.phase;
                 self.decide_then([d], after);
+            }
+        }
+    }
+
+    // Setup goes on to the next player (snake order), or the first turn
+    fn next_setup_step(&mut self) {
+        {
+            self.setup_step += 1;
+            let n = self.players as u8;
+            if self.setup_step == self.setup_rounds() as u8 * n {
+                self.current = 0;
+                self.owner = 0;
+                self.turn = 1;
+                self.phase = Phase::PreRoll;
+            } else {
+                // Snake order: forward, back, (Cloth: forward again)
+                let (round, k) = (self.setup_step / n, self.setup_step % n);
+                self.current = if round % 2 == 1 { n - 1 - k } else { k };
+                self.phase = Phase::SetupHut;
             }
         }
     }
@@ -1636,10 +1692,12 @@ impl Game {
             for &c in &g.hex_corners[h as usize] {
                 let o = self.corner_owner[c as usize];
                 if o != NOBODY && (o as usize) < self.players {
-                    // An epidemic (event cards): Lodges produce 1, not 2
-                    let n = if self.epidemic { 1 } else { self.corner_kind[c as usize] };
+                    // An epidemic (event cards): Lodges produce 1, not 2 (and harbours always: exploration)
+                    let n = if self.epidemic || self.explore() { 1 } else { self.corner_kind[c as usize] };
                     if r == GOLD as usize {
-                        gold[o as usize] += n;
+                        if !self.explore() {
+                            gold[o as usize] += n; // (exploration's gold pays coins: explore.rs)
+                        }
                     } else if let (true, LODGE, Some(goods)) = (city, self.corner_kind[c as usize], Game::lodge_goods(r)) {
                         // The city expansion: a Lodge makes 1 resource + 1 commodity here
                         owed[o as usize][r] += 1;

@@ -44,6 +44,9 @@ pub enum Decision {
     // Traders and raiders (traders.rs)
     Drive,                 // the end of your turn: move your wagon (WagonStep / DriveOff / Boost / Skip)
     MoveBarbarian { from: u16, steal: bool }, // move a raider (from NONE: any) to a free edge (BarbarianTo)
+    // The exploration expansion (explore.rs)
+    Sail,                  // the movement phase: move and use your ships (Sail ... / Skip)
+    PiratePlace,           // a 7: put your pirate ship on a sea hex (PiratePlace)
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -89,6 +92,8 @@ impl Decision {
             Decision::MoveGuards => "moveGuards",
             Decision::Drive => "drive",
             Decision::MoveBarbarian { .. } => "moveBarbarian",
+            Decision::Sail => "sail",
+            Decision::PiratePlace => "piratePlace",
         }
     }
 }
@@ -193,6 +198,8 @@ impl Game {
             Decision::Capture | Decision::PlaceGuard { .. } | Decision::MoveRaider { .. } | Decision::MoveGuards => self.legal_raider_decision(d, out),
             Decision::Drive => self.legal_drive(d.seat, out),
             Decision::MoveBarbarian { .. } => self.legal_barbarian(d, out),
+            Decision::Sail => self.legal_sail(d.seat, out),
+            Decision::PiratePlace => self.legal_pirate_place(out),
             _ => self.legal_city_decision(d, out),
         }
     }

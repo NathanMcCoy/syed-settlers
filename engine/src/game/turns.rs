@@ -35,6 +35,14 @@ impl Game {
                 .filter(|&p| self.cards(p) > self.hand_limit(p))
                 .map(|p| Pending { seat: p as u8, decision: Decision::Discard { left: (self.cards(p) / 2) as u8 } })
                 .collect();
+            if self.explore() {
+                // The exploration expansion: the roller's pirate ship (from the second scenario)
+                if self.ex.scenario >= 2 {
+                    discards.push(Pending { seat: self.current, decision: Decision::PiratePlace });
+                }
+                self.decide_then(discards, next);
+                return;
+            }
             if self.traders() {
                 // Traders and raiders: a raider moves (robbing a Path's owner)
                 discards.push(Pending { seat: self.current, decision: Decision::MoveBarbarian { from: NONE, steal: true } });
@@ -62,6 +70,7 @@ impl Game {
         if self.city() {
             decisions.extend(self.science_picks(&before));
         }
+        self.explore_production(total, &before);
         self.decide_then(decisions, next);
     }
 
@@ -73,6 +82,7 @@ impl Game {
         self.coin_buys = 0;
         self.boosted = false;
         self.swift = false;
+        self.explore_end_phase();
         self.offer = None;
         self.offers_made = 0;
         self.bought = [0; 5];
