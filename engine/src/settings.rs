@@ -103,24 +103,24 @@ settings! {
     island_fields: u8 = 4, "island.fields", 0, 8, "Fields hexes (Grain) on the hexagon island";
     island_mine: u8 = 3, "island.mine", 0, 8, "Mine hexes (Copper) on the hexagon island";
     island_paddy: u8 = 4, "island.paddy", 0, 8, "Paddy hexes (Fish) on the hexagon island";
-    markets_any: u8 = 2, "markets.any", 0, 6, "General markets (3:1)";
+    markets_any: u8 = 4, "markets.any", 0, 6, "General markets (3:1)";
     markets_each: u8 = 1, "markets.each", 0, 2, "2:1 markets for each resource";
-    squall_range: u8 = 4, "squall.range", 1, 8, "Most steps the squall moves after a 7";
+    squall_range: u8 = 0, "squall.range", 0, 8, "Most steps the squall moves after a 7 (0: to any land hex)";
     discard_over: u8 = 7, "discard.over", 4, 20, "After a 7, holding more than this loses half";
-    bank_cards: u8 = 20, "bank.cards", 0, 60, "Cards of each resource in the game (0: the bank never runs out)";
+    bank_cards: u8 = 19, "bank.cards", 0, 60, "Cards of each resource in the game (0: the bank never runs out)";
     trade_offers: u8 = 3, "trade.offers", 0, 10, "Offers to other players each turn (0: no trading between players)";
     projects_face_up: bool = false, "projects.faceUp", 0, 1, "Projects lie face up (off, the default: a hidden draw)";
     projects_row: u8 = 3, "projects.row", 1, 6, "Face-up projects showing";
-    deck_pilot: u8 = 12, "projects.deck.pilot", 0, 30, "Pilot projects in the deck";
-    deck_lighthouse: u8 = 4, "projects.deck.lighthouse", 0, 10, "Lighthouse projects in the deck";
-    deck_road_crew: u8 = 3, "projects.deck.roadCrew", 0, 10, "Road Crew projects in the deck";
-    deck_harvest: u8 = 3, "projects.deck.harvest", 0, 10, "Good Harvest projects in the deck";
-    deck_bargain: u8 = 3, "projects.deck.bargain", 0, 10, "Good Bargain projects in the deck";
+    deck_pilot: u8 = 14, "projects.deck.pilot", 0, 30, "Pilot projects in the deck";
+    deck_lighthouse: u8 = 5, "projects.deck.lighthouse", 0, 10, "Lighthouse projects in the deck";
+    deck_road_crew: u8 = 2, "projects.deck.roadCrew", 0, 10, "Road Crew projects in the deck";
+    deck_harvest: u8 = 2, "projects.deck.harvest", 0, 10, "Good Harvest projects in the deck";
+    deck_market_day: u8 = 2, "projects.deck.marketDay", 0, 10, "Market Day projects in the deck";
     longest_min: u8 = 5, "titles.longestPath.min", 2, 15, "Shortest line of Paths that can hold Longest Path";
     round_limit: u8 = 0, "rounds", 0, 100, "Rounds before the most Renown wins (0: no limit)";
     longest_renown: u8 = 2, "titles.longestPath.renown", 0, 4, "Renown for Longest Path";
-    most_markets_min: u8 = 2, "titles.mostMarkets.min", 1, 7, "Fewest markets that can hold Most Markets";
-    most_markets_renown: u8 = 2, "titles.mostMarkets.renown", 0, 4, "Renown for Most Markets";
+    most_pilots_min: u8 = 3, "titles.mostPilots.min", 1, 15, "Fewest Pilots played that can hold Most Pilots";
+    most_pilots_renown: u8 = 2, "titles.mostPilots.renown", 0, 4, "Renown for Most Pilots";
     pieces_path: u8 = 15, "pieces.path", 1, 40, "Paths each player has";
     pieces_hut: u8 = 5, "pieces.hut", 2, 10, "Huts each player has";
     pieces_lodge: u8 = 4, "pieces.lodge", 0, 10, "Lodges each player has";
@@ -177,7 +177,9 @@ mod tests {
     #[test]
     fn mistakes_are_refused() {
         for (text, why) in [
-            ("squall.range=9", "between 1 and 8"),
+            ("squall.range=9", "between 0 and 8"),
+            ("projects.deck.bargain=2", "unknown setting"),
+            ("titles.mostMarkets.min=2", "unknown setting"),
             ("win=9.5", "whole number"),
             ("islets.count=2", "unknown setting"),
             ("pieces.boat=5", "unknown setting"),
@@ -198,7 +200,7 @@ mod tests {
     fn the_table_lists_every_setting() {
         let t = Settings::table_json();
         assert!(t.starts_with("[{\"name\":\"players.min\""));
-        assert!(t.contains("{\"name\":\"squall.range\",\"kind\":\"whole\",\"default\":4,\"min\":1,\"max\":8,"));
+        assert!(t.contains("{\"name\":\"squall.range\",\"kind\":\"whole\",\"default\":0,\"min\":0,\"max\":8,"));
         assert_eq!(t.matches("\"name\"").count(), 32);
         assert!(Settings::parse("island.dunes=2;island.forest=3").is_ok(), "a Forest traded for a second Dunes");
     }

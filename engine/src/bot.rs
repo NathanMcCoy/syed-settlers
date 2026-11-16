@@ -63,10 +63,12 @@ impl Greedy {
                     _ => f64::MIN,
                 })
             }
-            Phase::Bargain => {
+            // Market Day: the resource it's most short of for its goal
+            Phase::MarketDay => {
+                let (_, need) = self.plan(g, p);
                 let hand = g.hands[p as usize];
                 self.best_by(legal, |a| match a {
-                    Action::Take(r) => hand[*r as usize] as f64,
+                    Action::Take(r) => need[*r as usize] as f64 - hand[*r as usize] as f64,
                     _ => f64::MIN,
                 })
             }
@@ -108,8 +110,14 @@ impl Greedy {
                 return Action::Path(e as u16);
             }
         }
-        for k in [Project::Harvest, Project::RoadCrew] {
-            if legal.contains(&Action::Play(k)) && (k != Project::RoadCrew || matches!(goal, Goal::Edge(..))) {
+        let short = (0..5).any(|r| g.hands[p as usize][r] < need[r]);
+        for k in [Project::Harvest, Project::MarketDay, Project::RoadCrew] {
+            let worth = match k {
+                Project::RoadCrew => matches!(goal, Goal::Edge(..)),
+                Project::MarketDay => short,
+                _ => true,
+            };
+            if worth && legal.contains(&Action::Play(k)) {
                 return Action::Play(k);
             }
         }
@@ -182,8 +190,16 @@ impl Greedy {
         (Goal::Project, PROJECT_COST)
     }
 
+    // When the squall sits on one of its buildings, or one more Pilot would take (or keep a lead
+    // for) Most Pilots
     fn pilot_wanted(&self, g: &Game, p: u8) -> bool {
-        g.board.graph.hex_corners[g.squall as usize].iter().any(|&c| g.corner_owner[c as usize] == p)
+        let pu = p as usize;
+        let blocked = g.board.graph.hex_corners[g.squall as usize].iter().any(|&c| g.corner_owner[c as usize] == p);
+        let next = g.pilots[pu] + 1;
+        let title = g.most_pilots != p
+            && next >= g.settings().most_pilots_min
+            && (0..g.players).all(|o| o == pu || g.pilots[o] < next);
+        blocked || title
     }
 
     // The legal action with the highest score (ties broken at random)

@@ -4,7 +4,7 @@
 //
 // This runs once per game, so it favours being clear over being fast, but it never iterates over a
 // HashMap/HashSet: their order changes from run to run, and the same seed must give the same island.
-use crate::hex::{Cell, Graph, NONE, listed, within};
+use crate::hex::{Cell, Graph, NONE, within};
 use crate::json;
 use crate::rng::Rng;
 use crate::settings::Settings;
@@ -348,8 +348,9 @@ fn fair_resources(hexes: &[Hex]) -> bool {
     totals.iter().all(|&t| (FAIR_LOW * mean..=FAIR_HIGH * mean).contains(&(t as f64)))
 }
 
-// Markets on the island's coastal edges (land on one side, sea on the other), with no two sharing
-// or neighbouring a corner, so each market's corners can all be built on
+// Markets on the island's coastal edges (land on one side, sea on the other), with no two sharing a
+// corner. Neighbouring corners are allowed (that's how 9 fit on the hexagon's coast); the spacing
+// rule then lets one building use only one of the two.
 fn place_markets(rng: &mut Rng, hexes: &[Hex], g: &Graph, any: u8, each: u8) -> Option<Vec<Market>> {
     let mut kinds: Vec<u8> = std::iter::repeat_n(ANY, any as usize)
         .chain((0..5u8).flat_map(|r| std::iter::repeat_n(r, each as usize)))
@@ -383,9 +384,6 @@ fn place_markets(rng: &mut Rng, hexes: &[Hex], g: &Graph, any: u8, each: u8) -> 
             chosen.push((hex, side));
             for &c in &ends {
                 blocked[c as usize] = true;
-                for n in listed(&g.corner_corners[c as usize]) {
-                    blocked[n] = true;
-                }
             }
         }
         if chosen.len() == kinds.len() {
@@ -484,7 +482,7 @@ mod tests {
             }
         }
 
-        // Markets: how many of each, on the coast, corners apart
+        // Markets: how many of each, on the coast, no corner shared
         assert_eq!(island.markets.len(), s.markets_any as usize + 5 * s.markets_each as usize, "{why}");
         assert_eq!(island.markets.iter().filter(|m| m.kind == ANY).count(), s.markets_any as usize, "{why}");
         let mut used: Vec<usize> = Vec::new();
@@ -496,7 +494,7 @@ mod tests {
             let ends = g.edge_corners[g.hex_edges[m.hex as usize][m.side as usize] as usize];
             for &c in &ends {
                 for &u in &used {
-                    assert!(u != c as usize && !listed(&g.corner_corners[u]).any(|n| n == c as usize), "markets too close: {why}");
+                    assert!(u != c as usize, "markets share a corner: {why}");
                 }
             }
             used.extend(ends.iter().map(|&c| c as usize));
@@ -544,8 +542,8 @@ mod tests {
 
     #[test]
     fn market_settings_work() {
-        // The hexagon's coast has room for 7 spaced markets; more need a random shape
-        for (shape, any, each) in [("true", 0, 0), ("true", 0, 1), ("true", 2, 1), ("false", 4, 1), ("false", 2, 2)] {
+        // The hexagon's coast (30 edges) has room for 15 markets that share no corner
+        for (shape, any, each) in [("true", 0, 0), ("true", 0, 1), ("true", 4, 1), ("true", 5, 2), ("false", 6, 1), ("false", 4, 2)] {
             let s = settings(&format!("island.hexagon={shape};markets.any={any};markets.each={each}"));
             for k in 0..50 {
                 check(&generate(&s, &format!("m{k}")).unwrap(), &s);
@@ -577,7 +575,7 @@ mod tests {
         let j = island.to_json();
         assert!(j.starts_with("{\"version\":2,\"seed\":\"betta\",\"hexes\":[{\"q\":"));
         assert_eq!(j.matches("\"terrain\"").count(), island.hexes.len());
-        assert_eq!(j.matches("\"kind\"").count(), 7);
+        assert_eq!(j.matches("\"kind\"").count(), 9);
         assert!(j.contains("\"terrain\":\"paddy\""));
     }
 }

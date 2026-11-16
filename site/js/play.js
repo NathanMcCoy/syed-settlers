@@ -8,13 +8,13 @@ import { islandSvg, el, centre, point, hexPoints, RESOURCES, SIZE } from './boar
 
 const $ = id => document.getElementById(id);
 const COLOURS = ['Red', 'Blue', 'Orange', 'Purple'];
-const PROJECTS = { pilot: 'Pilot', lighthouse: 'Lighthouse', roadCrew: 'Road Crew', harvest: 'Good Harvest', bargain: 'Good Bargain' };
+const PROJECTS = { pilot: 'Pilot', lighthouse: 'Lighthouse', roadCrew: 'Road Crew', harvest: 'Good Harvest', marketDay: 'Market Day' };
 const PROJECT_HELP = {
   pilot: 'Move the squall to any land hex, then steal',
   lighthouse: '1 Renown, counted at once',
   roadCrew: '2 free Paths',
   harvest: 'Take any 2 resources',
-  bargain: 'This turn, trade 2:1 for one resource',
+  marketDay: 'Name a resource: everyone else gives you all of theirs',
 };
 
 const store = {
@@ -306,7 +306,7 @@ function showRoll(v, before) {
     text += parts.length ? ` You got ${parts.join(', ')}.` : ' Nothing for you this time.';
   }
   if (v.short?.length) {
-    text += ` The bank ran out of ${v.short.map(r => RESOURCES[r]).join(' and ')}, so nobody got ${v.short.length > 1 ? 'those' : 'it'}.`;
+    text += ` The bank ran short of ${v.short.map(r => RESOURCES[r]).join(' and ')}: nobody got ${v.short.length > 1 ? 'those' : 'it'}, unless only one player was owed it (they got what was left).`;
   }
   toast(text);
 }
@@ -370,7 +370,7 @@ function status(v) {
     case 'main': return mine ? `You rolled ${v.lastRoll}. Pick something to build, trade or buy, then end your turn.` : `${who} rolled ${v.lastRoll}.`;
     case 'freeBuild': return mine ? 'Road Crew: place a free Path.' : `${who} is placing free Paths.`;
     case 'harvest': return mine ? 'Good Harvest: take a resource.' : `${who} is taking resources.`;
-    case 'bargain': return mine ? 'Good Bargain: choose the resource you\'ll trade 2:1.' : `${who} is choosing a bargain.`;
+    case 'marketDay': return mine ? 'Market Day: choose the resource everyone else hands over.' : `${who} is calling a Market Day.`;
     default: return '';
   }
 }
@@ -394,7 +394,7 @@ function drawChoices(v) {
     const [word, n] = m.split(' ');
     if (word === 'roll') box.append(button('Roll the dice', m, 'primary'));
     if (word === 'discard') box.append(button(`Lose ${RESOURCES[n]} (${v.hand[n]})`, m));
-    if (word === 'take') box.append(button(`Take ${RESOURCES[n]}`, m));
+    if (word === 'take') box.append(button(v.phase === 'marketDay' ? `Take everyone's ${RESOURCES[n]}` : `Take ${RESOURCES[n]}`, m));
     if (word === 'steal') box.append(button(`Steal from ${nameOf(Number(n))} (${v.players[n].cards} cards)`, m));
     // Projects are played from Your projects, under the hand (drawMyProjects)
   }
@@ -535,7 +535,7 @@ function projectItems(v) {
     ? v.row.map((k, slot) => ({ key: `project-${slot}`, move: `buy ${slot}`, name: PROJECTS[k], note: PROJECT_HELP[k] }))
     : [{
         key: 'project', move: 'buy 0', name: 'Project card',
-        note: `Drawn unseen: Pilot, Lighthouse, Road Crew, Good Harvest or Good Bargain · ${v.deck} left`,
+        note: `Drawn unseen: Pilot, Lighthouse, Road Crew, Good Harvest or Market Day · ${v.deck} left`,
       }];
   return cards.map(card => {
     const reason = projectReason(v, card.move);
@@ -703,8 +703,9 @@ function drawPlayers(v) {
     info.className = 'info';
     const facts = [`${p.cards} card${p.cards === 1 ? '' : 's'}`];
     if (p.projectCount) facts.push(`${p.projectCount} project${p.projectCount === 1 ? '' : 's'}`);
+    if (p.pilots) facts.push(`${p.pilots} Pilot${p.pilots === 1 ? '' : 's'} played`);
     info.append(facts.join(' · '));
-    for (const [holder, title] of [[v.longestPath, 'Longest Path'], [v.mostMarkets, 'Most Markets']]) {
+    for (const [holder, title] of [[v.longestPath, 'Longest Path'], [v.mostPilots, 'Most Pilots']]) {
       if (holder !== s) continue;
       const badge = document.createElement('span');
       badge.className = 'title-badge';
@@ -746,7 +747,7 @@ function drawHand(v) {
 // Trading: pick what to give (only what you can afford, at your rate) and what to get
 const trade = { give: null, get: null };
 function drawTrade(v) {
-  // What's left in the bank (a game has 20 of each resource; null: it never runs out)
+  // What's left in the bank (a game has 19 of each resource; null: it never runs out)
   $('bank-left').textContent = v.bank ? `Left in the bank: ${v.bank.map((n, r) => `${RESOURCES[r]} ${n}`).join(' · ')}` : '';
   $('bank-left').hidden = !v.bank;
   const trades = legal().filter(m => m.startsWith('trade '));
@@ -804,7 +805,9 @@ function describe(entry) {
     case 'trade': return `${who} traded ${RESOURCES[a]} for ${RESOURCES[b]}`;
     case 'buy': return `${who} bought a project`;
     case 'play': return `${who} played ${PROJECTS[a]}`;
-    case 'take': return `${who} took ${RESOURCES[a]}`;
+    case 'take': return entry.got === undefined
+      ? `${who} took ${RESOURCES[a]}`
+      : `${who} called a Market Day and took ${entry.got} ${RESOURCES[a]} from the others`;
     case 'end': return `${who} ended the turn`;
     case 'offer': return `${who} offered ${cardsText(a.split(',').map(Number))} for ${cardsText(b.split(',').map(Number))}`;
     case 'answer': return `${Number(a) === snap.view.you ? 'You' : nameOf(Number(a))} ${b === 'yes' ? 'accepted' : 'declined'} the offer`;

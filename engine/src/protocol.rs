@@ -9,7 +9,7 @@
 //   squall H | steal P                     H a hex number, P a seat
 //   trade G R                              give G (at your best rate) for one R
 //   buy S                                  a project: the face-up row's slot S (hidden: 0)
-//   play pilot|roadCrew|harvest|bargain
+//   play pilot|roadCrew|harvest|marketDay
 //   offer G,G,G,G,G R,R,R,R,R T [open]     to other players: give these 5 counts for those 5; T = seats (a bit each)
 //   answer S yes|no                        seat S accepts or declines the offer
 //   counter S G,G,G,G,G R,R,R,R,R          seat S proposes instead: what the offerer would give and get
@@ -19,7 +19,7 @@ use crate::game::*;
 use crate::island::{ANY, Island, RESOURCES};
 use crate::json;
 
-pub const PROJECT_NAMES: [&str; 5] = ["pilot", "lighthouse", "roadCrew", "harvest", "bargain"];
+pub const PROJECT_NAMES: [&str; 5] = ["pilot", "lighthouse", "roadCrew", "harvest", "marketDay"];
 
 pub fn action_text(a: Action) -> String {
     match a {
@@ -131,7 +131,7 @@ fn phase_name(p: Phase) -> &'static str {
         Phase::Main => "main",
         Phase::FreeBuild { .. } => "freeBuild",
         Phase::Harvest { .. } => "harvest",
-        Phase::Bargain => "bargain",
+        Phase::MarketDay => "marketDay",
         Phase::Over => "over",
     }
 }
@@ -182,8 +182,8 @@ pub fn view_json(g: &Game, seat: u8) -> String {
             let hidden = if face_up || me || g.over() { 0 } else { g.held[p][Project::Lighthouse as usize] as u32 };
             let projects = if face_up || me || g.over() { list(g.held[p]) } else { "null".into() };
             format!(
-                "{{\"cards\":{},\"renown\":{},\"pieces\":{},\"projects\":{projects},\"projectCount\":{held},\"line\":{},\"markets\":{},\"discard\":{}}}",
-                g.cards(p), g.renown(p) - hidden, list(g.pieces[p]), g.line[p], g.markets[p], g.discards[p],
+                "{{\"cards\":{},\"renown\":{},\"pieces\":{},\"projects\":{projects},\"projectCount\":{held},\"line\":{},\"pilots\":{},\"discard\":{}}}",
+                g.cards(p), g.renown(p) - hidden, list(g.pieces[p]), g.line[p], g.pilots[p], g.discards[p],
             )
         })
         .collect();
@@ -224,17 +224,18 @@ pub fn view_json(g: &Game, seat: u8) -> String {
     format!(
         concat!(
             "{{\"phase\":\"{}\",\"current\":{},\"toAct\":{},\"turn\":{},\"lastRoll\":{},\"squall\":{},\"winner\":{},",
-            "\"buildings\":[{}],\"roads\":[{}],\"players\":[{}],\"longestPath\":{},\"mostMarkets\":{},",
-            "\"row\":{},\"deck\":{},\"bargain\":{},\"win\":{},\"you\":{},\"hand\":{},\"rates\":{},\"legal\":{},",
+            "\"buildings\":[{}],\"roads\":[{}],\"players\":[{}],\"longestPath\":{},\"mostPilots\":{},",
+            "\"row\":{},\"deck\":{},\"lastTake\":{},\"win\":{},\"you\":{},\"hand\":{},\"rates\":{},\"legal\":{},",
             "\"offer\":{},\"canOffer\":{},\"offersLeft\":{},\"dice\":{},\"bank\":{},\"short\":{},\"handLimit\":{},\"round\":{},\"roundLimit\":{},\"byRounds\":{},\"bought\":{}}}"
         ),
         phase_name(g.phase), g.current, g.to_act(), g.turn,
         if g.last_roll == 0 { "null".into() } else { g.last_roll.to_string() },
         g.squall, seat_or_null(g.winner),
         buildings.join(","), roads.join(","), players.join(","),
-        seat_or_null(g.longest), seat_or_null(g.most_markets),
+        seat_or_null(g.longest), seat_or_null(g.most_pilots),
         row, g.deck.len(),
-        if g.bargain == NOBODY { "null".into() } else { json::string(RESOURCES[g.bargain as usize]) },
+        // What each seat handed over on the last Market Day (public: everyone saw it happen)
+        list(&g.last_take[..g.players]),
         s.win,
         if mine { seat.to_string() } else { "null".into() },
         hand, rates, legal,
@@ -283,7 +284,7 @@ mod tests {
         }
         assert!(seen.len() >= 10, "most kinds of move came up ({})", seen.len());
         for a in [
-            Action::Play(Project::Bargain), Action::Play(Project::RoadCrew), Action::Take(4), Action::Steal(2), Action::Discard(0),
+            Action::Play(Project::MarketDay), Action::Play(Project::RoadCrew), Action::Take(4), Action::Steal(2), Action::Discard(0),
             Action::Offer { give: [2, 0, 0, 0, 1], get: [0, 0, 0, 1, 0], to: 6, open: false },
             Action::Offer { give: [1, 0, 0, 0, 0], get: [0, 0, 0, 0, 2], to: 14, open: true },
             Action::Counter { seat: 2, give: [1, 0, 1, 0, 0], get: [0, 0, 0, 1, 0] }, Action::Accept(3),
@@ -298,7 +299,7 @@ mod tests {
     #[test]
     fn bad_text_is_refused() {
         for t in [
-            "", "jump", "hut", "hut x", "hut 1 2", "trade 1", "play lighthouse!", "play dance", "play winds", "play shipwright", "boat 12", "discard 300", "roll now",
+            "", "jump", "hut", "hut x", "hut 1 2", "trade 1", "play lighthouse!", "play dance", "play winds", "play shipwright", "play bargain", "boat 12", "discard 300", "roll now",
             "offer 1,0,0,0 0,0,0,1,0 2", "offer 1,0,0,0,0 0,0,0,1,0", "offer 99,0,0,0,0 0,0,0,1,0 2", "offer a,0,0,0,0 0,0,0,1,0 2",
             "answer 1 maybe", "answer yes", "deal", "withdraw now", "offer 1,0,0,0,0 0,0,0,1,0 2 closed", "counter 1 1,0,0,0,0", "accept",
         ] {

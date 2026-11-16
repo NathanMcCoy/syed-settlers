@@ -33,7 +33,7 @@ test('islands come out of WebAssembly with every part', () => {
   assert.equal(island.seed, 'betta');
   const main = island.hexes.filter(h => h.terrain !== 'sea');
   assert.equal(main.length, 19, 'the hexagon, 5 across');
-  assert.equal(island.markets.length, 7);
+  assert.equal(island.markets.length, 9);
   assert.ok(island.hexes.every(h => !('islet' in h)) && !('islets' in island.info), 'no islets any more');
   assert.equal(island.hexes[island.squall].terrain, 'dunes');
   assert.ok(main.some(h => h.terrain === 'paddy'));
@@ -53,10 +53,12 @@ test('settings reach the engine, and mistakes come back as errors', () => {
 test('the settings table lists every knob with its range', () => {
   const table = engine.settingsTable();
   const byName = Object.fromEntries(table.map(s => [s.name, s]));
-  assert.deepEqual(byName['squall.range'], { name: 'squall.range', kind: 'whole', default: 4, min: 1, max: 8, about: byName['squall.range'].about });
-  assert.equal(byName['projects.deck.roadCrew'].default, 3);
+  assert.deepEqual(byName['squall.range'], { name: 'squall.range', kind: 'whole', default: 0, min: 0, max: 8, about: byName['squall.range'].about });
+  assert.equal(byName['projects.deck.roadCrew'].default, 2);
+  assert.equal(byName['projects.deck.marketDay'].default, 2);
+  assert.equal(byName['titles.mostPilots.min'].default, 3);
   assert.equal(byName['titles.longestPath.min'].default, 5);
-  for (const gone of ['islets.count', 'pieces.boat', 'titles.navigator.min', 'projects.deck.winds']) assert.ok(!byName[gone], gone);
+  for (const gone of ['islets.count', 'pieces.boat', 'titles.navigator.min', 'projects.deck.winds', 'projects.deck.bargain', 'titles.mostMarkets.min', 'titles.mostMarkets.renown']) assert.ok(!byName[gone], gone);
   assert.equal(byName.win.default, 10);
   assert.equal(byName['projects.faceUp'].kind, 'switch');
 });

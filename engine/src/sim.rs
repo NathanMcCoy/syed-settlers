@@ -4,8 +4,8 @@ use crate::game::*;
 use crate::island::generate;
 use crate::settings::Settings;
 
-// Where a player's Renown came from: Huts, Lodges, Lighthouses, Longest Path, Most Markets
-pub const SOURCES: [&str; 5] = ["huts", "lodges", "lighthouses", "longest path", "most markets"];
+// Where a player's Renown came from: Huts, Lodges, Lighthouses, Longest Path, Most Pilots
+pub const SOURCES: [&str; 5] = ["huts", "lodges", "lighthouses", "longest path", "most pilots"];
 
 #[derive(Clone, Debug)]
 pub struct Outcome {
@@ -22,7 +22,7 @@ pub fn renown_sources(g: &Game, p: usize) -> [u32; 5] {
         2 * g.lodges(p) as u32,
         g.held[p][Project::Lighthouse as usize] as u32,
         if g.longest as usize == p { s.longest_renown as u32 } else { 0 },
-        if g.most_markets as usize == p { s.most_markets_renown as u32 } else { 0 },
+        if g.most_pilots as usize == p { s.most_pilots_renown as u32 } else { 0 },
     ]
 }
 
