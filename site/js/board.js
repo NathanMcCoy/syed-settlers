@@ -101,7 +101,7 @@ export function islandSvg(island) {
       svg.append(el('text', { x: c.x, y: c.y + 12, class: 'pips' }, '•'.repeat(pips(h.number))));
     }
     if (h.terrain === 'lake') {
-      svg.append(el('text', { x: c.x, y: c.y + 4, class: 'lake-numbers', 'data-lake': i }, LAKE_NUMBERS.join(' · ')));
+      svg.append(el('text', { x: c.x, y: c.y + 4, class: 'lake-numbers', 'data-lake': i }, LAKE_NUMBERS.join(' ')));
     }
   });
 

@@ -84,6 +84,9 @@ pub fn action_text(a: Action) -> String {
         Action::Skip => "skip".into(),
         Action::Fish(k) => format!("fish {k}"),
         Action::GiveBoot(s) => format!("giveboot {s}"),
+        Action::Bridge(e) => format!("bridge {e}"),
+        Action::BuyCoin(r) => format!("buycoin {r}"),
+        Action::SpendCoins(r) => format!("spendcoins {r}"),
     }
 }
 
@@ -193,6 +196,9 @@ pub fn parse_action(text: &str) -> Result<Action, String> {
         Some("skip") => Action::Skip,
         Some("fish") => Action::Fish(small(1)?),
         Some("giveboot") => Action::GiveBoot(small(1)?),
+        Some("bridge") => Action::Bridge(num(1)?),
+        Some("buycoin") => Action::BuyCoin(small(1)?),
+        Some("spendcoins") => Action::SpendCoins(small(1)?),
         _ => return Err(format!("unknown move \"{text}\"")),
     };
     let expected = match a {
@@ -325,7 +331,7 @@ pub fn view_json(g: &Game, seat: u8) -> String {
             "{{\"phase\":\"{}\",\"current\":{},\"toAct\":{},\"turn\":{},\"lastRoll\":{},\"squall\":{},\"winner\":{},",
             "\"buildings\":[{}],\"roads\":[{}],\"players\":[{}],\"longestPath\":{},\"mostPilots\":{},",
             "\"row\":{},\"deck\":{},\"lastTake\":{},\"win\":{},\"you\":{},\"hand\":{},\"rates\":{},\"legal\":{},",
-            "\"offer\":{},\"canOffer\":{},\"offersLeft\":{},\"dice\":{},\"bank\":{},\"short\":{},\"handLimit\":{},\"round\":{},\"roundLimit\":{},\"byRounds\":{},\"bought\":{},\"turnOf\":{},\"paired\":{},\"titles\":{},\"deciding\":{},\"pirate\":{},\"shipMoved\":{},\"event\":{},\"damaged\":{},\"revealed\":{},\"villages\":{},\"clothEnded\":{},\"wonders\":{},\"markers\":{},\"prizes\":{},\"heldMarkets\":{},\"markets\":{},\"fleet\":{},\"forts\":{},\"warships\":{},\"lastAttack\":{},\"city\":{},\"fishing\":{}}}"
+            "\"offer\":{},\"canOffer\":{},\"offersLeft\":{},\"dice\":{},\"bank\":{},\"short\":{},\"handLimit\":{},\"round\":{},\"roundLimit\":{},\"byRounds\":{},\"bought\":{},\"turnOf\":{},\"paired\":{},\"titles\":{},\"deciding\":{},\"pirate\":{},\"shipMoved\":{},\"event\":{},\"damaged\":{},\"revealed\":{},\"villages\":{},\"clothEnded\":{},\"wonders\":{},\"markers\":{},\"prizes\":{},\"heldMarkets\":{},\"markets\":{},\"fleet\":{},\"forts\":{},\"warships\":{},\"lastAttack\":{},\"city\":{},\"fishing\":{},\"rivers\":{}}}"
         ),
         // While decisions are being made (pending.rs), the phase is named after the first one ("discard")
         g.deciding().map_or(phase_name(g.phase), |d| d.decision.name()), g.current, g.to_act(), g.turn,
@@ -400,6 +406,24 @@ pub fn view_json(g: &Game, seat: u8) -> String {
         if g.last_attack[0] == NOBODY { "null".into() } else { list(g.last_attack) },
         city_json(g, seat, mine),
         fishing_json(g, seat, mine),
+        rivers_json(g),
+    )
+}
+
+// Rivers' part of the view (null without it): everyone's coins (public, like the tiles they decide),
+// bridges built and in hand, the Wealthiest and the Poor, coin purchases left this turn
+fn rivers_json(g: &Game) -> String {
+    if !g.rivers() {
+        return "null".into();
+    }
+    format!(
+        "{{\"coins\":{},\"bridges\":{},\"bridgesLeft\":{},\"wealthiest\":{},\"poor\":{},\"coinBuysLeft\":{}}}",
+        list(&g.coins[..g.players]),
+        list((0..g.bridge.len()).filter(|&e| g.bridge[e])),
+        list(&g.bridges_left[..g.players]),
+        seat_or_null(g.wealthiest()),
+        list((0..g.players).filter(|&p| g.poor(p))),
+        2u8.saturating_sub(g.coin_buys),
     )
 }
 

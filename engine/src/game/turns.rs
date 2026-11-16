@@ -59,6 +59,7 @@ impl Game {
         // The Pirate Islands: a line at its fortress attacks it as the turn ends
         self.attack_fortress(self.current as usize);
         self.city_end_phase();
+        self.coin_buys = 0;
         self.offer = None;
         self.offers_made = 0;
         self.bought = [0; 5];

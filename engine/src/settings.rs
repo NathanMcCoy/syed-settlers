@@ -136,7 +136,7 @@ settings! {
     variant_ports: bool = false, "variant.ports", 0, 1, "Strongest Ports: 2 Renown for the most Renown in buildings on markets (at least 3); 1 more Renown to win";
     sea: bool = false, "sea", 0, 1, "The sea expansion: ships, the pirate, gold fields and small islands to sail to (sea.scenario picks the map)";
     sea_scenario: u8 = 1, "sea.scenario", 1, 9, "Sea scenario: 1 New Shores, 2 Four Islands, 3 Fog Islands, 4 Through the Desert, 5 The Forgotten Tribe, 6 Cloth, 7 The Pirate Islands, 8 Wonders, 9 New World";
-    box_scenario: u8 = 0, "box.scenario", 0, 5, "A variants box scenario: 1 Fishing (0: none)";
+    box_scenario: u8 = 0, "box.scenario", 0, 5, "A variants box scenario: 1 Fishing, 2 Rivers (0: none)";
     city: bool = false, "city", 0, 1, "The city expansion: commodities, city improvements, walls, knights, raiders and progress cards (13 to win)";
     city_raiders: u8 = 7, "city.raiders", 2, 12, "Steps the raiders take before they land (the city expansion)";
     bank_goods: u8 = 12, "bank.goods", 0, 40, "Cards of each commodity in the game (the city expansion; 0: never runs out)";
@@ -172,14 +172,27 @@ impl Settings {
             return Err("the two-player variant (variant.two) is for 2 players".into());
         }
         if s.box_scenario != 0 {
-            if s.box_scenario != 1 {
+            if !matches!(s.box_scenario, 1 | 2) {
                 return Err(format!("variants box scenario {} isn't ready yet", s.box_scenario));
             }
             if s.sea || s.city || s.variant_events || s.variant_two {
                 return Err("a variants box scenario is played on its own (no sea, city, event cards or two-player variant)".into());
             }
-            if s.island_dunes == 0 {
+            if s.box_scenario == 1 && s.island_dunes == 0 {
                 return Err("Fishing needs a Dunes hex (it becomes the Lake)".into());
+            }
+            if s.box_scenario == 2 {
+                // Rivers: two Swamps (Dunes) and one Paddy fewer on the hexagon (17 numbered hexes)
+                let mut base = Settings::for_players(players);
+                base.box_scenario = 2;
+                if !base.island_large {
+                    (base.island_paddy, base.island_dunes) = (3, 2);
+                }
+                let s = Settings::parse_onto(base, text)?;
+                if s.island_dunes < 2 {
+                    return Err("Rivers needs 2 Dunes hexes (the Swamps)".into());
+                }
+                return Ok(s);
             }
         }
         if s.city {

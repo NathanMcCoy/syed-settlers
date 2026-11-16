@@ -16,6 +16,7 @@ use std::sync::Arc;
 mod city;
 mod cloth;
 mod fishing;
+mod rivers;
 mod pending;
 mod pirates;
 mod sea;
@@ -31,6 +32,7 @@ pub use wonders::{BRIDGE, NO_SETUP, WALL, WONDERS, Wonder};
 pub use two::NEUTRAL;
 pub use city::*;
 pub use fishing::{FISH_COSTS, LAKE_NUMBERS};
+pub use rivers::{BRIDGE_COST, BRIDGES};
 pub use events::{EVENTS, Event, event_card};
 pub use pending::{Decision, Pending};
 pub use sea::{GOLD, P_SHIP, SHIP, SHIP_COST};
@@ -110,6 +112,10 @@ pub enum Action {
     // The variants box's Fishing (fishing.rs)
     Fish(u8),             // spend fish: 0 remove the squall, 1 steal, 2 take a resource, 3 free Path, 4 free project
     GiveBoot(u8),         // pass the old boot to this player
+    // The variants box's Rivers (rivers.rs)
+    Bridge(u16),          // a bridge on this bridge site
+    BuyCoin(u8),          // give the bank this resource (at your rate) for a coin
+    SpendCoins(u8),       // 2 coins for this resource (twice a turn)
     NeutralHut(u8, u16),  // the two-player variant: a Hut for this neutral colour on this corner
     NeutralPath(u8, u16), // ... a Path for this neutral colour on this edge
     CashPilot,       // discard a played Pilot for 2 trade tokens
@@ -203,6 +209,11 @@ impl Board {
             if h.number != 0 {
                 by_number[h.number as usize].push(i as u16);
             }
+        }
+        // Rivers: with no 2 of its own, the 12's hex pays on a 2 too
+        if settings.box_scenario == 2 && !hexes.iter().any(|h| h.number == 2) {
+            let twelves: Vec<u16> = by_number[12].clone();
+            by_number[2].extend(twelves);
         }
         let mut corner_market = vec![NOBODY; graph.corners()];
         for (m, market) in island.1.iter().enumerate() {
@@ -343,6 +354,14 @@ pub struct Game {
     pub fish: [Vec<u8>; MAX_PLAYERS],
     pub boot: u8,
     pub lake: u16,
+    // Rivers (rivers.rs): river hexes, bridge sites and bridges built, bridges in hand, coins, coin
+    // purchases this turn
+    pub river_hex: Vec<bool>,
+    pub bridge_site: Vec<bool>,
+    pub bridge: Vec<bool>,
+    pub bridges_left: [u8; MAX_PLAYERS],
+    pub coins: [u8; MAX_PLAYERS],
+    pub coin_buys: u8,
     pub rng: Rng,
 }
 
@@ -497,6 +516,12 @@ impl Game {
             fish: Default::default(),
             boot: NOBODY,
             lake: NONE,
+            river_hex: Vec::new(),
+            bridge_site: Vec::new(),
+            bridge: Vec::new(),
+            bridges_left: [0; MAX_PLAYERS],
+            coins: [0; MAX_PLAYERS],
+            coin_buys: 0,
             rng,
             board,
         };
@@ -508,6 +533,9 @@ impl Game {
         }
         if g.fishing() {
             g.fish_setup();
+        }
+        if g.rivers() {
+            g.rivers_setup(island);
         }
         if g.settings().variant_two {
             g.place_neutrals();
@@ -577,10 +605,12 @@ impl Game {
     }
 
     pub fn renown(&self, p: usize) -> u32 {
-        self.huts(p) as u32 + 2 * self.lodges(p) as u32 + self.held[p][Project::Lighthouse as usize] as u32
+        let r = self.huts(p) as u32 + 2 * self.lodges(p) as u32 + self.held[p][Project::Lighthouse as usize] as u32
             + self.title_renown(p)
             + self.token_renown(p)
-            + self.city_renown(p)
+            + self.city_renown(p);
+        // Rivers: +1 the Wealthiest, -2 the Poor (never below 0)
+        (r as i32 + self.wealth_renown(p)).max(0) as u32
     }
 
     // ---- Winning (F10 in EXPANSIONS.md) ----
@@ -694,7 +724,7 @@ impl Game {
             }
             Phase::SetupPath { hut } => {
                 for e in listed(&g.corner_edges[hut as usize]) {
-                    if self.edge_owner[e] == NOBODY && self.board.edge_land[e] && self.pieces[pu][P_PATH] > 0 {
+                    if self.edge_owner[e] == NOBODY && self.board.edge_land[e] && !self.is_bridge_site(e) && self.pieces[pu][P_PATH] > 0 {
                         out.push(Action::Path(e as u16));
                     }
                     if self.sea() && !self.pirate_islands() && self.edge_owner[e] == NOBODY && self.board.edge_sea[e] && !self.by_pirate(e) && self.pieces[pu][P_SHIP] > 0 {
@@ -803,6 +833,7 @@ impl Game {
                 self.legal_markets(pu, out);
                 self.legal_city(p, out);
                 self.legal_fish(p, out);
+                self.legal_rivers(p, out);
                 if let Some(o) = &self.offer {
                     out.push(Action::Withdraw);
                     for s in 0..self.players {
@@ -852,7 +883,7 @@ impl Game {
             return; // an earthquake: repair first
         }
         for e in 0..self.edge_owner.len() {
-            if self.board.edge_land[e] && self.edge_connected(p, e) {
+            if self.board.edge_land[e] && !self.is_bridge_site(e) && self.edge_connected(p, e) {
                 out.push(Action::Path(e as u16));
             }
         }
@@ -1275,6 +1306,17 @@ impl Game {
             Action::Withdraw => self.offer = None,
             Action::Fish(k) => self.spend_fish(pu, k),
             Action::GiveBoot(s) => self.boot = s,
+            Action::Bridge(e) => self.build_bridge(pu, e as usize),
+            Action::BuyCoin(r) => {
+                let rate = self.rate(p, r as usize);
+                self.hands[pu][r as usize] -= rate;
+                self.coins[pu] += 1;
+            }
+            Action::SpendCoins(r) => {
+                self.coins[pu] -= 2;
+                self.hands[pu][r as usize] += 1;
+                self.coin_buys += 1;
+            }
             Action::Wall(_) | Action::Improve(_) | Action::Recruit(_) | Action::Promote(_) | Action::Activate(_)
             | Action::KnightMove(..) | Action::Displace(..) | Action::Chase(_) | Action::PlayCard(_) | Action::FixedRoll(..)
             | Action::DropCard(_) | Action::Choose(_) | Action::TakeCard(..) | Action::TakeProgress(..) | Action::SwapNumbers(..)
@@ -1324,6 +1366,7 @@ impl Game {
             pay(&mut self.hands[pu], &HUT_COST);
         }
         self.corner_owner[c] = p;
+        self.river_coins_corner(pu, c); // Rivers: a coin for a Hut on a river hex
         // The city expansion: the second setup building is a Lodge
         if setup && self.city() && self.setup_step as usize >= self.players {
             self.corner_kind[c] = LODGE;
@@ -1384,6 +1427,9 @@ impl Game {
         self.edge_owner[e] = p;
         self.edge_kind[e] = kind;
         self.pieces[pu][piece] -= 1;
+        if kind == PATH {
+            self.river_coins_edge(pu, e); // Rivers: a coin for a Path on a river hex
+        }
         // The Pirate Islands: the line's tip moves on at once (before Road Crew asks what's next)
         if kind == SHIP && self.pirate_islands() {
             self.extend_line_to(pu, e);

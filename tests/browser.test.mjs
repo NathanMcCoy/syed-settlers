@@ -184,6 +184,7 @@ for (const [name, type] of Object.entries(BROWSERS)) {
     ['the sea scenario The Forgotten Tribe', 3, { sea: true, 'sea.scenario': 5 }],
     ['the sea scenario The Pirate Islands', 3, { sea: true, 'sea.scenario': 7 }],
     ['the variants box scenario Fishing', 3, { 'box.scenario': 1 }],
+    ['the variants box scenario Rivers', 3, { 'box.scenario': 2 }],
     ['the city expansion', 3, { city: true }],
     ['the city expansion and the sea (New Shores)', 3, { city: true, sea: true, 'sea.scenario': 1 }],
   ]) {
@@ -216,6 +217,12 @@ for (const [name, type] of Object.entries(BROWSERS)) {
         if (settings['sea.scenario'] === 7) {
           assert.equal(await page.locator('#board [data-fleet]').count(), 1, 'the fleet');
           assert.equal(await page.locator('#board .squall').count(), 0, 'no squall');
+        }
+        if (settings['box.scenario'] === 2) {
+          assert.equal(await page.locator('#board .river').count(), 2, 'two rivers');
+          assert.equal(await page.locator('#board .bridge-site').count(), 6, 'six bridge sites');
+          assert.match(await page.textContent('#players'), /coin/, 'coins shown');
+          assert.ok(await page.locator('#shop [data-build="bridge"]').count() === 1, 'bridges in the shop');
         }
         if (settings['box.scenario'] === 1) {
           assert.equal(await page.locator('#board [data-lake]').count(), 1, 'the Lake with its numbers');
