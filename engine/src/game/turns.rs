@@ -35,6 +35,7 @@ impl Game {
         }
         // Gold fields' owners then choose their resources (pending.rs), starting with this player
         let gold = self.produce(total);
+        self.village_production(total);
         self.epidemic = false;
         let decisions = self.gold_decisions(&gold);
         self.decide_then(decisions, next);
@@ -51,6 +52,9 @@ impl Game {
         self.rolled_once = false;
         self.token_used = false;
         self.pilot_cashed = false;
+        if self.cloth_ending() {
+            return;
+        }
         if self.pairs() && !self.paired {
             self.start_extra_phase(self.partner(self.owner));
         } else {

@@ -135,7 +135,20 @@ test('live updates arrive for each move, with the seat\'s own view', async () =>
   controller.abort();
 });
 
-// Plays the first legal move for `key` until it's that seat's main turn with at least one card
+// A new game with these seats, played (first legal moves for the person) to the person's main turn
+// with a card. A game the bots win first is replaced (found Nov 16: the "timed out" flake was a game
+// already over, the person's setup Huts on spots that never produced).
+async function gameAtMyMainTurn(seats) {
+  for (let tries = 0; tries < 5; tries++) {
+    const { id, key } = await (await post('/api/games', { seats })).json();
+    const g = await toMyMainTurn(id, key);
+    if (!g.over) return { id, key, g };
+  }
+  throw new Error('the bots won 5 games before the person had a card');
+}
+
+// Plays the first legal move for `key` until it's that seat's main turn with at least one card (or
+// the game is over: { over: true })
 async function toMyMainTurn(id, key) {
   let last = null, moves = 0;
   try {
@@ -144,6 +157,8 @@ async function toMyMainTurn(id, key) {
       const v = g.view;
       last = { phase: v.phase, toAct: v.toAct, you: v.you, turn: v.turn, hand: v.hand, legal: v.legal.slice(0, 4), log: g.log.slice(-4) };
       if (v.toAct === v.you && v.phase === 'main' && v.hand.some(n => n > 0)) return g;
+      // The bots can win before this seat (first legal spots: maybe poor ones) ever holds a card
+      if (v.phase === 'over') return { over: true };
       if (v.toAct === v.you && v.legal.length) {
         const pick = v.legal.find(m => m === 'roll') ?? v.legal.find(m => m === 'end') ?? v.legal[0];
         await post(`/api/games/${id}/move`, { k: key, move: pick });
@@ -171,8 +186,7 @@ test('trading with a bot: the bot answers by itself, an accepted offer can be de
   // Several games, so some offers are accepted and some declined
   let answered = 0, dealt = 0;
   for (let n = 0; n < 6; n++) {
-    const { id, key } = await (await post('/api/games', { seats: [{ kind: 'person' }, { kind: 'bot' }] })).json();
-    const g = await toMyMainTurn(id, key);
+    const { id, key, g } = await gameAtMyMainTurn([{ kind: 'person' }, { kind: 'bot' }]);
     const bot = 1 - g.view.you;
     assert.equal(g.view.canOffer, true);
     assert.equal(g.view.offersLeft, null, 'no limit on offers by default');
@@ -283,8 +297,7 @@ test('a friend counters an offer and the host takes the counter', async () => {
 test('an open offer to a bot trades as soon as it accepts', async () => {
   let accepted = 0;
   for (let n = 0; n < 8; n++) {
-    const { id, key } = await (await post('/api/games', { seats: [{ kind: 'person' }, { kind: 'bot' }] })).json();
-    const g = await toMyMainTurn(id, key);
+    const { id, key, g } = await gameAtMyMainTurn([{ kind: 'person' }, { kind: 'bot' }]);
     const bot = 1 - g.view.you;
     const offer = oneForOne(g.view.hand, 1 << bot);
     assert.equal((await post(`/api/games/${id}/move`, { k: key, move: `${offer.text} open` })).status, 200);

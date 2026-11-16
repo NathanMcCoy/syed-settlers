@@ -13,6 +13,7 @@ use crate::rng::Rng;
 use crate::settings::Settings;
 use std::sync::Arc;
 
+mod cloth;
 mod pending;
 mod sea;
 mod titles;
@@ -232,6 +233,12 @@ pub struct Game {
     pub fog_tiles: Vec<Terrain>,
     pub fog_numbers: Vec<u8>,
     pub revealed: Vec<u16>,
+    // The sea scenario Cloth (cloth.rs): each village's cloth, the general supply, each player's
+    // trade relations (a bit per village), and whether the game ended with 5 empty villages
+    pub village_cloth: Vec<u8>,
+    pub general_cloth: u8,
+    pub village_links: [u16; MAX_PLAYERS],
+    pub cloth_ended: bool,
     // Event cards (events.rs): the deck (top last), the last card's event (NOBODY before the first),
     // whether this production is an epidemic, and Paths an earthquake damaged
     pub event_deck: Vec<u8>,
@@ -348,6 +355,10 @@ impl Game {
             fog_tiles: island.fog_tiles.clone(),
             fog_numbers: island.fog_numbers.clone(),
             revealed: Vec::new(),
+            village_cloth: vec![cloth::VILLAGE_CLOTH; island.hexes.iter().filter(|h| h.terrain == Terrain::Village).count()],
+            general_cloth: cloth::GENERAL_CLOTH,
+            village_links: [0; MAX_PLAYERS],
+            cloth_ended: false,
             event_deck: Vec::new(),
             last_event: NOBODY,
             epidemic: false,
@@ -540,7 +551,8 @@ impl Game {
                 let anywhere = anywhere || range == 0;
                 let before = out.len();
                 for &h in &self.board.land_hexes {
-                    if h != self.squall && (anywhere || self.board.hex_distance(h, self.squall) <= range) && self.squall_allowed(h as usize) {
+                    let village = self.board.terrain[h as usize] == Terrain::Village; // Cloth: not on the small islands
+                    if h != self.squall && !village && (anywhere || self.board.hex_distance(h, self.squall) <= range) && self.squall_allowed(h as usize) {
                         out.push(Action::Squall(h));
                     }
                 }
@@ -548,7 +560,7 @@ impl Game {
                 if out.len() == before && self.settings().variant_friendly {
                     out.extend(self.squall_fallback().into_iter().map(Action::Squall));
                 }
-                if self.pirate != NONE {
+                if self.pirate != NONE && self.pirate_free(pu) {
                     for &h in &self.board.sea_hexes {
                         if h != self.pirate {
                             out.push(Action::Pirate(h));
@@ -580,7 +592,7 @@ impl Game {
                 }
                 if afford(hand, &HUT_COST) && pieces[P_HUT] > 0 {
                     for c in 0..g.corners() {
-                        if self.spaced(c) && self.touches_own_edge(p, c) && !self.by_damage(c) {
+                        if self.spaced(c) && self.touches_own_edge(p, c) && !self.by_damage(c) && self.hut_spot(c) {
                             out.push(Action::Hut(c as u16));
                         }
                     }
@@ -845,6 +857,7 @@ impl Game {
                 self.ship_moved = true;
                 self.update_titles();
                 self.lift_fog(pu, to);
+                self.check_villages(pu);
             }
             Action::Pirate(h) => {
                 self.pirate = h;
@@ -1075,7 +1088,7 @@ impl Game {
         if setup {
             // The second round's Hut collects one of each resource around it (a gold field: one of
             // the player's choice)
-            if self.setup_step as usize >= self.players {
+            if self.setup_step as usize >= (self.setup_rounds() - 1) * self.players {
                 for h in listed(&self.board.graph.corner_hexes[c]) {
                     let r = self.board.resource[h];
                     if r == GOLD {
@@ -1092,6 +1105,7 @@ impl Game {
         } else {
             self.island_reach(pu, c, false);
             self.hut_tokens(pu, c);
+            self.check_villages(pu);
         }
         // A new building can break other players' lines
         self.update_titles();
@@ -1125,13 +1139,15 @@ impl Game {
         if let Phase::SetupPath { .. } = self.phase {
             self.setup_step += 1;
             let n = self.players as u8;
-            if self.setup_step == 2 * n {
+            if self.setup_step == self.setup_rounds() as u8 * n {
                 self.current = 0;
                 self.owner = 0;
                 self.turn = 1;
                 self.phase = Phase::PreRoll;
             } else {
-                self.current = if self.setup_step < n { self.setup_step } else { 2 * n - 1 - self.setup_step };
+                // Snake order: forward, back, (Cloth: forward again)
+                let (round, k) = (self.setup_step / n, self.setup_step % n);
+                self.current = if round % 2 == 1 { n - 1 - k } else { k };
                 self.phase = Phase::SetupHut;
             }
         }
@@ -1139,6 +1155,7 @@ impl Game {
         // Fog Islands: hidden hexes at its corners are revealed (after setup has moved on, so a gold
         // choice comes before the next setup step)
         self.lift_fog(pu, e);
+        self.check_villages(pu);
         // The two-player variant: a Path built owes a neutral Path
         if kind == PATH && built {
             if let Some(d) = self.owe_neutral(p, false) {
@@ -1177,6 +1194,9 @@ impl Game {
                 continue;
             }
             let r = self.board.resource[h as usize] as usize;
+            if r == NOBODY as usize {
+                continue; // a village (Cloth) trades cloth instead (cloth.rs)
+            }
             for &c in &g.hex_corners[h as usize] {
                 let o = self.corner_owner[c as usize];
                 if o != NOBODY && (o as usize) < self.players {

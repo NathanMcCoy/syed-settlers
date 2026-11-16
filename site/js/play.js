@@ -10,7 +10,7 @@ const $ = id => document.getElementById(id);
 const COLOURS = ['Red', 'Blue', 'Orange', 'Purple', 'Green', 'Brown'];
 // Titles and tokens by the names the engine uses (titles.rs, tokens.rs); unknown ones show their name
 const TITLE_NAMES = { longestPath: 'Longest Path', mostPilots: 'Most Pilots', strongestPorts: 'Strongest Ports' };
-const TOKEN_NAMES = { renown: ['Renown token', 'Renown tokens'], trade: ['trade token', 'trade tokens'] };
+const TOKEN_NAMES = { renown: ['Renown token', 'Renown tokens'], trade: ['trade token', 'trade tokens'], cloth: ['cloth', 'cloth'] };
 // Event cards (the variants box)
 const EVENT_NAMES = {
   beautifulDay: ['A beautiful day', 'Nothing happens.'],
@@ -313,6 +313,13 @@ function drawPieces(v, before) {
   }
   const sq = centre(board.island.hexes[v.squall]);
   layers.squall.replaceChildren(el('circle', { cx: sq.x, cy: sq.y, r: SIZE * 0.6, class: `squall${before && before.squall !== v.squall ? ' new' : ''}` }));
+  // Cloth: what each village has left, and who trades with it
+  for (const [h, cloth, linked] of v.villages ?? []) {
+    const c = centre(board.island.hexes[h]);
+    const label = el('text', { x: c.x, y: c.y + SIZE * 0.72, class: 'village-cloth', 'data-village': h }, `${cloth} cloth`);
+    label.append(el('title', {}, linked.length ? `Trades with ${linked.map(nameOf).join(', ')}` : 'Nobody trades with this village yet'));
+    layers.squall.append(label);
+  }
   // The sea expansion: the pirate
   if (v.pirate !== null && v.pirate !== undefined) {
     const pc = centre(board.island.hexes[v.pirate]);
@@ -480,8 +487,8 @@ function seaEdgeEnds(e) {
 
 function status(v) {
   if (v.phase === 'over') {
-    const limit = v.byRounds ? `The ${v.roundLimit} rounds are up. ` : '';
-    if (v.winner === null) return `${limit}It's a draw: equal Renown and Lodges at the top.`;
+    const limit = v.byRounds ? `The ${v.roundLimit} rounds are up. ` : v.clothEnded ? 'Five villages have run out of cloth. ' : '';
+    if (v.winner === null) return `${limit}It's a draw: equal ${v.clothEnded ? 'Renown and cloth' : 'Renown and Lodges'} at the top.`;
     return limit + (v.winner === v.you ? `You win with ${v.players[v.winner].renown} Renown!` : `${nameOf(v.winner)} wins with ${v.players[v.winner].renown} Renown.`);
   }
   const who = v.toAct === v.you ? 'You' : nameOf(v.toAct);

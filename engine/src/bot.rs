@@ -251,6 +251,14 @@ impl Greedy {
         if pieces[P_LODGE] > 0 && g.huts(pu) > 0 {
             return (Goal::Lodge, LODGE_COST);
         }
+        // Cloth: link to a village not yet traded with (cloth is Renown), by ship
+        if g.cloth() && pieces[P_SHIP] > 0 {
+            if let Some((d, e)) = reachable_village(g, p) {
+                if d <= 6 {
+                    return (Goal::ShipEdge(e), SHIP_COST);
+                }
+            }
+        }
         // The sea expansion: sail when the best spot reached by ships beats the best by Paths
         if g.sea() && pieces[P_HUT] > 0 && pieces[P_SHIP] > 0 {
             let by_land = spot.map_or(f64::MIN, |(c, d, _)| spot_value(g, p, c) - 2.0 * d as f64);
@@ -437,6 +445,47 @@ fn reachable_by_sea(g: &Game, p: u8) -> Option<(usize, u32, Option<usize>)> {
         }
     }
     best.map(|(c, d, f, _)| (c, d, f))
+}
+
+// Cloth: the nearest corner of a village p isn't linked to, by ships from p's coastal buildings and
+// ships: (ships needed, the first ship to build)
+fn reachable_village(g: &Game, p: u8) -> Option<(u32, usize)> {
+    let gr = &g.board.graph;
+    let villages = g.villages();
+    let unlinked: Vec<usize> = villages.iter().enumerate().filter(|(k, _)| g.village_links[p as usize] & (1 << k) == 0).map(|(_, &h)| h).collect();
+    if unlinked.is_empty() {
+        return None;
+    }
+    let target = |c: usize| listed(&gr.corner_hexes[c]).any(|h| unlinked.contains(&h));
+    let corners = gr.corners();
+    let mut dist = vec![u32::MAX; corners];
+    let mut first: Vec<Option<usize>> = vec![None; corners];
+    let mut queue = std::collections::VecDeque::new();
+    for c in 0..corners {
+        let own_ship = listed(&gr.corner_edges[c]).any(|e| g.edge_owner[e] == p && g.edge_kind[e] == SHIP);
+        if g.corner_owner[c] == p || (g.corner_owner[c] == NOBODY && own_ship) {
+            dist[c] = 0;
+            queue.push_back(c);
+        }
+    }
+    while let Some(c) = queue.pop_front() {
+        if dist[c] > 0 && target(c) {
+            return first[c].map(|e| (dist[c], e));
+        }
+        if g.corner_owner[c] != NOBODY && g.corner_owner[c] != p {
+            continue;
+        }
+        for (k, n) in listed(&gr.corner_corners[c]).enumerate() {
+            let e = gr.corner_edges[c][k] as usize;
+            if dist[n] != u32::MAX || !g.board.edge_sea[e] || g.edge_owner[e] != NOBODY || g.by_pirate(e) {
+                continue;
+            }
+            dist[n] = dist[c] + 1;
+            first[n] = if dist[c] == 0 { Some(e) } else { first[c] };
+            queue.push_back(n);
+        }
+    }
+    None
 }
 
 // In setup: the best free spot one step past this edge

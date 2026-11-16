@@ -258,7 +258,7 @@ pub fn view_json(g: &Game, seat: u8) -> String {
             "{{\"phase\":\"{}\",\"current\":{},\"toAct\":{},\"turn\":{},\"lastRoll\":{},\"squall\":{},\"winner\":{},",
             "\"buildings\":[{}],\"roads\":[{}],\"players\":[{}],\"longestPath\":{},\"mostPilots\":{},",
             "\"row\":{},\"deck\":{},\"lastTake\":{},\"win\":{},\"you\":{},\"hand\":{},\"rates\":{},\"legal\":{},",
-            "\"offer\":{},\"canOffer\":{},\"offersLeft\":{},\"dice\":{},\"bank\":{},\"short\":{},\"handLimit\":{},\"round\":{},\"roundLimit\":{},\"byRounds\":{},\"bought\":{},\"turnOf\":{},\"paired\":{},\"titles\":{},\"deciding\":{},\"pirate\":{},\"shipMoved\":{},\"event\":{},\"damaged\":{},\"revealed\":{}}}"
+            "\"offer\":{},\"canOffer\":{},\"offersLeft\":{},\"dice\":{},\"bank\":{},\"short\":{},\"handLimit\":{},\"round\":{},\"roundLimit\":{},\"byRounds\":{},\"bought\":{},\"turnOf\":{},\"paired\":{},\"titles\":{},\"deciding\":{},\"pirate\":{},\"shipMoved\":{},\"event\":{},\"damaged\":{},\"revealed\":{},\"villages\":{},\"clothEnded\":{}}}"
         ),
         // While decisions are being made (pending.rs), the phase is named after the first one ("discard")
         g.deciding().map_or(phase_name(g.phase), |d| d.decision.name()), g.current, g.to_act(), g.turn,
@@ -306,6 +306,9 @@ pub fn view_json(g: &Game, seat: u8) -> String {
             let hex = &g.board.hexes[h as usize];
             format!("[{h},\"{}\",{}]", hex.terrain.name(), if hex.number == 0 { "null".into() } else { hex.number.to_string() })
         })),
+        // Cloth: each village as [hex, cloth left, [linked seats]]; whether 5 empty villages ended it
+        list(g.villages().into_iter().enumerate().map(|(k, h)| format!("[{h},{},{}]", g.village_cloth[k], list((0..g.players).filter(|&p| g.village_links[p] & (1 << k) != 0))))),
+        g.cloth_ended,
     )
 }
 
@@ -434,7 +437,7 @@ mod groundwork_tests {
         g.give_tokens(1, Token::Trade, 1);
         let v = view_json(&g, 0);
         assert!(v.contains("\"titles\":[{\"name\":\"longestPath\",\"holder\":null,\"min\":5,\"renown\":2},{\"name\":\"mostPilots\",\"holder\":null,\"min\":3,\"renown\":2}]"));
-        assert!(v.contains("\"tokens\":{\"renown\":2,\"trade\":1},\"target\":10"));
+        assert!(v.contains("\"tokens\":{\"renown\":2,\"trade\":1,\"cloth\":0},\"target\":10"));
         assert!(v.contains("\"deciding\":null"));
         assert_eq!(g.renown(1), 2, "Renown tokens count");
         assert!(!g.spend_tokens(1, Token::Trade, 2) && g.spend_tokens(1, Token::Trade, 1));

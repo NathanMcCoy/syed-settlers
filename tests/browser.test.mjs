@@ -178,6 +178,8 @@ for (const [name, type] of Object.entries(BROWSERS)) {
   for (const [label, seats, settings] of [
     ['event cards, the friendly squall and Strongest Ports', 3, { 'variant.events': true, 'variant.friendly': true, 'variant.ports': true }],
     ['the two-player variant', 2, { 'variant.two': true }],
+    ['the sea scenario Cloth', 3, { sea: true, 'sea.scenario': 6 }],
+    ['the sea scenario Fog Islands', 3, { sea: true, 'sea.scenario': 3 }],
   ]) {
     test(`${name}: a game with ${label}, played by clicking`, async () => {
       const others = Array.from({ length: seats - 1 }, () => ({ kind: 'bot' }));
@@ -203,6 +205,8 @@ for (const [name, type] of Object.entries(BROWSERS)) {
         assert.ok(rolls >= 10 || (await page.evaluate(() => document.body.dataset.phase)) === 'over', `rolled ${rolls} times`);
         if (settings['variant.events']) assert.equal(await page.locator('#dice .event-card').count(), 1, 'an event card instead of dice');
         if (settings['variant.two']) assert.ok(await page.locator('.building title', { hasText: 'Neutral' }).count() >= 2, 'the neutral Huts');
+        if (settings['sea.scenario'] === 6) assert.equal(await page.locator('.village-cloth').count(), 8, 'eight villages with their cloth');
+        if (settings['sea.scenario'] === 3) assert.ok(await page.locator('polygon.t-fog').count() > 0, 'fog');
         assert.deepEqual(errors, []);
       } finally {
         await browser.close();

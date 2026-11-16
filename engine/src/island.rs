@@ -22,6 +22,7 @@ pub enum Terrain {
     Dunes,
     Gold, // the sea expansion: produces a resource of the player's choice
     Fog,  // the sea expansion's Fog Islands: a hidden hex, turned over when a Path or ship reaches it
+    Village, // the sea scenario Cloth: a village trading cloth (a number, no resource)
 }
 use Terrain::*;
 
@@ -38,11 +39,11 @@ impl Terrain {
             Fields => Some(2),
             Mine => Some(3),
             Paddy => Some(4),
-            Sea | Dunes | Gold | Fog => None,
+            Sea | Dunes | Gold | Fog | Village => None,
         }
     }
     pub fn name(self) -> &'static str {
-        ["sea", "forest", "quarry", "fields", "mine", "paddy", "dunes", "gold", "fog"][self as usize]
+        ["sea", "forest", "quarry", "fields", "mine", "paddy", "dunes", "gold", "fog", "village"][self as usize]
     }
 }
 
@@ -292,7 +293,7 @@ fn attempt_island(s: &Settings, rng: &mut Rng) -> Option<Island> {
 
 // Where the squall may start: the island's Dunes, or with none, its weakest hexes (fewest pips)
 fn squall_starts(hexes: &[Hex], everywhere: bool) -> Vec<u16> {
-    let main = |i: &usize| !matches!(hexes[*i].terrain, Sea | Fog) && (everywhere || hexes[*i].region == 0);
+    let main = |i: &usize| !matches!(hexes[*i].terrain, Sea | Fog | Village) && (everywhere || hexes[*i].region == 0);
     let dunes: Vec<u16> = (0..hexes.len()).filter(main).filter(|&i| hexes[i].terrain == Dunes).map(|i| i as u16).collect();
     if !dunes.is_empty() {
         return dunes;
@@ -571,7 +572,7 @@ fn place_markets(rng: &mut Rng, hexes: &[Hex], g: &Graph, any: u8, each: u8, ext
     let mut coast: Vec<(u16, u8, u16)> = Vec::new();
     for (h, hex) in hexes.iter().enumerate() {
         // Markets are on the main island's coast (the sea expansion's small islands have none)
-        if hex.terrain == Sea || hex.terrain == Fog || (hex.region != 0 && !everywhere) {
+        if matches!(hex.terrain, Sea | Fog | Village) || (hex.region != 0 && !everywhere) {
             continue;
         }
         for side in 0..6 {

@@ -135,7 +135,7 @@ settings! {
     variant_two: bool = false, "variant.two", 0, 1, "The two-player variant: two neutral colours, two rolls a turn, trade tokens (2 players only)";
     variant_ports: bool = false, "variant.ports", 0, 1, "Strongest Ports: 2 Renown for the most Renown in buildings on markets (at least 3); 1 more Renown to win";
     sea: bool = false, "sea", 0, 1, "The sea expansion: ships, the pirate, gold fields and small islands to sail to (sea.scenario picks the map)";
-    sea_scenario: u8 = 1, "sea.scenario", 1, 9, "Sea scenario: 1 New Shores, 2 Four Islands, 3 Fog Islands, 4 Through the Desert, 9 New World (5-8 to come)";
+    sea_scenario: u8 = 1, "sea.scenario", 1, 9, "Sea scenario: 1 New Shores, 2 Four Islands, 3 Fog Islands, 4 Through the Desert, 6 Cloth, 9 New World (5, 7, 8 to come)";
     sea_island_bonus: u8 = 2, "sea.islandBonus", 0, 4, "Renown tokens for your first Hut on each small island (the sea expansion)";
 }
 
@@ -171,7 +171,7 @@ impl Settings {
         }
         // Expansions bring their own defaults (F1 in EXPANSIONS.md): players' defaults, then the
         // expansion's, then the game's own settings on top
-        if !matches!(s.sea_scenario, 1 | 2 | 3 | 4 | 9) {
+        if !matches!(s.sea_scenario, 1 | 2 | 3 | 4 | 6 | 9) {
             return Err(format!("sea scenario {} isn't ready yet", s.sea_scenario));
         }
         let mut base = Settings::for_players(players);
@@ -187,6 +187,7 @@ impl Settings {
             2 => (13, 2),
             3 => (12, 0),
             4 => (14, 2),
+            6 => (14, 0),
             9 => (12, 1),
             _ => (14, 2),
         };

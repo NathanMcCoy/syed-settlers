@@ -256,10 +256,18 @@ Each map is made from the seed to the scenario's rules and tile counts; the layo
 - **4 Through the Desert** (14 Renown): the main island with a desert of 2 more Dunes along its east side, a strip of
   4 hexes beyond it (Forest, Paddy, Fields, Mine; numbers 3, 5, 9, 11) and two small islands of 2 hexes holding the
   2 Gold, a Quarry and a Paddy (4, 6, 8, 10). Set up on the main island; the strip and each small island are a bonus (2).
+- **6 Cloth** (14 Renown): two large islands of 12 (2 Gold, 3 Mine, 4 Forest, 4 Paddy, 5 Fields, 4 Quarry, 2 Dunes) and
+  four small islands of two **villages** each (numbers 3-11, 5 cloth each; 10 more in a general supply). No Huts on
+  the small islands; the squall never goes there. Three setup Huts each (forward, back, forward; only the third
+  collects). A line of your Paths and ships from one of your buildings to a village's corner is a trade relation:
+  1 cloth from it at once, and whenever its number is rolled each linked player takes 1 (from the village, then the
+  general supply; an empty village sends nothing). 2 cloth = 1 Renown. Ships on such a route can't move. The pirate
+  can't be moved by a player with no trade relation. No Longest Path. Ends at 14 Renown, or at the end of a turn with
+  5 empty villages: the most Renown wins, then the most cloth, else a draw.
 - **9 New World** (12 Renown): the rulebook's 23 tiles (4 Mine, 5 Forest, 5 Paddy, 5 Fields, 4 Quarry; 2 more of
   each with 5-6 players) on 3 to 5 random islands; 10 markets (5 general) on any coast. Set up anywhere; every island
   beyond your home islands is a bonus of 1.
-- Still to come: 5 The Forgotten Tribe, 6 Cloth, 7 The Pirate Islands, 8 The Wonders.
+- Still to come: 5 The Forgotten Tribe, 7 The Pirate Islands, 8 The Wonders.
 
 ## Not in version 1 (planned)
 
