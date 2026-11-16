@@ -524,6 +524,10 @@ fn drive_choice(g: &Game, p: u8, legal: &[Action]) -> Action {
         }
     }
     let here = g.wagon_corner[pu] as usize;
+    // At a works with something to do: enter it
+    if legal.contains(&Action::EnterWorks) {
+        return Action::EnterWorks;
+    }
     // A raider by the wagon: try to drive it off
     if let Some(&a) = legal.iter().find(|a| matches!(a, Action::DriveOff(_))) {
         return a;

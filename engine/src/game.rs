@@ -139,6 +139,7 @@ pub enum Action {
     Boost,                // a Grain for 2 more move points (once a turn)
     BarbarianTo(u16, u16), // a raider from this edge to that one
     UpgradeWagon,         // your wagon's next level
+    EnterWorks,           // your wagon enters the works at its corner (deliver, pick up; the move ends)
     // The exploration expansion (explore.rs)
     Harbour(u16),         // a harbour building in place of your Hut on this corner
     BuildShip(u16),       // a ship on this sea edge by your harbour (in setup: free, with a settler)
@@ -1466,7 +1467,7 @@ impl Game {
             }
             Action::Bid(f, gr) => self.bid(pu, f, gr),
             Action::Capture(_) | Action::PlaceGuard(_) | Action::MoveRaider(..) | Action::GuardMove(..) | Action::GuardRun(..) => self.raid_decided(a),
-            Action::WagonStep(_) | Action::DriveOff(_) | Action::Boost | Action::BarbarianTo(..) | Action::UpgradeWagon => self.trade_decided(a),
+            Action::WagonStep(_) | Action::DriveOff(_) | Action::Boost | Action::BarbarianTo(..) | Action::UpgradeWagon | Action::EnterWorks => self.trade_decided(a),
             Action::BuildShip(e) if matches!(self.phase, Phase::SetupPath { .. }) => {
                 self.ex.ships.push(Ship { owner: p, edge: e, cargo: [SETTLER, 0], moved: false });
                 self.ex.boosted.push(false);

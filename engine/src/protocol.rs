@@ -99,6 +99,7 @@ pub fn action_text(a: Action) -> String {
         Action::Boost => "boost".into(),
         Action::BarbarianTo(f, t) => format!("barbarianto {f} {t}"),
         Action::UpgradeWagon => "upgradewagon".into(),
+        Action::EnterWorks => "enterworks".into(),
         Action::Harbour(c) => format!("harbour {c}"),
         Action::BuildShip(e) => format!("buildship {e}"),
         Action::BuildCargo(i, k) => format!("cargo {i} {k}"),
@@ -238,6 +239,7 @@ pub fn parse_action(text: &str) -> Result<Action, String> {
         Some("boost") => Action::Boost,
         Some("barbarianto") => Action::BarbarianTo(num(1)?, num(2)?),
         Some("upgradewagon") => Action::UpgradeWagon,
+        Some("enterworks") => Action::EnterWorks,
         Some("harbour") => Action::Harbour(num(1)?),
         Some("buildship") => Action::BuildShip(num(1)?),
         Some("cargo") => Action::BuildCargo(small(1)?, small(2)?),
@@ -256,7 +258,7 @@ pub fn parse_action(text: &str) -> Result<Action, String> {
         _ => return Err(format!("unknown move \"{text}\"")),
     };
     let expected = match a {
-        Action::Roll | Action::EndTurn | Action::Withdraw | Action::BuildWonder | Action::CashPilot | Action::ForceTrade | Action::SquallHome | Action::Skip | Action::Boost | Action::UpgradeWagon | Action::FishDie => 1,
+        Action::Roll | Action::EndTurn | Action::Withdraw | Action::BuildWonder | Action::CashPilot | Action::ForceTrade | Action::SquallHome | Action::Skip | Action::Boost | Action::UpgradeWagon | Action::FishDie | Action::EnterWorks => 1,
         Action::Trade(..) | Action::Answer(..) | Action::MoveShip(..) | Action::Gift(..) | Action::NeutralHut(..) | Action::NeutralPath(..) => 3,
         Action::KnightMove(..) | Action::Displace(..) | Action::FixedRoll(..) | Action::TakeCard(..) | Action::TakeProgress(..) | Action::SwapNumbers(..) | Action::Bid(..) => 3,
         Action::MoveRaider(..) | Action::GuardMove(..) | Action::GuardRun(..) | Action::BarbarianTo(..) => 3,

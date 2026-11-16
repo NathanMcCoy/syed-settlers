@@ -6,9 +6,9 @@
 //
 // - At the end of your turn your wagon moves, by its move points (wagon level 0-4: 4, 5, 6, 7, 7; a
 //   Grain once a turn: +2): each step along an edge costs 2, 1 on your own Path, 1 + a coin (to the
-//   owner) on another player's Path, 2 more with a raider on it. Reaching a corner of a works ends the
-//   move: a good it wants is delivered (1 Renown, and coins by level: 1-5), then you pick up one of its
-//   goods (one at a time).
+//   owner) on another player's Path, 2 more with a raider on it. From a corner of a works, entering it
+//   (its interior path to the plaza) costs 2 more and ends the move: a good it wants is delivered
+//   (1 Renown, and coins by level: 1-5), then you pick up one of its goods (one at a time).
 // - From level 1, at a corner by a raider, try to drive it off (once each a turn): a die of 6 (level
 //   1), 5-6, 4-6, 3-6 moves it to any free edge.
 // - Upgrade the wagon: Timber + Fish + Stone, Timber + Stone, then 2 Timber + Fish + Stone twice; level 4
@@ -18,13 +18,15 @@
 //   (the wagon moves twice this turn; the Good Harvest slot), Renown 3 (as Lighthouses).
 // - Coins as in Rivers. 13 Renown to win.
 //
-// Simplified (RULES.md): a works is reached at any of its corners (no interior paths or plaza); the
+// Simplified (RULES.md): a works is entered from any of its corners for 2 move points (no Paths on its
+// interior paths); the
 // three raiders start on random land edges; goods are drawn at random from each works' two kinds.
 use super::*;
 
 pub const WAGON_MP: [u8; 5] = [4, 5, 6, 7, 7];
 pub const DRIVE_FROM: [u8; 5] = [7, 6, 5, 4, 3]; // a die at least this drives a raider off (7: never)
 pub const DELIVERY_COINS: [u8; 5] = [1, 2, 3, 4, 5];
+pub const ENTER_WORKS: u8 = 2; // move points to enter a works from its corner
 pub const UPGRADES: [Hand; 4] = [[1, 1, 0, 0, 1], [1, 1, 0, 0, 0], [2, 1, 0, 0, 1], [2, 1, 0, 0, 1]];
 // Goods
 pub const TOOLS: u8 = 0;
@@ -105,6 +107,14 @@ impl Game {
                 }
             }
         }
+        // Enter the works here: with a good it wants, or an empty wagon to load
+        if let Some(w) = self.works_at(c) {
+            let cargo = self.cargo[pu];
+            let worth = cargo == NOBODY || WORKS[w].1.contains(&cargo);
+            if worth && self.wagon_mp >= ENTER_WORKS {
+                out.push(Action::EnterWorks);
+            }
+        }
         if self.wagon_level[pu] >= 1 {
             for e in listed(&g.corner_edges[c]) {
                 if self.barbarian[e] && !self.driven.contains(&(e as u16)) {
@@ -145,8 +155,11 @@ impl Game {
                     self.coins[self.edge_owner[e] as usize] += 1;
                 }
                 self.wagon_corner[pu] = n;
-                // A works ends the move: deliver, then pick up
-                if let Some(w) = self.works_at(n as usize) {
+            }
+            Action::EnterWorks => {
+                // The works' plaza: deliver, then pick up; the move ends
+                self.wagon_mp -= ENTER_WORKS;
+                if let Some(w) = self.works_at(self.wagon_corner[pu] as usize) {
                     let cargo = self.cargo[pu];
                     if cargo != NOBODY && WORKS[w].1.contains(&cargo) {
                         self.delivered[pu] += 1;

@@ -354,13 +354,13 @@ Played on their own: not with the sea, the city expansion, event cards or the tw
   the wagon starts; 5 coins each. Works: Keep wants Marble/Glass, supplies Tools/Sand; Glassworks wants Sand,
   supplies Glass/Tools; Stoneworks wants Tools, supplies Sand/Marble (stacks of 12, 6 of each). End of turn: the
   wagon moves by move points (levels 0-4: 4, 5, 6, 7, 7; a Grain once a turn +2): a step costs 2, 1 on your Path,
-  1 + a coin to the owner on another's Path (not without a coin), +2 with a raider. A works' corner ends the move:
-  a wanted good is delivered (1 Renown, coins 1-5 by level), then one of its goods is taken. Driving off (level 1+,
+  1 + a coin to the owner on another's Path (not without a coin), +2 with a raider. From a works' corner, entering it costs
+  2 more move points and ends the move: a wanted good is delivered (1 Renown, coins 1-5 by level), then one of its goods is taken. Driving off (level 1+,
   each raider once a turn): a die of at least 6/5/4/3 by level; then the player moves it to any free edge. Upgrades:
   Timber+Fish+Stone, Timber+Stone, 2 Timber+Fish+Stone, 2 Timber+Fish+Stone; level 4 +1 Renown. A 7: discards, then
   the roller moves a raider (robbing a Path's owner where it lands). Projects (as the project deck): Knight 16 (the
   Pilot slot: move a raider), Path Builders 3 (Road Crew), Swift Journey 3 (the Good Harvest slot: the wagon moves
-  twice), Renown 3 (Lighthouses). Coins as in Rivers. (Ours: works reached at any corner; random raider starts.)
+  twice), Renown 3 (Lighthouses). Coins as in Rivers. (Ours: works entered from any corner for 2 points; random raider starts.)
 
 ## The exploration expansion ⚙ (`explore` 1-5, chosen when starting a game)
 
