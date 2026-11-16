@@ -44,6 +44,10 @@ impl Game {
         self.after = after;
         self.drop_impossible();
         self.phase = if self.pending.is_empty() { after } else { Phase::Decide };
+        // Nothing to decide after all: an event card's or the fleet's number produces now
+        if let Phase::Rolled { total } = self.phase {
+            self.rolled(total);
+        }
     }
 
     // Decisions that can't be made any more go: gold or a pick with nothing left in the bank, a gift

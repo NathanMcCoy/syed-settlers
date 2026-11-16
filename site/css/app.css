@@ -40,6 +40,9 @@ button { font: inherit; padding: 6px 12px; border-radius: 6px; border: 1px solid
 .t-sea { fill: var(--sea); stroke: none; }
 .t-forest { fill: var(--forest); } .t-quarry { fill: var(--quarry); } .t-fields { fill: var(--fields); }
 .t-mine { fill: var(--mine); } .t-paddy { fill: var(--paddy); } .t-dunes { fill: var(--dunes); }
+.fleet { fill: #1d2228; stroke: #fffaf0; stroke-width: 2; }
+.road.warship { stroke-width: 9; }
+.marker.fort { font-size: 13px; }
 .marker { font: 800 11px system-ui, sans-serif; fill: #1d2228; stroke: #fffaf0; stroke-width: 3px; paint-order: stroke; }
 .t-village { fill: #d9b98c; stroke: #7a5a2e; stroke-width: 2; }
 .village-cloth { font: 700 9px system-ui, sans-serif; fill: #1d2228; text-anchor: middle; }

@@ -15,6 +15,7 @@ use std::sync::Arc;
 
 mod cloth;
 mod pending;
+mod pirates;
 mod sea;
 mod titles;
 mod tokens;
@@ -260,6 +261,20 @@ pub struct Game {
     // The Forgotten Tribe (tribe.rs): the prize left on each edge (0 none), markets taken but not placed
     pub prizes: Vec<u8>,
     pub held_markets: Vec<Vec<u8>>,
+    // The Pirate Islands (pirates.rs): the fleet's ring and where it is; per player the fortress and
+    // beachhead corners, lairs left, whether it's taken, the line's tip and whether it reached the
+    // beachhead; every line ship in order (owner, edge); warships; the last fortress attack
+    pub fleet: Vec<u16>,
+    pub fleet_at: u8,
+    pub fort_corner: [u16; MAX_PLAYERS],
+    pub beach_corner: [u16; MAX_PLAYERS],
+    pub lairs: [u8; MAX_PLAYERS],
+    pub fort_taken: [bool; MAX_PLAYERS],
+    pub line_tip: [u16; MAX_PLAYERS],
+    pub beach_reached: [bool; MAX_PLAYERS],
+    pub ship_line: Vec<(u8, u16)>,
+    pub warship: Vec<bool>,
+    pub last_attack: [u8; 3],
     // Event cards (events.rs): the deck (top last), the last card's event (NOBODY before the first),
     // whether this production is an epidemic, and Paths an earthquake damaged
     pub event_deck: Vec<u8>,
@@ -333,7 +348,14 @@ impl Game {
         let board = Arc::new(Board::new(island, settings));
         let mut rng = Rng::new(seed);
         let s = settings;
-        let counts = [s.deck_pilot, s.deck_lighthouse, s.deck_road_crew, s.deck_harvest, s.deck_market_day];
+        let mut counts = [s.deck_pilot, s.deck_lighthouse, s.deck_road_crew, s.deck_harvest, s.deck_market_day];
+        // The Pirate Islands: Lighthouses become Pilots with 4+ players, and are left out with fewer
+        if s.sea && s.sea_scenario == 7 {
+            if players >= 4 {
+                counts[0] += counts[1];
+            }
+            counts[1] = 0;
+        }
         let mut deck: Vec<u8> = (0..5u8).flat_map(|k| std::iter::repeat_n(k, counts[k as usize] as usize)).collect();
         rng.shuffle(&mut deck);
         let mut row = Vec::new();
@@ -391,6 +413,17 @@ impl Game {
                 prizes
             },
             held_markets: vec![Vec::new(); MAX_PLAYERS],
+            fleet: island.fleet.clone(),
+            fleet_at: 0,
+            fort_corner: [NONE; MAX_PLAYERS],
+            beach_corner: [NONE; MAX_PLAYERS],
+            lairs: [3; MAX_PLAYERS],
+            fort_taken: [false; MAX_PLAYERS],
+            line_tip: [NONE; MAX_PLAYERS],
+            beach_reached: [false; MAX_PLAYERS],
+            ship_line: Vec::new(),
+            warship: vec![false; g.edges()],
+            last_attack: [NOBODY, 0, 0],
             event_deck: Vec::new(),
             last_event: NOBODY,
             epidemic: false,
@@ -419,6 +452,20 @@ impl Game {
         }
         if g.settings().variant_two {
             g.place_neutrals();
+        }
+        if g.pirate_islands() {
+            // Fortresses held by the pirates; seat k's fortress and beachhead; no squall
+            for (k, &((fh, fk), (bh, bk))) in island.forts.iter().enumerate() {
+                let fort = g.board.graph.hex_corners[fh as usize][fk as usize];
+                g.corner_owner[fort as usize] = pirates::PIRATES;
+                g.corner_kind[fort as usize] = HUT;
+                if k < MAX_PLAYERS {
+                    g.fort_corner[k] = fort;
+                    g.beach_corner[k] = g.board.graph.hex_corners[bh as usize][bk as usize];
+                }
+            }
+            g.squall = NONE;
+            g.pirate_start_pieces();
         }
         if !g.fog_tiles.is_empty() {
             let (mut tiles, mut numbers) = (std::mem::take(&mut g.fog_tiles), std::mem::take(&mut g.fog_numbers));
@@ -487,6 +534,9 @@ impl Game {
     // Has p won? Enough Renown (rulesets will add their own ways here, e.g. finishing a wonder).
     // Only asked during p's own turn or extra phase.
     pub fn has_won(&self, p: usize) -> bool {
+        if self.pirate_islands() {
+            return self.fort_taken[p] && self.renown(p) >= self.win_target(p); // a fortress and 10
+        }
         if self.wonders_on() {
             return self.wonder_win(p); // Wonders: only a wonder wins
         }
@@ -564,7 +614,7 @@ impl Game {
                     if self.edge_owner[e] == NOBODY && self.board.edge_land[e] && self.pieces[pu][P_PATH] > 0 {
                         out.push(Action::Path(e as u16));
                     }
-                    if self.sea() && self.edge_owner[e] == NOBODY && self.board.edge_sea[e] && !self.by_pirate(e) && self.pieces[pu][P_SHIP] > 0 {
+                    if self.sea() && !self.pirate_islands() && self.edge_owner[e] == NOBODY && self.board.edge_sea[e] && !self.by_pirate(e) && self.pieces[pu][P_SHIP] > 0 {
                         out.push(Action::Ship(e as u16));
                     }
                 }
@@ -628,7 +678,7 @@ impl Game {
                 }
                 if afford(hand, &HUT_COST) && pieces[P_HUT] > 0 {
                     for c in 0..g.corners() {
-                        if self.spaced(c) && self.touches_own_edge(p, c) && !self.by_damage(c) && self.hut_spot(c) {
+                        if self.spaced(c) && self.touches_own_edge(p, c) && !self.by_damage(c) && self.hut_spot(c) && self.pirate_hut_ok(p, c) {
                             out.push(Action::Hut(c as u16));
                         }
                     }
@@ -639,7 +689,7 @@ impl Game {
                 if afford(hand, &SHIP_COST) && pieces[P_SHIP] > 0 {
                     self.legal_ships(p, out);
                 }
-                if self.sea() && !self.ship_moved {
+                if self.sea() && !self.ship_moved && !self.pirate_islands() {
                     self.legal_ship_moves(p, out);
                 }
                 for give in 0..5 {
@@ -963,7 +1013,13 @@ impl Game {
                     self.draw_event();
                 } else {
                     let total = self.production_roll();
-                    self.rolled(total);
+                    // The Pirate Islands: the fleet sails (the lower die) and attacks first
+                    let winners = self.fleet_sails(self.last_dice[0].min(self.last_dice[1]));
+                    if winners.is_empty() {
+                        self.rolled(total);
+                    } else {
+                        self.decide_then(winners, Phase::Rolled { total });
+                    }
                 }
             }
             Action::Gift(to, r) => {
@@ -1023,6 +1079,11 @@ impl Game {
                 self.project_used = true;
                 self.back = self.phase;
                 self.phase = match k {
+                    Project::Pilot if self.pirate_islands() => {
+                        // The Pirate Islands: a Pilot only makes a warship
+                        self.make_warship(pu);
+                        self.phase
+                    }
                     Project::Pilot => {
                         self.pilots[pu] += 1;
                         self.refresh_title(Title::MostPilots);
@@ -1183,6 +1244,10 @@ impl Game {
         self.edge_owner[e] = p;
         self.edge_kind[e] = kind;
         self.pieces[pu][piece] -= 1;
+        // The Pirate Islands: the line's tip moves on at once (before Road Crew asks what's next)
+        if kind == SHIP && self.pirate_islands() {
+            self.extend_line_to(pu, e);
+        }
         self.update_titles();
         if let Phase::SetupPath { .. } = self.phase {
             self.setup_step += 1;

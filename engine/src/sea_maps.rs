@@ -162,6 +162,46 @@ pub fn scenario_land(rng: &mut Rng, s: &Settings) -> Option<Vec<Hex>> {
             let mut numbers = number_tokens(total);
             dress(rng, &cells, &mut tiles, &mut numbers)
         }
+        7 => {
+            // The Pirate Islands: the main island, and to its west one pirate islet of 2 hexes per
+            // possible player (4, or 6 with 5-6 players), a sea hex apart
+            let main: Vec<Cell> = if big { crate::island::large_cells() } else { within(Cell::new(0, 0), 2) };
+            let mut hexes = {
+                let cells: Vec<(Cell, u8)> = main.iter().map(|&c| (c, 0)).collect();
+                let mut tiles: Vec<Terrain> = [Forest, Quarry, Fields, Mine, Paddy].iter().zip(s.tile_counts()).flat_map(|(&t, n)| std::iter::repeat_n(t, n as usize)).collect();
+                tiles.extend(std::iter::repeat_n(Dunes, s.island_dunes as usize));
+                let mut numbers = crate::island::tokens_for(s);
+                dress(rng, &cells, &mut tiles, &mut numbers)?
+            };
+            let count = if big { 6 } else { 4 };
+            // Each islet in its own direction round the main island (evenly spread, from a random
+            // start), 3 hexes out, so the players' lines run outward without crossing
+            let ring: Vec<Cell> = within(Cell::new(0, 0), 8).into_iter().filter(|&c| main.iter().map(|m| m.distance(c)).min().unwrap() == 3).collect();
+            let angle = |c: Cell| {
+                let (x, y) = c.center();
+                ((y as f64) * 0.5).atan2(x as f64 * 0.866)
+            };
+            let turn = rng.next_f64() * std::f64::consts::TAU;
+            let mut taken: Vec<Cell> = main.clone();
+            let mut islets = Vec::new();
+            for k in 0..count {
+                let want = turn + k as f64 * std::f64::consts::TAU / count as f64;
+                let gap = |c: Cell| {
+                    let d = (angle(c) - want).rem_euclid(std::f64::consts::TAU);
+                    d.min(std::f64::consts::TAU - d)
+                };
+                let mut starts: Vec<Cell> = ring.clone();
+                starts.sort_by(|a, b| gap(*a).total_cmp(&gap(*b)));
+                let start = *starts.iter().find(|&&c| taken.iter().all(|t| t.distance(c) >= 2))?;
+                let cells = grow_island(rng, 2, &[start], &taken, 9)?;
+                taken.extend(&cells);
+                islets.extend(cells.into_iter().map(|c| (c, 1 + k as u8)));
+            }
+            let mut tiles: Vec<Terrain> = [Gold, Mine, Quarry, Forest, Fields, Paddy, Gold, Mine, Quarry, Forest, Fields, Paddy].into_iter().take(2 * count).collect();
+            let mut numbers: Vec<u8> = [3, 4, 5, 9, 10, 11, 4, 10, 3, 11, 5, 9].into_iter().take(2 * count).collect();
+            hexes.extend(dress(rng, &islets, &mut tiles, &mut numbers)?);
+            Some(hexes)
+        }
         6 => {
             // Cloth: two large islands (12 hexes each: 2 Gold, 3 Mine, 4 Forest, 4 Paddy, 5 Fields,
             // 4 Quarry, 2 Dunes between them) and four small islands of 2 villages each

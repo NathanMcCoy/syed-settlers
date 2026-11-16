@@ -260,6 +260,22 @@ impl Greedy {
         if g.wonders_on() && g.wonder_of[pu] != NOBODY && g.wonder_level[pu] < 4 && (g.wonder_level[pu] > 0 || spot.is_none()) {
             return (Goal::Project, WONDERS[g.wonder_of[pu] as usize].cost());
         }
+        // The Pirate Islands: two warships first (the fleet strips the undefended), then the line to the
+        // fortress, then more Pilots for warships
+        if g.pirate_islands() && !g.fort_taken[pu] && g.warships(pu) < 2 && g.ship_line.iter().any(|&(o, _)| o == p) && !g.deck.is_empty() {
+            return (Goal::Project, PROJECT_COST);
+        }
+        if g.pirate_islands() && !g.fort_taken[pu] {
+            if g.line_target(pu).is_some() && pieces[P_SHIP] > 0 {
+                let mut next = Vec::new();
+                g.legal_line_ships(p, &mut next);
+                if let Some(Action::Ship(e)) = next.first() {
+                    return (Goal::ShipEdge(*e as usize), SHIP_COST);
+                }
+            } else if g.line_target(pu).is_none() {
+                return (Goal::Project, PROJECT_COST);
+            }
+        }
         // The Forgotten Tribe: sail for the prizes around the small islands
         if g.tribe() && pieces[P_SHIP] > 0 {
             if let Some((d, e)) = reachable_prize(g, p) {
@@ -271,7 +287,7 @@ impl Greedy {
         // Cloth: link to a village not yet traded with (cloth is Renown), by ship
         if g.cloth() && pieces[P_SHIP] > 0 {
             if let Some((d, e)) = reachable_village(g, p) {
-                if d <= 6 {
+                if d <= 12 {
                     return (Goal::ShipEdge(e), SHIP_COST);
                 }
             }
@@ -295,6 +311,9 @@ impl Greedy {
     // for) Most Pilots
     fn pilot_wanted(&self, g: &Game, p: u8) -> bool {
         let pu = p as usize;
+        if g.pirate_islands() {
+            return g.ship_line.iter().any(|&(o, e)| o == p && !g.warship[e as usize]); // a warship to make
+        }
         let blocked = g.board.graph.hex_corners[g.squall as usize].iter().any(|&c| g.corner_owner[c as usize] == p);
         let next = g.pilots[pu] + 1;
         let title = g.holder(Title::MostPilots) != p
@@ -453,7 +472,7 @@ fn reachable_by_sea(g: &Game, p: u8) -> Option<(usize, u32, Option<usize>)> {
     }
     let mut best: Option<(usize, u32, Option<usize>, f64)> = None;
     for c in 0..corners {
-        if dist[c] == u32::MAX || dist[c] == 0 || !g.spaced(c) || g.by_damage(c) || g.board.corner_region[c] == crate::island::SEA {
+        if dist[c] == u32::MAX || dist[c] == 0 || !g.spaced(c) || !g.hut_allowed(p, c) || g.board.corner_region[c] == crate::island::SEA {
             continue;
         }
         let score = sea_score(g, p, c, dist[c]);
@@ -597,7 +616,7 @@ fn reachable_spot(g: &Game, p: u8) -> Option<(usize, u32, Option<usize>)> {
     let mut best: Option<(usize, u32, Option<usize>, f64)> = None;
     for c in 0..corners {
         // (A corner by a damaged Path takes no Hut until it's repaired: event cards)
-        if dist[c] == u32::MAX || !g.spaced(c) || g.by_damage(c) {
+        if dist[c] == u32::MAX || !g.spaced(c) || !g.hut_allowed(p, c) {
             continue;
         }
         let connected = listed(&gr.corner_edges[c]).any(|e| g.edge_owner[e] == p);

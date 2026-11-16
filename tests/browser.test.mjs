@@ -182,6 +182,7 @@ for (const [name, type] of Object.entries(BROWSERS)) {
     ['the sea scenario Fog Islands', 3, { sea: true, 'sea.scenario': 3 }],
     ['the sea scenario Wonders', 3, { sea: true, 'sea.scenario': 8 }],
     ['the sea scenario The Forgotten Tribe', 3, { sea: true, 'sea.scenario': 5 }],
+    ['the sea scenario The Pirate Islands', 3, { sea: true, 'sea.scenario': 7 }],
   ]) {
     test(`${name}: a game with ${label}, played by clicking`, async () => {
       const others = Array.from({ length: seats - 1 }, () => ({ kind: 'bot' }));
@@ -209,6 +210,10 @@ for (const [name, type] of Object.entries(BROWSERS)) {
         if (settings['variant.two']) assert.ok(await page.locator('.building title', { hasText: 'Neutral' }).count() >= 2, 'the neutral Huts');
         if (settings['sea.scenario'] === 6) assert.equal(await page.locator('.village-cloth').count(), 8, 'eight villages with their cloth');
         if (settings['sea.scenario'] === 3) assert.ok(await page.locator('polygon.t-fog').count() > 0, 'fog');
+        if (settings['sea.scenario'] === 7) {
+          assert.equal(await page.locator('#board [data-fleet]').count(), 1, 'the fleet');
+          assert.equal(await page.locator('#board .squall').count(), 0, 'no squall');
+        }
         if (settings['sea.scenario'] === 5) assert.ok(await page.locator('#board .prize').count() > 0, 'prizes on the sea');
         if (settings['sea.scenario'] === 8) {
           assert.equal(await page.locator('#shop [data-item^="wonder-"]').count(), 5, 'the five wonders in the shop');
