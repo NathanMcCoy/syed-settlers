@@ -463,7 +463,7 @@ for (const [name, type] of Object.entries(BROWSERS)) {
   test(`${name}: pages fit a phone without scrolling sideways`, async () => {
     const { browser, page, errors } = await open(type, { width: 390, height: 844 });
     try {
-      for (const path of ['/', '/viewer.html?seed=betta']) {
+      for (const path of ['/', '/viewer.html?seed=betta', '/rules.html']) {
         await page.goto(base + path);
         await page.waitForLoadState('networkidle');
         assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 390, path);

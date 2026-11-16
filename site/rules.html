@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Rules · Syed Settlers</title>
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body class="rules-page">
+  <header>
+    <h1><a href="/">Syed Settlers</a></h1>
+    <p class="sub">How to play: the island game and every expansion. <a href="/">Play a game</a> · <a href="/viewer.html">Island viewer</a></p>
+  </header>
+  <main class="rules">
+    <nav class="panel toc" aria-label="Contents">
+      <h2>Contents</h2>
+      <ol>
+        <li><a href="#base">The island game</a> <span class="badge ready">Playable</span></li>
+        <li><a href="#six">5 and 6 players</a> <span class="badge ready">Playable</span></li>
+        <li><a href="#sea">The sea expansion</a> <span class="badge ready" id="sea-badge">Playable: New Shores</span></li>
+        <li><a href="#variants">The variants box: variants</a> <span class="badge soon" id="variants-badge">Coming</span></li>
+        <li><a href="#city">The city expansion</a> <span class="badge soon" id="city-badge">Coming</span></li>
+        <li><a href="#variant-scenarios">The variants box: scenarios</a> <span class="badge soon" id="tb-badge">Coming</span></li>
+        <li><a href="#exploration">The exploration expansion</a> <span class="badge soon" id="ep-badge">Coming</span></li>
+      </ol>
+      <p class="note">Every seat can be a person or a bot, in any mix. Settings marked with ⚙ can be changed when you start a game.</p>
+    </nav>
+
+    <section id="base" class="panel">
+      <h2>The island game</h2>
+      <h3>Goal</h3>
+      <p>Be the first to reach <strong>10 Renown</strong> ⚙ during your own turn.</p>
+      <table>
+        <thead><tr><th>Renown from</th><th></th></tr></thead>
+        <tbody>
+          <tr><td>Each Hut</td><td>1</td></tr>
+          <tr><td>Each Lodge</td><td>2</td></tr>
+          <tr><td>Each Lighthouse project</td><td>1</td></tr>
+          <tr><td>Longest Path (at least 5 Paths in a line)</td><td>2</td></tr>
+          <tr><td>Most Pilots (at least 3 Pilots played)</td><td>2</td></tr>
+        </tbody>
+      </table>
+      <h3>The island</h3>
+      <p>A new island every game, made from a <em>seed</em> (the same seed always makes the same island). Nineteen hexes:
+        4 Forest (Timber), 3 Quarry (Stone), 4 Fields (Grain), 3 Mine (Copper), 4 Paddy (Fish, from bettas in flooded
+        fields) and 1 Dunes (nothing). Numbers 2–12 (never 7) are laid in the classic spiral. Nine markets sit on the
+        coast: four trade 3 of anything for 1, five trade 2 of one resource for 1.</p>
+      <h3>Building</h3>
+      <table>
+        <thead><tr><th>Piece</th><th>Cost</th><th>Each player has</th></tr></thead>
+        <tbody>
+          <tr><td>Path</td><td>Timber + Copper</td><td>15</td></tr>
+          <tr><td>Hut</td><td>Timber + Grain + Copper + Fish</td><td>5</td></tr>
+          <tr><td>Lodge (replaces your Hut)</td><td>3 Stone + 2 Grain</td><td>4</td></tr>
+          <tr><td>Project card</td><td>Stone + Grain + Fish</td><td>25 in the deck</td></tr>
+        </tbody>
+      </table>
+      <ul>
+        <li>No building may be next to another building: they stay at least two edges apart.</li>
+        <li>A Hut must touch one of your Paths (except in setup). A Path joins your buildings or Paths and can't continue past another player's building.</li>
+      </ul>
+      <h3>Setup</h3>
+      <p>Each player places a Hut and a Path, then the same again in reverse order. Your second Hut collects one of each resource around it.</p>
+      <h3>A turn</h3>
+      <ol>
+        <li>You may use a project before rolling.</li>
+        <li>Roll two dice. Every hex with that number pays 1 resource to each Hut and 2 to each Lodge around it (not the squall's hex). The bank has 19 of each; if it can't pay everyone, nobody gets that resource, unless only one player is owed it.</li>
+        <li>Trade, build, buy projects and use one project, in any order. Then end your turn.</li>
+      </ol>
+      <h3>Rolling a 7</h3>
+      <p>Everyone holding more than 7 cards ⚙ loses half (their choice). The roller moves the <strong>squall</strong> to any other land hex and steals one random card from a player with a building there. A hex under the squall produces nothing.</p>
+      <h3>Trading</h3>
+      <p>With the bank 4:1, at a 3:1 market, or 2:1 at a resource's own market (you need a building on it). With other players: the player whose turn it is offers cards for cards; the others accept, decline or make a counter-offer. An open offer goes to the first who accepts.</p>
+      <h3>Projects</h3>
+      <table>
+        <thead><tr><th>Project</th><th>How many</th><th>Does</th></tr></thead>
+        <tbody>
+          <tr><td>Pilot</td><td>14</td><td>Move the squall and steal, as after a 7. Counts toward Most Pilots.</td></tr>
+          <tr><td>Lighthouse</td><td>5</td><td>1 Renown, kept hidden until you win.</td></tr>
+          <tr><td>Road Crew</td><td>2</td><td>Two free Paths.</td></tr>
+          <tr><td>Good Harvest</td><td>2</td><td>Take any 2 resources from the bank.</td></tr>
+          <tr><td>Market Day</td><td>2</td><td>Name a resource: everyone else gives you all of theirs.</td></tr>
+        </tbody>
+      </table>
+      <p class="note">One project a turn, never the turn you bought it. Lighthouses count the moment you have them.</p>
+    </section>
+
+    <section id="six" class="panel">
+      <h2>5 and 6 players</h2>
+      <ul>
+        <li><strong>The large island:</strong> 30 hexes in rows of 3, 4, 5, 6, 5, 4, 3, with 2 Dunes, 11 markets and 24 of each resource in the bank. The project deck grows to 34.</li>
+        <li><strong>Paired turns:</strong> after each player's turn, the player three seats on gets an <em>extra build phase</em>: no roll and no trading with players, but they may build, buy, use one project and trade with the bank and markets. They can win in it.</li>
+      </ul>
+    </section>
+
+    <section id="sea" class="panel">
+      <h2>The sea expansion</h2>
+      <p>Tick <em>Sea expansion</em> when starting a game. Ships carry your settlers across the water to small islands.</p>
+      <h3>New Shores <span class="badge ready">Playable</span></h3>
+      <ul>
+        <li><strong>The map:</strong> the main island and small islands, with sea between every piece of land. Setup is on the main island only. Played to <strong>14 Renown</strong>.</li>
+        <li><strong>Ships</strong> (Timber + Fish, 15 each) go on edges touching the sea. A ship joins your buildings or ships (not Paths), never passes another player's building, and never touches the pirate's hex. A coastal setup Hut may take a ship instead of a Path. You may build a Hut where your ship reaches land.</li>
+        <li><strong>Moving a ship:</strong> once a turn, move one of your ships with an open end (nothing of yours at one end) that you didn't build this turn.</li>
+        <li><strong>Longest Path</strong> counts Paths and ships; they join only at one of your buildings.</li>
+        <li><strong>Gold fields</strong> (striped) pay a resource of your choice: 1 per Hut, 2 per Lodge.</li>
+        <li><strong>The pirate:</strong> after a 7 or a Pilot, move the squall <em>or</em> the pirate, then steal from a player with a ship on its edges.</li>
+        <li><strong>Road Crew</strong> places Paths, ships, or one of each.</li>
+        <li><strong>Island bonus:</strong> your first Hut on each small island earns 2 Renown tokens.</li>
+      </ul>
+      <h3>More scenarios <span class="badge soon" id="sea-more-badge">Coming</span></h3>
+      <ul>
+        <li><strong>Four Islands:</strong> start on one or two islands of your choice; every other island is a bonus to reach. 13 Renown.</li>
+        <li><strong>Fog Islands:</strong> parts of the sea are hidden; sailing next to them reveals new land (and a resource). 12 Renown.</li>
+        <li><strong>Through the Desert:</strong> a desert splits the big island; the far strip and small islands are bonus regions. 14 Renown.</li>
+        <li><strong>The Forgotten Tribe:</strong> sail to the tribe's shores to collect Renown, projects and markets. 13 Renown.</li>
+        <li><strong>Cloth for the Island:</strong> link your buildings to villages on small islands; they send you cloth (2 cloth = 1 Renown). 14 Renown.</li>
+        <li><strong>The Pirate Islands:</strong> a pirate fleet circles the island; build one line of ships to your own fortress, turn ships into warships with Pilots and capture it. 10 Renown plus your fortress.</li>
+        <li><strong>The Wonders:</strong> claim one of five wonders and build its four levels first. 10 Renown and the highest wonder, or a finished wonder.</li>
+        <li><strong>New World:</strong> random islands every game. 12 Renown.</li>
+      </ul>
+    </section>
+
+    <section id="variants" class="panel">
+      <h2>The variants box: variants</h2>
+      <p>Small changes that mix with any game.</p>
+      <ul>
+        <li><strong>Friendly squall:</strong> the squall leaves alone any player with only 2 Renown.</li>
+        <li><strong>Strongest Ports:</strong> a title worth 2 Renown for the most Renown in buildings on markets (at least 3). Play to 11.</li>
+        <li><strong>Event cards:</strong> a shuffled deck of numbers (with the same spread as two dice) replaces the dice, each card with an event: a beautiful day, calm seas, an epidemic, good neighbours, an earthquake, a plentiful year, a tournament and more.</li>
+        <li><strong>Two players:</strong> two neutral colours that each of you builds for, two production rolls a turn, and trade tokens to force a trade or send the squall away.</li>
+      </ul>
+    </section>
+
+    <section id="city" class="panel">
+      <h2>The city expansion</h2>
+      <p>Lodges grow into cities that make commodities, knights defend the island from raiders, and progress cards replace projects. Played to 13 Renown.</p>
+      <ul>
+        <li><strong>Three dice:</strong> two for production and an event die: its ship faces bring the raiders closer, its coloured faces let players with enough city improvements draw progress cards.</li>
+        <li><strong>Commodities:</strong> a Lodge on a Forest, Paddy or Quarry also makes paper, cloth or coin. Spend them on three tracks of city improvements, each with a power at level 3 and a metropolis (2 Renown) for the first to level 4.</li>
+        <li><strong>City walls</strong> (2 Copper) raise your hand limit by 2.</li>
+        <li><strong>Knights</strong> (Fish + Stone to recruit or promote, Grain to activate) stand on your Paths. Active knights move, push weaker knights away, or chase the squall.</li>
+        <li><strong>Raiders:</strong> when they land, their strength is the number of Lodges on the island. If the knights are weaker, the players who helped least lose a Lodge; if stronger, the best defender earns a Renown token.</li>
+        <li><strong>Progress cards:</strong> 54 in three colours (science, trade, politics), from alchemy to a wedding.</li>
+      </ul>
+    </section>
+
+    <section id="variant-scenarios" class="panel">
+      <h2>The variants box: scenarios</h2>
+      <ul>
+        <li><strong>Fishing:</strong> a lake and fishing grounds catch fish tokens, spent to remove the squall, steal, take a resource, build a free Path or a free project. Beware the old boot. 10 Renown.</li>
+        <li><strong>Rivers:</strong> bridges cross two rivers; building near them earns coins. The richest player gains 1 Renown, the poorest loses 2. 10 Renown.</li>
+        <li><strong>Merchant trains:</strong> every building adds a wagon to a train from the watering hole, placed by vote. Buildings between wagons are worth more. 12 Renown.</li>
+        <li><strong>Raider attack:</strong> raiders land on the coast each time someone builds; knights on edges drive them off and take prisoners. 12 Renown.</li>
+        <li><strong>Traders and raiders:</strong> a wagon carries goods between the quarry, glassworks and castle. 13 Renown.</li>
+      </ul>
+    </section>
+
+    <section id="exploration" class="panel">
+      <h2>The exploration expansion</h2>
+      <p>Explore a hidden sea with ships carrying settlers and crews, and race through missions. Played to 17 Renown.</p>
+      <ul>
+        <li><strong>A movement phase</strong> after building: each ship sails 4 edges (6 for a Fish), revealing hidden hexes it touches.</li>
+        <li><strong>Harbour buildings</strong> (2 Grain + 2 Stone) launch ships and hold cargo. Settlers (Copper + Timber + Fish + Grain) found Huts from a ship; crews (Fish + Stone) work missions.</li>
+        <li><strong>Coins</strong> come from exploring and from turns with no production; 2 coins buy a resource.</li>
+        <li><strong>Pirate ships:</strong> each player has one; a 7 places yours and robs a ship owner there. Moving past someone's pirate costs a coin.</li>
+        <li><strong>Missions:</strong> capture pirate lairs with crews, bring fish hauls and spice sacks to the council island.</li>
+      </ul>
+    </section>
+  </main>
+</body>
+</html>
