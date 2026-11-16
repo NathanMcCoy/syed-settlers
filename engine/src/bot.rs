@@ -164,6 +164,10 @@ impl Greedy {
                 return Action::Ship(e as u16);
             }
         }
+        // Wonders: claim one as soon as possible, then build its levels whenever affordable
+        if let Some(&a) = legal.iter().find(|a| matches!(a, Action::ClaimWonder(_) | Action::BuildWonder)) {
+            return a;
+        }
         // The two-player variant: trade tokens send the squall off this bot's own hex
         if legal.contains(&Action::SquallHome) && g.board.graph.hex_corners[g.squall as usize].iter().any(|&c| g.corner_owner[c as usize] == p) {
             return Action::SquallHome;
@@ -250,6 +254,10 @@ impl Greedy {
         }
         if pieces[P_LODGE] > 0 && g.huts(pu) > 0 {
             return (Goal::Lodge, LODGE_COST);
+        }
+        // Wonders: once claimed, save for its levels (a finished wonder wins)
+        if g.wonders_on() && g.wonder_of[pu] != NOBODY && g.wonder_level[pu] < 4 && (g.wonder_level[pu] > 0 || spot.is_none()) {
+            return (Goal::Project, WONDERS[g.wonder_of[pu] as usize].cost());
         }
         // Cloth: link to a village not yet traded with (cloth is Renown), by ship
         if g.cloth() && pieces[P_SHIP] > 0 {

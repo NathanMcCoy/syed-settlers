@@ -4,7 +4,7 @@
 //
 // This runs once per game, so it favours being clear over being fast, but it never iterates over a
 // HashMap/HashSet: their order changes from run to run, and the same seed must give the same island.
-use crate::hex::{Cell, DIRS, Graph, NONE, within};
+use crate::hex::{Cell, DIRS, Graph, NONE, listed, within};
 use crate::json;
 use crate::rng::Rng;
 use crate::settings::Settings;
@@ -157,6 +157,8 @@ pub struct Island {
     // Fog Islands: what lies under the fog (tiles and numbers, in no order: the game shuffles them)
     pub fog_tiles: Vec<Terrain>,
     pub fog_numbers: Vec<u8>,
+    // Wonders: corner markers, as (hex, which corner of it 0-5, kind: 1 wall, 2 bridge, 3 no setup)
+    pub markers: Vec<(u16, u8, u8)>,
     pub info: Info,
 }
 
@@ -249,7 +251,7 @@ fn attempt_island(s: &Settings, rng: &mut Rng) -> Option<Island> {
     let main_average = land.iter().map(|h| pips(h.number)).sum::<u32>() as f64
         / land.iter().filter(|h| h.number != 0).count() as f64;
     let mut land = land;
-    if s.sea && s.sea_scenario == 1 {
+    if s.sea && matches!(s.sea_scenario, 1 | 8) {
         land.extend(small_islands(rng, &main_set, s)?);
     } else if s.sea {
         // The other sea scenarios make all their land themselves (sea_maps.rs)
@@ -277,7 +279,9 @@ fn attempt_island(s: &Settings, rng: &mut Rng) -> Option<Island> {
 
     let markets = place_markets(rng, &hexes, &graph, s.markets_any, s.markets_each, s.markets_extra_fish, everywhere)?;
     let squall = *rng.pick(&squall_starts(&hexes, everywhere));
-    let pirate = if s.sea { pirate_start(rng, &hexes, s.sea_scenario == 1)? } else { NONE };
+    // (Wonders has no pirate)
+    let pirate = if s.sea && s.sea_scenario != 8 { pirate_start(rng, &hexes, s.sea_scenario == 1)? } else { NONE };
+    let markers = if s.sea && s.sea_scenario == 8 { wonder_markers(rng, &hexes, &graph)? } else { Vec::new() };
 
     Some(Island {
         seed: String::new(),
@@ -287,6 +291,7 @@ fn attempt_island(s: &Settings, rng: &mut Rng) -> Option<Island> {
         pirate,
         fog_tiles,
         fog_numbers,
+        markers,
         info: Info { main_size: main.len(), main_average, attempts: 0 },
     })
 }
@@ -521,6 +526,40 @@ fn small_islands(rng: &mut Rng, main: &HashSet<Cell>, s: &Settings) -> Option<Ve
         }
     }
     None
+}
+
+// Wonders: 5 wall markers and 2 bridge markers on main-island coast corners, no two touching, and an
+// "X" (no setup Hut) on each neighbour of a bridge marker
+fn wonder_markers(rng: &mut Rng, hexes: &[Hex], g: &Graph) -> Option<Vec<(u16, u8, u8)>> {
+    let land = |h: usize| hexes[h].terrain != Sea;
+    let main_coast: Vec<usize> = (0..g.corners())
+        .filter(|&c| {
+            let hs: Vec<usize> = listed(&g.corner_hexes[c]).collect();
+            hs.iter().any(|&h| land(h) && hexes[h].region == 0) && hs.iter().any(|&h| !land(h))
+        })
+        .collect();
+    let mut picked: Vec<(usize, u8)> = Vec::new();
+    let mut options = main_coast.clone();
+    rng.shuffle(&mut options);
+    for kind in [2u8, 2, 1, 1, 1, 1, 1] {
+        let c = *options.iter().find(|&&c| picked.iter().all(|&(o, _)| o != c && !listed(&g.corner_corners[o]).any(|n| n == c)))?;
+        picked.push((c, kind));
+    }
+    for &(c, kind) in picked.clone().iter() {
+        if kind == 2 {
+            for n in listed(&g.corner_corners[c]) {
+                if picked.iter().all(|&(o, _)| o != n) {
+                    picked.push((n, 3));
+                }
+            }
+        }
+    }
+    // As (hex, corner of it) so the island's JSON can name them without the graph
+    Some(picked.into_iter().map(|(c, kind)| {
+        let h = listed(&g.corner_hexes[c]).find(|&h| land(h)).unwrap_or(g.corner_hexes[c][0] as usize);
+        let k = g.hex_corners[h].iter().position(|&x| x as usize == c).unwrap();
+        (h as u16, k as u8, kind)
+    }).collect())
 }
 
 // The pirate starts on a sea hex two steps from the main island (between it and the small islands); in

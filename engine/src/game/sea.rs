@@ -108,7 +108,7 @@ impl Game {
 
     // May a setup Hut go on corner c? On the main island, or in scenarios that allow it, anywhere
     pub(super) fn setup_spot(&self, c: usize) -> bool {
-        self.hut_spot(c) && (!self.sea() || crate::sea_maps::setup_anywhere(self.settings().sea_scenario) || self.board.corner_region[c] == 0)
+        self.board.corner_marker[c] == 0 && self.hut_spot(c) && (!self.sea() || crate::sea_maps::setup_anywhere(self.settings().sea_scenario) || self.board.corner_region[c] == 0)
     }
 
     // May any Hut go on corner c? (Cloth: not on the small islands, regions 2 and up)

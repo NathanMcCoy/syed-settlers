@@ -313,6 +313,13 @@ function drawPieces(v, before) {
   }
   const sq = centre(board.island.hexes[v.squall]);
   layers.squall.replaceChildren(el('circle', { cx: sq.x, cy: sq.y, r: SIZE * 0.6, class: `squall${before && before.squall !== v.squall ? ' new' : ''}` }));
+  // Wonders: the wall (W), bridge (B) and no-setup (×) markers on their corners
+  for (const [c, kind] of v.markers ?? []) {
+    const { x, y } = cornerAt(c);
+    const mark = el('text', { x: x + 9, y: y - 6, class: 'marker' }, ['', 'W', 'B', '×'][kind]);
+    mark.append(el('title', {}, ['', 'Wall marker (the Great Wall)', 'Bridge marker (the Great Bridge)', 'No setup Hut here'][kind]));
+    layers.squall.append(mark);
+  }
   // Cloth: what each village has left, and who trades with it
   for (const [h, cloth, linked] of v.villages ?? []) {
     const c = centre(board.island.hexes[h]);
@@ -652,10 +659,37 @@ function drawShop(v) {
     }
     return shopRow(v, { key: item.key, name: item.name, note: item.note, cost: item.cost, picked: mode === item.key }, b, reason);
   });
-  $('shop').replaceChildren(...pieces, ...projectItems(v));
+  $('shop').replaceChildren(...pieces, ...wonderItems(v), ...projectItems(v));
 }
 
 // One row of the shop: name, note, cost chips (greyed where you're short), its button, and why not
+// Wonders (the sea scenario): each wonder with its requirement, owner and level, and Claim or Build
+const WONDER_TEXT = {
+  greatBridge: ['Great Bridge', 'Needs a building on a bridge marker (B)'],
+  grandTheater: ['Grand Theater', 'Needs 2 Lodges'],
+  greatWall: ['Great Wall', 'Needs a building on a wall marker (W)'],
+  grandMonument: ['Grand Monument', 'Needs a Lodge on a market and a line of 5 Paths or ships'],
+  grandCastle: ['Grand Castle', 'Needs a Lodge and 6 Renown'],
+};
+function wonderItems(v) {
+  return (v.wonders ?? []).map(([name, owner, level, cost], w) => {
+    const [title, need] = WONDER_TEXT[name] ?? [name, ''];
+    const claim = `claimwonder ${w}`;
+    const mineNow = owner === v.you;
+    const move = mineNow ? 'buildwonder' : claim;
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = mineNow ? `Build level ${level + 1}` : 'Claim';
+    b.dataset.move = move;
+    const ok = legal().includes(move);
+    b.disabled = !ok;
+    b.addEventListener('click', () => send(move));
+    const state = owner === null ? need : `${owner === v.you ? 'Yours' : nameOf(owner)}: level ${level} of 4`;
+    const reason = ok ? null : owner !== null && !mineNow ? 'Claimed' : mineNow && level === 4 ? 'Finished' : mineNow ? 'Need the cards' : 'Requirement not met';
+    return shopRow(v, { key: `wonder-${name}`, name: title, note: `${state}. Each of 4 levels costs:`, cost, picked: false }, b, reason);
+  });
+}
+
 function shopRow(v, item, button, reason) {
   const li = document.createElement('li');
   li.className = `shop-item${item.picked ? ' picked' : ''}${item.project ? ' project-item' : ''}`;
@@ -858,6 +892,8 @@ function drawPlayers(v) {
     const facts = [`${p.cards} card${p.cards === 1 ? '' : 's'}`];
     if (p.projectCount) facts.push(`${p.projectCount} project${p.projectCount === 1 ? '' : 's'}`);
     if (p.pilots) facts.push(`${p.pilots} Pilot${p.pilots === 1 ? '' : 's'} played`);
+    const wonder = (v.wonders ?? []).find(([, owner]) => owner === s);
+    if (wonder) facts.push(`${(WONDER_TEXT[wonder[0]] ?? [wonder[0]])[0]} ${wonder[2]}/4`);
     for (const [kind, n] of Object.entries(p.tokens ?? {})) {
       const [one, many] = TOKEN_NAMES[kind] ?? [`${kind} token`, `${kind} tokens`];
       if (n) facts.push(`${n} ${n === 1 ? one : many}`);
@@ -964,6 +1000,8 @@ function describe(entry) {
     case 'rob': return `${who} robbed ${Number(a) === snap.view.you ? 'you' : nameOf(Number(a))}`;
     case 'damage': return `${who}'s Path was damaged by the earthquake`;
     case 'repair': return `${who} repaired a Path`;
+    case 'claimwonder': return `${who} claimed a wonder`;
+    case 'buildwonder': return `${who} built a wonder level`;
     case 'neutralhut': return `${who} built a neutral Hut`;
     case 'neutralpath': return `${who} built a neutral Path`;
     case 'cashpilot': return `${who} cashed in a Pilot for trade tokens`;
