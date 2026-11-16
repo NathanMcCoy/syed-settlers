@@ -2,7 +2,7 @@
 :root {
   --bg: #f6f4ef; --text: #1d2228; --muted: #5b6470; --line: #c9c4b8; --panel: #fffdf8;
   --forest: #3f7d3a; --quarry: #8d929b; --fields: #e2c35a; --mine: #b8693e; --paddy: #7cc4b4;
-  --dunes: #e9dcb6; --sea: #3d7fbf; --strong: #b3261e;
+  --dunes: #e9dcb6; --sea: #3d7fbf; --strong: #b3261e; --gold: #e2b93b;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
@@ -40,6 +40,13 @@ button { font: inherit; padding: 6px 12px; border-radius: 6px; border: 1px solid
 .t-sea { fill: var(--sea); stroke: none; }
 .t-forest { fill: var(--forest); } .t-quarry { fill: var(--quarry); } .t-fields { fill: var(--fields); }
 .t-mine { fill: var(--mine); } .t-paddy { fill: var(--paddy); } .t-dunes { fill: var(--dunes); }
+.t-gold { fill: url(#gold-stripes); stroke: #8a6a12; stroke-width: 2; }
+.gold-base { fill: var(--gold); } .gold-stripe { fill: #fff3b0; }
+/* The sea expansion: ships are dashed (a Path is solid), the pirate a dark ring on its sea hex */
+.road.ship { stroke-dasharray: 7 3; stroke-width: 6; }
+.pirate { fill: #1d2228; fill-opacity: 0.55; stroke: #fffaf0; stroke-width: 2; }
+.target.edge.sea { stroke-dasharray: 6 3; }
+.target.edge.from { stroke: #ffd400; }
 .token { fill: #fffaf0; stroke: rgba(0, 0, 0, 0.3); }
 .number { font: 700 15px system-ui, sans-serif; fill: #1d2228; text-anchor: middle; dominant-baseline: central; }
 .number.strong { fill: #b3261e; }

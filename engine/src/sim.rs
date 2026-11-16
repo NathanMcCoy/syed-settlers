@@ -13,6 +13,7 @@ pub struct Outcome {
     pub turns: u32,
     pub actions: u32,
     pub sources: [[u32; 5]; MAX_PLAYERS],
+    pub token_renown: [u32; MAX_PLAYERS], // Renown from tokens (e.g. the sea's island bonus); not in `sources`
 }
 
 pub fn renown_sources(g: &Game, p: usize) -> [u32; 5] {
@@ -77,5 +78,9 @@ pub fn play_with(settings: &Settings, seed: u32, players: usize, max_turns: u32,
     for (p, row) in sources.iter_mut().enumerate().take(players) {
         *row = renown_sources(&g, p);
     }
-    Ok(Outcome { winner: g.winner, turns: g.turn, actions, sources })
+    let mut token_renown = [0; MAX_PLAYERS];
+    for (p, t) in token_renown.iter_mut().enumerate().take(players) {
+        *t = g.token_renown(p);
+    }
+    Ok(Outcome { winner: g.winner, turns: g.turn, actions, sources, token_renown })
 }

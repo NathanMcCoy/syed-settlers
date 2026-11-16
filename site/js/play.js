@@ -84,6 +84,7 @@ function home() {
     if (Number(f.over.value) !== 7) settings['discard.over'] = Number(f.over.value);
     if (Number(f.rounds.value) !== 0) settings.rounds = Number(f.rounds.value);
     if (f.faceUp.checked) settings['projects.faceUp'] = true;
+    if (f.sea.checked) settings.sea = true;
     $('home-error').textContent = '';
     try {
       const res = await fetch('/api/games', { method: 'POST', body: JSON.stringify({ seats, settings }) });
@@ -103,6 +104,8 @@ function home() {
 let id, key, board, snap, layers, sending = false;
 // What the player picked in the Build shop ('path', 'hut', 'lodge'): only those spots light up
 let mode = null;
+// Moving a ship (the sea expansion): the edge of the ship picked to move, before picking where it goes
+let moveFrom = null;
 
 async function game(gameId) {
   id = gameId;
@@ -141,7 +144,7 @@ async function game(gameId) {
   $('cancel-counter').addEventListener('click', () => { counter = null; render(snap); });
   // Esc puts away what was picked in the shop
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape' && mode) { mode = null; render(snap); }
+    if (e.key === 'Escape' && mode) { mode = null; moveFrom = null; render(snap); }
   });
   for (const t of document.querySelectorAll('[role="tab"]')) t.addEventListener('click', () => showTab(t.dataset.tab));
   // A game you just started with friends opens on its invite links, once
@@ -193,7 +196,7 @@ async function send(move) {
   try {
     const res = await fetch(`/api/games/${id}/move`, { method: 'POST', body: JSON.stringify({ k: key, move }) });
     if (!res.ok) $('move-error').textContent = (await res.json()).error;
-    if (res.ok && /^(hut|lodge|path) /.test(move)) mode = null;
+    if (res.ok && /^(hut|lodge|path|ship|moveship) /.test(move)) { mode = null; moveFrom = null; }
   } catch {
     $('move-error').textContent = 'Couldn\'t reach the server. Check your connection and try again.';
   } finally {
@@ -209,11 +212,14 @@ function render(data) {
   version++;
   const v = snap.view;
   // A pick in the shop lasts while it can still be built
-  if (mode && !legal().some(m => m.startsWith(`${mode} `))) mode = null;
+  if (mode && !legal().some(m => m.startsWith(`${mode} `))) { mode = null; moveFrom = null; }
   drawPieces(v, before?.view);
   drawTargets(v);
   const offered = v.offer && v.legal.some(m => m.startsWith('answer '));
-  $('status').textContent = mode ? `Click a lit spot to build your ${SHOP.find(s => s.key === mode).name} (Esc to cancel).`
+  const picking = mode === 'moveship'
+    ? (moveFrom === null ? 'Click a lit ship to move it (Esc to cancel).' : 'Click where the ship goes (Esc to cancel).')
+    : mode && `Click a lit spot to build your ${SHOP.find(s => s.key === mode).name} (Esc to cancel).`;
+  $('status').textContent = mode ? picking
     : offered ? `${nameOf(v.offer.by)} offers you a trade: accept or decline it in the Trade tab.` : status(v);
   // An offer to you, new since last time: open the Trade tab so you see it
   if (offered && !(before?.view.offer && before.view.legal.some(m => m.startsWith('answer ')))) showTab('trade', false);
@@ -242,7 +248,9 @@ function drawPieces(v, before) {
   layers.roads.replaceChildren();
   for (const [e, p, kind] of v.roads) {
     const [a, b] = edgeEnds(e);
-    layers.roads.append(el('line', { x1: a.x, y1: a.y, x2: b.x, y2: b.y, class: `road p${p}${glow(`e${e}:${kind}`)}`, 'data-edge': e }));
+    const line = el('line', { x1: a.x, y1: a.y, x2: b.x, y2: b.y, class: `road${kind === 2 ? ' ship' : ''} p${p}${glow(`e${e}:${kind}`)}`, 'data-edge': e });
+    line.append(el('title', {}, `${nameOf(p)}'s ${kind === 2 ? 'ship' : 'Path'}`));
+    layers.roads.append(line);
   }
   layers.buildings.replaceChildren();
   for (const [c, p, kind] of v.buildings) {
@@ -255,6 +263,13 @@ function drawPieces(v, before) {
   }
   const sq = centre(board.island.hexes[v.squall]);
   layers.squall.replaceChildren(el('circle', { cx: sq.x, cy: sq.y, r: SIZE * 0.6, class: `squall${before && before.squall !== v.squall ? ' new' : ''}` }));
+  // The sea expansion: the pirate
+  if (v.pirate !== null && v.pirate !== undefined) {
+    const pc = centre(board.island.hexes[v.pirate]);
+    const pirate = el('circle', { cx: pc.x, cy: pc.y, r: SIZE * 0.45, class: `pirate${before && before.pirate !== v.pirate ? ' new' : ''}`, 'data-pirate': v.pirate });
+    pirate.append(el('title', {}, 'The pirate: no ships may be built or moved on this hex\'s edges'));
+    layers.squall.append(pirate);
+  }
 }
 
 // The last roll as two dice faces (pips on a 3 × 3 grid)
@@ -330,6 +345,23 @@ function drawTargets(v) {
   // On your main turn, only what you picked in the shop lights up; in setup, Road Crew's free
   // Paths and squall moves, every spot does
   const moves = v.phase === 'main' ? legal().filter(m => mode && m.startsWith(`${mode} `)) : legal();
+  // Moving a ship: first the ship (its edge lights up), then where it goes
+  if (mode === 'moveship') {
+    const pairs = moves.map(m => m.split(' ').slice(1).map(Number));
+    const lit = moveFrom === null ? [...new Set(pairs.map(([a]) => a))] : pairs.filter(([a]) => a === moveFrom).map(([, b]) => b);
+    for (const e of lit) {
+      const [a, b] = seaEdgeEnds(e);
+      const t = el('line', { x1: a.x, y1: a.y, x2: b.x, y2: b.y, class: `target edge sea${moveFrom === null ? ' from' : ''}`, tabindex: 0, 'data-moveship': e });
+      t.append(el('title', {}, moveFrom === null ? 'Move this ship' : 'Move the ship here'));
+      const pick = () => {
+        if (moveFrom === null) { moveFrom = e; render(snap); } else { const from = moveFrom; moveFrom = null; send(`moveship ${from} ${e}`); }
+      };
+      t.addEventListener('click', pick);
+      t.addEventListener('keydown', ev => { if (ev.key === 'Enter' || ev.key === ' ') pick(); });
+      layers.targets.append(t);
+    }
+    return;
+  }
   for (const m of moves) {
     const [word, n] = m.split(' ');
     if (word === 'hut' || word === 'lodge') {
@@ -343,10 +375,16 @@ function drawTargets(v) {
       const t = el('line', { x1: a.x, y1: a.y, x2: b.x, y2: b.y, class: 'target edge', 'data-move': m, 'data-edge-target': n, tabindex: 0 });
       t.append(el('title', {}, 'Build a Path here'));
       layers.targets.append(t);
-    } else if (word === 'squall') {
+    } else if (word === 'ship') {
+      // Drawn a little toward the sea, so a coastal edge's Path and ship spots don't overlap
+      const [a, b] = seaEdgeEnds(Number(n));
+      const t = el('line', { x1: a.x, y1: a.y, x2: b.x, y2: b.y, class: 'target edge sea', 'data-move': m, 'data-edge-target': n, tabindex: 0 });
+      t.append(el('title', {}, 'Build a ship here'));
+      layers.targets.append(t);
+    } else if (word === 'squall' || word === 'pirate') {
       const h = board.island.hexes[Number(n)];
       const t = el('polygon', { points: hexPoints(h), class: 'target hex-target', 'data-move': m, tabindex: 0 });
-      t.append(el('title', {}, 'Move the squall here'));
+      t.append(el('title', {}, word === 'squall' ? 'Move the squall here' : 'Move the pirate here'));
       layers.targets.append(t);
     }
   }
@@ -354,6 +392,23 @@ function drawTargets(v) {
     t.addEventListener('click', () => send(t.dataset.move));
     t.addEventListener('keydown', ev => { if (ev.key === 'Enter' || ev.key === ' ') send(t.dataset.move); });
   }
+}
+
+// An edge's ends moved a few pixels toward its sea hex (ship spots next to a Path spot on the coast)
+function seaEdgeEnds(e) {
+  const [a, b] = edgeEnds(e);
+  const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+  let near = null, best = Infinity;
+  for (const h of board.island.hexes) {
+    if (h.terrain !== 'sea') continue;
+    const c = centre(h);
+    const d = (c.x - mid.x) ** 2 + (c.y - mid.y) ** 2;
+    if (d < best) { best = d; near = c; }
+  }
+  if (!near) return [a, b];
+  const len = Math.hypot(near.x - mid.x, near.y - mid.y) || 1;
+  const dx = (near.x - mid.x) / len * 5, dy = (near.y - mid.y) / len * 5;
+  return [{ x: a.x + dx, y: a.y + dy }, { x: b.x + dx, y: b.y + dy }];
 }
 
 function status(v) {
@@ -366,15 +421,16 @@ function status(v) {
   const mine = v.toAct === v.you;
   switch (v.phase) {
     case 'setupHut': return mine ? 'Setup: place a Hut on a lit corner.' : `Setup: ${who} is placing a Hut.`;
-    case 'setupPath': return mine ? 'Setup: place a Path next to your new Hut.' : `Setup: ${who} is placing a Path.`;
+    case 'setupPath': return mine ? (v.pirate !== null ? 'Setup: place a Path next to your new Hut, or a ship on the coast (dashed spots).' : 'Setup: place a Path next to your new Hut.') : `Setup: ${who} is placing a Path.`;
     case 'preRoll': return mine ? 'Your turn: roll the dice (or play a project first).' : `${who}'s turn.`;
     case 'discard': return mine ? `A 7! You hold too many cards: choose ${v.players[v.you].discard} more to lose.` : `A 7: ${who} is choosing cards to lose.`;
-    case 'moveSquall': return mine ? 'Move the squall: click a lit hex.' : `${who} is moving the squall.`;
+    case 'moveSquall': return mine ? (v.pirate !== null ? 'Move the squall (a lit land hex) or the pirate (a lit sea hex).' : 'Move the squall: click a lit hex.') : `${who} is moving the ${v.pirate !== null ? 'squall or the pirate' : 'squall'}.`;
+    case 'gold': return mine ? 'A gold field paid you: choose a resource.' : `${who} is choosing resources from a gold field.`;
     case 'steal': return mine ? 'Choose who to steal a card from.' : `${who} is choosing who to steal from.`;
     // 5-6 players: the player 3 seats on builds after each turn (no roll, no trading with players)
     case 'main': if (v.paired) return mine ? `Your extra build phase (after ${nameOf(v.turnOf)}'s turn): build, buy or play a project, trade with the bank or markets (not with players), then end it.` : `${who} has an extra build phase after ${nameOf(v.turnOf)}'s turn.`;
       return mine ? `You rolled ${v.lastRoll}. Pick something to build, trade or buy, then end your turn.` : `${who} rolled ${v.lastRoll}.`;
-    case 'freeBuild': return mine ? 'Road Crew: place a free Path.' : `${who} is placing free Paths.`;
+    case 'freeBuild': return mine ? (v.pirate !== null ? 'Road Crew: place a free Path or ship.' : 'Road Crew: place a free Path.') : `${who} is placing free Paths.`;
     case 'harvest': return mine ? 'Good Harvest: take a resource.' : `${who} is taking resources.`;
     case 'marketDay': return mine ? 'Market Day: choose the resource everyone else hands over.' : `${who} is calling a Market Day.`;
     default: return '';
@@ -466,6 +522,9 @@ const SHOP = [
   { key: 'path', name: 'Path', cost: [1, 0, 0, 1, 0], piece: 0, note: 'Joins your buildings' },
   { key: 'hut', name: 'Hut', cost: [1, 0, 1, 1, 1], piece: 1, note: '1 Renown' },
   { key: 'lodge', name: 'Lodge', cost: [0, 3, 2, 0, 0], piece: 2, note: '2 Renown, upgrades a Hut' },
+  // The sea expansion only
+  { key: 'ship', name: 'Ship', cost: [1, 0, 0, 0, 1], piece: 3, note: 'Sails on from your buildings and ships', sea: true },
+  { key: 'moveship', name: 'Move a ship', cost: [0, 0, 0, 0, 0], piece: 3, note: 'Once a turn: a ship with an open end, not built this turn', sea: true, free: true },
 ];
 
 // Why an item can't be built now, or null if it can
@@ -475,6 +534,7 @@ function shopReason(v, item) {
   if (v.toAct !== v.you || v.phase === 'over') return 'Not your turn';
   if (v.phase === 'preRoll') return 'After you roll';
   if (v.phase !== 'main') return 'Not now';
+  if (item.key === 'moveship') return v.shipMoved ? 'Already moved one this turn' : 'No ship can move';
   if (v.players[v.you].pieces[item.piece] === 0) return 'None left';
   const short = item.cost.map((n, r) => Math.max(0, n - v.hand[r]));
   if (short.some(n => n)) return `Need ${short.map((n, r) => (n ? `${n} ${RESOURCES[r]}` : null)).filter(Boolean).join(', ')}`;
@@ -489,7 +549,7 @@ function drawShop(v) {
     $('shop').replaceChildren(li);
     return;
   }
-  const pieces = SHOP.map(item => {
+  const pieces = SHOP.filter(item => !item.sea || v.pirate !== null).map(item => {
     const reason = shopReason(v, item);
     const b = document.createElement('button');
     b.type = 'button';
@@ -498,9 +558,9 @@ function drawShop(v) {
       b.textContent = 'Cancel';
       b.addEventListener('click', () => { mode = null; render(snap); });
     } else {
-      b.textContent = 'Build';
+      b.textContent = item.free ? 'Move' : 'Build';
       b.disabled = reason !== null;
-      b.addEventListener('click', () => { mode = item.key; render(snap); });
+      b.addEventListener('click', () => { mode = item.key; moveFrom = null; render(snap); });
     }
     return shopRow(v, { key: item.key, name: item.name, note: item.note, cost: item.cost, picked: mode === item.key }, b, reason);
   });
@@ -744,7 +804,7 @@ function drawHand(v) {
     li.append(n, label);
     return li;
   }));
-  const affordable = SHOP.filter(item => item.cost.every((n, r) => v.hand[r] >= n)).map(item => item.name);
+  const affordable = SHOP.filter(item => !item.free && (!item.sea || v.pirate !== null) && item.cost.every((n, r) => v.hand[r] >= n)).map(item => item.name);
   if (v.row.length || v.deck) {
     if (PROJECT_COST.every((n, r) => v.hand[r] >= n)) affordable.push('a project');
   }
@@ -809,6 +869,9 @@ function describe(entry) {
     case 'hut': return `${who} built a Hut`;
     case 'lodge': return `${who} built a Lodge`;
     case 'path': return `${who} built a Path`;
+    case 'ship': return `${who} built a ship`;
+    case 'moveship': return `${who} moved a ship`;
+    case 'pirate': return `${who} moved the pirate`;
     case 'roll': return `${who} rolled ${entry.roll}`;
     case 'discard': return `${who} lost a ${RESOURCES[a]}`;
     case 'squall': return `${who} moved the squall`;

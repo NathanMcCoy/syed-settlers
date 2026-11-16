@@ -55,7 +55,8 @@ pub struct Greedy {
 enum Goal {
     Hut,
     Lodge,
-    Edge(usize), // the next Path toward the target spot
+    Edge(usize),     // the next Path toward the target spot
+    ShipEdge(usize), // the sea expansion: the next ship toward a spot reached by sea
     Project,
 }
 
@@ -82,12 +83,15 @@ impl Greedy {
                 let need = self.plan(g, p).1;
                 let hand = g.hands[p as usize];
                 self.best_by(legal, |a| match a {
+                    // Lose what's least needed; take (gold) what's most short
                     Action::Discard(r) => hand[*r as usize] as f64 - need[*r as usize] as f64,
+                    Action::Take(r) => need[*r as usize] as f64 - hand[*r as usize] as f64,
                     _ => f64::MIN,
                 })
             }
             Phase::MoveSquall { .. } => self.best_by(legal, |a| match a {
                 Action::Squall(h) => squall_value(g, p, *h as usize),
+                Action::Pirate(h) => pirate_value(g, p, *h as usize),
                 _ => f64::MIN,
             }),
             Phase::Steal => self.best_by(legal, |a| match a {
@@ -113,6 +117,7 @@ impl Greedy {
             }
             Phase::FreeBuild { .. } => match self.plan(g, p).0 {
                 Goal::Edge(e) if legal.contains(&Action::Path(e as u16)) => Action::Path(e as u16),
+                Goal::ShipEdge(e) if legal.contains(&Action::Ship(e as u16)) => Action::Ship(e as u16),
                 _ => *self.rng.pick(legal),
             },
             Phase::PreRoll => {
@@ -144,6 +149,11 @@ impl Greedy {
             return a;
         }
         let (goal, need) = self.plan(g, p);
+        if let Goal::ShipEdge(e) = goal {
+            if legal.contains(&Action::Ship(e as u16)) {
+                return Action::Ship(e as u16);
+            }
+        }
         if let Goal::Edge(e) = goal {
             if legal.contains(&Action::Path(e as u16)) {
                 return Action::Path(e as u16);
@@ -152,7 +162,7 @@ impl Greedy {
         let short = (0..5).any(|r| g.hands[p as usize][r] < need[r]);
         for k in [Project::Harvest, Project::MarketDay, Project::RoadCrew] {
             let worth = match k {
-                Project::RoadCrew => matches!(goal, Goal::Edge(..)),
+                Project::RoadCrew => matches!(goal, Goal::Edge(..) | Goal::ShipEdge(..)),
                 Project::MarketDay => short,
                 _ => true,
             };
@@ -223,6 +233,15 @@ impl Greedy {
         if pieces[P_LODGE] > 0 && g.huts(pu) > 0 {
             return (Goal::Lodge, LODGE_COST);
         }
+        // The sea expansion: sail when the best spot reached by ships beats the best by Paths
+        if g.sea() && pieces[P_HUT] > 0 && pieces[P_SHIP] > 0 {
+            let by_land = spot.map_or(f64::MIN, |(c, d, _)| spot_value(g, p, c) - 2.0 * d as f64);
+            if let Some((c, d, Some(e))) = reachable_by_sea(g, p) {
+                if sea_score(g, p, c, d) > by_land {
+                    return (Goal::ShipEdge(e), SHIP_COST);
+                }
+            }
+        }
         if let Some((_, _, Some(e))) = spot {
             return (Goal::Edge(e), PATH_COST);
         }
@@ -282,7 +301,10 @@ fn spot_value(g: &Game, p: u8, c: usize) -> f64 {
         }
         let n = pips(b.number[h]) as f64;
         v += n;
-        if have[r as usize] == 0 {
+        // A gold field gives whatever's needed: worth a little more than its pips
+        if r == GOLD {
+            v += 1.0;
+        } else if have[r as usize] == 0 {
             v += 1.5;
         }
     }
@@ -302,7 +324,7 @@ fn production(g: &Game, p: u8) -> [u32; 5] {
         }
         for h in listed(&b.graph.corner_hexes[c]) {
             let r = b.resource[h];
-            if r != NOBODY {
+            if r != NOBODY && r != GOLD {
                 out[r as usize] += pips(b.number[h]) * g.corner_kind[c] as u32;
             }
         }
@@ -327,6 +349,76 @@ fn squall_value(g: &Game, p: u8, h: usize) -> f64 {
         }
     }
     v
+}
+
+// The pirate: hurting the players with the most ships on its hex, never p itself
+fn pirate_value(g: &Game, p: u8, h: usize) -> f64 {
+    let mut v = -2.0; // the squall usually hurts more: only worth it with ships to rob
+    for &e in &g.board.graph.hex_edges[h] {
+        let o = g.edge_owner[e as usize];
+        if o == NOBODY || g.edge_kind[e as usize] != SHIP {
+            continue;
+        }
+        if o == p {
+            return -100.0;
+        }
+        v += 3.0 * (1.0 + g.renown(o as usize) as f64 / 5.0);
+    }
+    v
+}
+
+// A spot reached by sea: its value, the island bonus if p has no Hut on that island yet, less distance
+fn sea_score(g: &Game, p: u8, c: usize, d: u32) -> f64 {
+    let region = g.board.corner_region[c];
+    let new_island = region != 0 && region < 16 && g.islands_reached[p as usize] & (1 << region) == 0;
+    let bonus = if new_island { 3.0 * g.settings().sea_island_bonus as f64 } else { 0.0 };
+    spot_value(g, p, c) + bonus - 2.0 * d as f64
+}
+
+// The best free spot p can reach by building ships along free sea edges from its coastal buildings
+// and ships (never past another player's building, never by the pirate): (corner, ships needed, the
+// first ship to build)
+fn reachable_by_sea(g: &Game, p: u8) -> Option<(usize, u32, Option<usize>)> {
+    let gr = &g.board.graph;
+    let corners = gr.corners();
+    let mut dist = vec![u32::MAX; corners];
+    let mut first: Vec<Option<usize>> = vec![None; corners];
+    let mut queue = std::collections::VecDeque::new();
+    for c in 0..corners {
+        let own_ship = listed(&gr.corner_edges[c]).any(|e| g.edge_owner[e] == p && g.edge_kind[e] == SHIP);
+        let mine = g.corner_owner[c] == p || (g.corner_owner[c] == NOBODY && own_ship);
+        if mine && listed(&gr.corner_edges[c]).any(|e| g.board.edge_sea[e]) {
+            dist[c] = 0;
+            queue.push_back(c);
+        }
+    }
+    while let Some(c) = queue.pop_front() {
+        if g.corner_owner[c] != NOBODY && g.corner_owner[c] != p {
+            continue; // no ship past another player's building
+        }
+        for (k, n) in listed(&gr.corner_corners[c]).enumerate() {
+            let e = gr.corner_edges[c][k] as usize;
+            if dist[n] != u32::MAX || !g.board.edge_sea[e] || g.edge_owner[e] != NOBODY || g.by_pirate(e) {
+                continue;
+            }
+            dist[n] = dist[c] + 1;
+            first[n] = if dist[c] == 0 { Some(e) } else { first[c] };
+            if dist[n] < 8 {
+                queue.push_back(n);
+            }
+        }
+    }
+    let mut best: Option<(usize, u32, Option<usize>, f64)> = None;
+    for c in 0..corners {
+        if dist[c] == u32::MAX || dist[c] == 0 || !g.spaced(c) || g.board.corner_region[c] == crate::island::SEA {
+            continue;
+        }
+        let score = sea_score(g, p, c, dist[c]);
+        if best.as_ref().is_none_or(|b| score > b.3) {
+            best = Some((c, dist[c], first[c], score));
+        }
+    }
+    best.map(|(c, d, f, _)| (c, d, f))
 }
 
 // In setup: the best free spot one step past this edge

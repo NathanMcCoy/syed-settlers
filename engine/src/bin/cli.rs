@@ -100,6 +100,12 @@ fn sim(args: &[String], settings: &Settings) {
     let total: u32 = sums.iter().sum();
     let parts: Vec<String> = SOURCES.iter().zip(sums).map(|(name, v)| format!("{name} {:.0}%", 100.0 * v as f64 / total as f64)).collect();
     println!("winners' Renown from: {}", parts.join(", "));
+    // Tokens (e.g. the sea expansion's island bonus), when any were won
+    let tokens: u32 = finished.iter().map(|o| o.token_renown[o.winner as usize]).sum();
+    if tokens > 0 {
+        println!("winners' Renown from tokens: {:.1} a game ({:.0}% of their Renown)",
+            tokens as f64 / finished.len() as f64, 100.0 * tokens as f64 / (total + tokens) as f64);
+    }
 }
 
 fn fail(why: &str) -> ! {

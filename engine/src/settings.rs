@@ -129,6 +129,10 @@ settings! {
     pieces_path: u8 = 15, "pieces.path", 1, 40, "Paths each player has";
     pieces_hut: u8 = 5, "pieces.hut", 2, 10, "Huts each player has";
     pieces_lodge: u8 = 4, "pieces.lodge", 0, 10, "Lodges each player has";
+    pieces_ship: u8 = 15, "pieces.ship", 0, 40, "Ships each player has (the sea expansion)";
+    sea: bool = false, "sea", 0, 1, "The sea expansion: ships, the pirate, gold fields and small islands to sail to (sea.scenario picks the map)";
+    sea_scenario: u8 = 1, "sea.scenario", 1, 1, "Sea scenario: 1 New Shores (a main island and small islands; more to come)";
+    sea_island_bonus: u8 = 2, "sea.islandBonus", 0, 4, "Renown tokens for your first Hut on each small island (the sea expansion)";
 }
 
 impl Settings {
@@ -154,7 +158,21 @@ impl Settings {
 
     // Settings for a game of `players` seats: that many players' defaults, then the text's changes
     pub fn parse_for(text: &str, players: usize) -> Result<Settings, String> {
-        Settings::parse_onto(Settings::for_players(players), text)
+        let s = Settings::parse_onto(Settings::for_players(players), text)?;
+        if !s.sea {
+            return Ok(s);
+        }
+        // Expansions bring their own defaults (F1 in EXPANSIONS.md): players' defaults, then the
+        // expansion's, then the game's own settings on top
+        let mut base = Settings::for_players(players);
+        base.sea = true;
+        base.apply_sea_defaults();
+        Settings::parse_onto(base, text)
+    }
+
+    // The sea expansion's defaults (its scenario 1, New Shores): 14 Renown to win
+    fn apply_sea_defaults(&mut self) {
+        self.win = 14;
     }
 
     fn parse_onto(mut s: Settings, text: &str) -> Result<Settings, String> {
@@ -246,7 +264,7 @@ mod tests {
         let t = Settings::table_json();
         assert!(t.starts_with("[{\"name\":\"players.min\""));
         assert!(t.contains("{\"name\":\"squall.range\",\"kind\":\"whole\",\"default\":0,\"min\":0,\"max\":8,"));
-        assert_eq!(t.matches("\"name\"").count(), 37);
+        assert_eq!(t.matches("\"name\"").count(), 41);
         assert!(Settings::parse("island.dunes=2;island.forest=3").is_ok(), "a Forest traded for a second Dunes");
     }
 }

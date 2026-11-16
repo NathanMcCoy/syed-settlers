@@ -1,6 +1,6 @@
 # Syed Settlers: rules
 
-Version 0.5 (draft, Nov 16 2026: 5 and 6 players, from the classic game's 5-6 player rules: the
+Version 0.6 (draft, Nov 16 2026: the sea expansion's first scenario, New Shores. 0.5: 5 and 6 players, from the classic game's 5-6 player rules: the
 large island, more cards and projects, and paired turns. 0.4 (Nov 15): as close as we can make it to
 the classic game this one is modelled on, checked against its rulebook: other players' buildings block Paths and break
 Longest Path again; no limit on trade offers; markets spread evenly round the coast; numbers in the
@@ -187,6 +187,32 @@ Cost: **Stone + Grain + Fish.** The deck ⚙ has 25 cards:
   on show to everyone.
 - To take a title from its holder you need strictly more. If two or more players tie for the lead
   when nobody holds it yet, nobody holds it until one of them is strictly ahead.
+
+## The sea expansion ⚙ (`sea`, chosen when starting a game)
+
+From the classic game's sea expansion. Version 1 has its first scenario, **New Shores** (`sea.scenario` 1); the rest
+are planned (EXPANSIONS.md). Everything above still applies, with these changes.
+
+- **The map:** the main island as usual (the hexagon, or the large island with 5-6 players), plus **small islands**
+  with at least one sea hex between any two pieces of land. With 2-4 players: 3 small islands of 3 hexes, holding
+  2 Mine, 1 Forest, 1 Paddy, 1 Fields, 2 Quarry and **2 Gold** (the rulebook's 4-player tiles), numbered 2, 3, 4, 5, 6,
+  8, 9, 10, 11 (no 6 or 8 together). With 5-6 players, a fourth island of 2 more Gold numbered 3 and 11 (our own: that
+  map is only a picture in the rulebook). Markets are on the main island; the squall starts on its Dunes; the
+  **pirate** starts on a sea hex two steps from the main island.
+- **Winning:** 14 Renown (the scenario's default; `win` can change it).
+- **Setup:** Huts on the main island only. A Hut on the coast may take a **ship** instead of a Path.
+- **Ships** (Timber + Fish, 15 ⚙ each, `pieces.ship`): on an edge touching the sea; a coastal edge takes a Path or a
+  ship, not both. A ship joins one of your buildings or ships (not a Path), never past another player's building, and
+  never on an edge of the pirate's hex. A Hut may be built where your ship reaches land.
+- **Moving a ship:** once a turn (in an extra build phase too), move one of your ships with an open end (no ship or
+  building of yours there) that wasn't built this turn and isn't by the pirate, to any spot a new ship could go.
+- **Longest Path** counts Paths and ships; they join only at one of your own buildings.
+- **Gold fields** produce a resource of your choice: 1 per Hut, 2 per Lodge (any mix). Players choose in turn order,
+  starting with the roller. A setup Hut on gold takes one of your choice. Gold pays nothing when the bank is empty.
+- **The pirate:** after a 7, or with a Pilot, move the squall *or* the pirate (to another sea hex), then steal from a
+  player with a ship on its edges.
+- **Road Crew** places 2 Paths, 2 ships, or one of each.
+- **Island bonus** ⚙ (`sea.islandBonus`): your first Hut on each small island earns 2 Renown tokens.
 
 ## Not in version 1 (planned)
 

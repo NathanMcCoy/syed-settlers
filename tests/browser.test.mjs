@@ -125,6 +125,56 @@ for (const [name, type] of Object.entries(BROWSERS)) {
     }
   });
 
+  test(`${name}: a sea game: gold, the pirate, the Ship shop, and a setup ship placed by clicking`, async () => {
+    const { browser, page, errors } = await open(type);
+    try {
+      await page.goto(base + '/');
+      await page.fill('input[name="name"]', 'Tester');
+      await page.check('input[name="sea"]');
+      await page.click('button[type="submit"]');
+      await page.waitForSelector('#board svg');
+      assert.ok(await page.locator('polygon.t-gold').count() >= 2, 'gold fields');
+      assert.equal(await page.locator('[data-pirate]').count(), 1, 'the pirate');
+      assert.equal(await page.locator('#shop [data-build="ship"]').count(), 1, 'the Ship in the shop');
+      assert.equal(await page.locator('#shop [data-build="moveship"]').count(), 1, 'Move a ship in the shop');
+      const clicks = { hut: 0, ship: 0, path: 0, roll: 0, other: 0 };
+      for (let i = 0; i < 600 && clicks.roll < 8; i++) {
+        const state = await page.evaluate(() => ({ phase: document.body.dataset.phase, mine: document.body.dataset.myTurn === 'true' }));
+        if (state.phase === 'over') break;
+        if (!state.mine) { await page.waitForTimeout(25); continue; }
+        const before = await page.evaluate(() => document.querySelector('#log').textContent);
+        if (await page.locator('.target.corner').count()) {
+          // In setup, the lit corner nearest the sea (a coastal spot, so a ship can follow)
+          const k = await page.evaluate(() => {
+            const seas = [...document.querySelectorAll('polygon.t-sea')].map(p => {
+              const pts = p.getAttribute('points').split(' ').map(s => s.split(',').map(Number));
+              return [pts.reduce((a, q) => a + q[0], 0) / pts.length, pts.reduce((a, q) => a + q[1], 0) / pts.length];
+            });
+            const corners = [...document.querySelectorAll('.target.corner')];
+            const d = c => Math.min(...seas.map(([x, y]) => Math.hypot(x - c.cx.baseVal.value, y - c.cy.baseVal.value)));
+            return corners.reduce((best, c, i) => (d(c) < d(corners[best]) ? i : best), 0);
+          });
+          await page.locator('.target.corner').nth(k).click({ force: true });
+          clicks.hut++;
+        } else if (await page.locator('.target.edge.sea').count()) { await page.locator('.target.edge.sea').first().click({ force: true }); clicks.ship++; }
+        else if (await page.locator('.target.edge').count()) { await page.locator('.target.edge').first().click({ force: true }); clicks.path++; }
+        else if (await page.locator('.target.hex-target').count()) { await page.locator('.target.hex-target').first().click({ force: true }); clicks.other++; }
+        else if (await page.locator('#choices button', { hasText: 'Roll' }).count()) { await page.locator('#choices button', { hasText: 'Roll' }).click(); clicks.roll++; }
+        else if (await page.locator('#choices button', { hasText: 'End turn' }).count()) { await page.locator('#choices button', { hasText: 'End turn' }).click(); }
+        else if (await page.locator('#choices button').count()) { await page.locator('#choices button').first().click(); clicks.other++; }
+        await page.waitForFunction(b => document.querySelector('#log').textContent !== b || document.querySelector('#move-error').textContent, before, { timeout: 5000 });
+        assert.equal(await page.textContent('#move-error'), '', 'the server accepted every click');
+      }
+      assert.equal(clicks.hut, 2, 'two setup Huts');
+      assert.ok(clicks.ship >= 1, `a setup ship (${JSON.stringify(clicks)})`);
+      assert.ok(await page.locator('.road.ship').count() >= 1, 'ships are drawn dashed');
+      assert.ok(clicks.roll >= 8);
+      assert.deepEqual(errors, []);
+    } finally {
+      await browser.close();
+    }
+  });
+
   test(`${name}: a friend's link opens their own seat and the key leaves the address`, async () => {
     const { browser, page, errors } = await open(type);
     try {

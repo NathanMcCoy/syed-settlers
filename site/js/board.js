@@ -5,7 +5,7 @@ export const SIZE = 34;                                                    // pi
 export const X = SIZE * Math.sqrt(3) / 2, Y = SIZE / 2;
 export const CORNERS = [[0, -2], [1, -1], [1, 1], [0, 2], [-1, 1], [-1, -1]];
 export const RESOURCES = ['Timber', 'Stone', 'Grain', 'Copper', 'Fish'];
-export const TERRAIN_RESOURCE = { forest: 'Timber', quarry: 'Stone', fields: 'Grain', mine: 'Copper', paddy: 'Fish' };
+export const TERRAIN_RESOURCE = { forest: 'Timber', quarry: 'Stone', fields: 'Grain', mine: 'Copper', paddy: 'Fish', gold: 'any resource' };
 const MARKET = { any: '3:1 any', timber: '2:1 Timber', stone: '2:1 Stone', grain: '2:1 Grain', copper: '2:1 Copper', fish: '2:1 Fish' };
 const SVG = 'http://www.w3.org/2000/svg';
 
@@ -60,6 +60,12 @@ export function islandSvg(island) {
   const padX = X + 4, padY = SIZE + 4;
   const minX = Math.min(...xs) - padX, minY = Math.min(...ys) - padY;
   const svg = el('svg', { viewBox: `${minX} ${minY} ${Math.max(...xs) + padX - minX} ${Math.max(...ys) + padY - minY}`, role: 'img', 'aria-label': `Island ${island.seed}` });
+  // Gold fields (the sea expansion): striped, so they can't be mistaken for Fields
+  const stripes = el('pattern', { id: 'gold-stripes', width: 8, height: 8, patternUnits: 'userSpaceOnUse', patternTransform: 'rotate(45)' });
+  stripes.append(el('rect', { width: 8, height: 8, class: 'gold-base' }), el('rect', { width: 3, height: 8, class: 'gold-stripe' }));
+  const defs = el('defs');
+  defs.append(stripes);
+  svg.append(defs);
 
   island.hexes.forEach((h, i) => {
     if (!shown.has(i)) return;

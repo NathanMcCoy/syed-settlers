@@ -31,8 +31,10 @@ impl Game {
             self.decide_then(discards, Phase::MoveSquall { anywhere: false });
             return;
         }
-        self.produce(total);
-        self.phase = Phase::Main;
+        // Gold fields' owners then choose their resources (pending.rs), starting with this player
+        let gold = self.produce(total);
+        let decisions = self.gold_decisions(&gold);
+        self.decide_then(decisions, Phase::Main);
     }
 
     // The player acting ends their phase (their own turn's, or an extra phase)
@@ -41,6 +43,8 @@ impl Game {
         self.offers_made = 0;
         self.bought = [0; 5];
         self.project_used = false;
+        self.ships_new.clear();
+        self.ship_moved = false;
         if self.pairs() && !self.paired {
             self.start_extra_phase(self.partner(self.owner));
         } else {

@@ -20,6 +20,7 @@ pub enum Terrain {
     Mine,
     Paddy,
     Dunes,
+    Gold, // the sea expansion: produces a resource of the player's choice
 }
 use Terrain::*;
 
@@ -36,11 +37,11 @@ impl Terrain {
             Fields => Some(2),
             Mine => Some(3),
             Paddy => Some(4),
-            Sea | Dunes => None,
+            Sea | Dunes | Gold => None,
         }
     }
     pub fn name(self) -> &'static str {
-        ["sea", "forest", "quarry", "fields", "mine", "paddy", "dunes"][self as usize]
+        ["sea", "forest", "quarry", "fields", "mine", "paddy", "dunes", "gold"][self as usize]
     }
 }
 
@@ -126,7 +127,9 @@ pub struct Hex {
     pub cell: Cell,
     pub terrain: Terrain,
     pub number: u8, // 0: none
+    pub region: u8, // which island: 0 the main one, 1, 2, ... small ones (the sea expansion); SEA for sea
 }
+pub const SEA: u8 = u8::MAX;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Market {
@@ -148,6 +151,7 @@ pub struct Island {
     pub hexes: Vec<Hex>, // row by row; a hex's number is its place here
     pub markets: Vec<Market>,
     pub squall: u16,
+    pub pirate: u16, // the pirate's starting sea hex (the sea expansion), or NONE
     pub info: Info,
 }
 
@@ -161,10 +165,12 @@ impl Island {
     }
 
     pub fn to_json(&self) -> String {
+        let sea = self.pirate != NONE;
         let hexes: Vec<String> = self.hexes.iter().map(|h| format!(
-            "{{\"q\":{},\"r\":{},\"terrain\":\"{}\",\"number\":{}}}",
+            "{{\"q\":{},\"r\":{},\"terrain\":\"{}\",\"number\":{}{}}}",
             h.cell.q, h.cell.r, h.terrain.name(),
             if h.number == 0 { "null".into() } else { h.number.to_string() },
+            if !sea { String::new() } else if h.region == SEA { ",\"region\":null".into() } else { format!(",\"region\":{}", h.region) },
         )).collect();
         let markets: Vec<String> = self.markets.iter().map(|m| format!(
             "{{\"hex\":{},\"side\":{},\"kind\":\"{}\"}}",
@@ -173,8 +179,9 @@ impl Island {
         let i = &self.info;
         // Version 2: no islets (Nov 15)
         format!(
-            "{{\"version\":2,\"seed\":{},\"hexes\":[{}],\"markets\":[{}],\"squall\":{},\"info\":{{\"mainSize\":{},\"mainAverage\":{},\"attempts\":{}}}}}",
+            "{{\"version\":2,\"seed\":{},\"hexes\":[{}],\"markets\":[{}],\"squall\":{}{},\"info\":{{\"mainSize\":{},\"mainAverage\":{},\"attempts\":{}}}}}",
             json::string(&self.seed), hexes.join(","), markets.join(","), self.squall,
+            if sea { format!(",\"pirate\":{}", self.pirate) } else { String::new() },
             i.main_size, json::number(i.main_average), i.attempts,
         )
     }
@@ -236,6 +243,10 @@ fn attempt_island(s: &Settings, rng: &mut Rng) -> Option<Island> {
     let land = if uses_spiral(s) { dress_spiral(rng, &main, s) } else { dress_main(rng, &main, s.island_dunes as usize, counts, tokens_for(s))? };
     let main_average = land.iter().map(|h| pips(h.number)).sum::<u32>() as f64
         / land.iter().filter(|h| h.number != 0).count() as f64;
+    let mut land = land;
+    if s.sea {
+        land.extend(small_islands(rng, &main_set, s)?);
+    }
 
     // Sea around the island, then a fixed order (row by row)
     let land_set: HashSet<Cell> = land.iter().map(|h| h.cell).collect();
@@ -244,7 +255,7 @@ fn attempt_island(s: &Settings, rng: &mut Rng) -> Option<Island> {
     for h in &land {
         for c in within(h.cell, SEA_REACH) {
             if !land_set.contains(&c) && seen.insert(c) {
-                sea.push(Hex { cell: c, terrain: Sea, number: 0 });
+                sea.push(Hex { cell: c, terrain: Sea, number: 0, region: SEA });
             }
         }
     }
@@ -255,19 +266,21 @@ fn attempt_island(s: &Settings, rng: &mut Rng) -> Option<Island> {
 
     let markets = place_markets(rng, &hexes, &graph, s.markets_any, s.markets_each, s.markets_extra_fish)?;
     let squall = *rng.pick(&squall_starts(&hexes));
+    let pirate = if s.sea { pirate_start(rng, &hexes)? } else { NONE };
 
     Some(Island {
         seed: String::new(),
         hexes,
         markets,
         squall,
+        pirate,
         info: Info { main_size: main.len(), main_average, attempts: 0 },
     })
 }
 
 // Where the squall may start: the island's Dunes, or with none, its weakest hexes (fewest pips)
 fn squall_starts(hexes: &[Hex]) -> Vec<u16> {
-    let main = |i: &usize| hexes[*i].terrain != Sea;
+    let main = |i: &usize| hexes[*i].terrain != Sea && hexes[*i].region == 0;
     let weakest = (0..hexes.len()).filter(main).map(|i| pips(hexes[i].number)).min().unwrap();
     (0..hexes.len()).filter(main).filter(|&i| pips(hexes[i].number) == weakest).map(|i| i as u16).collect()
 }
@@ -353,7 +366,7 @@ fn dress_main(rng: &mut Rng, main: &[Cell], dunes: usize, counts: Option<[u8; 5]
     // Numbers go down one at a time, 6s and 8s first (they're the hardest to fit), each on a random
     // hex where it breaks no rule. Drawing them all at random and checking afterwards almost never
     // works on big islands, which need many repeats.
-    let mut hexes: Vec<Hex> = main.iter().map(|&cell| Hex { cell, terrain: Dunes, number: 0 }).collect();
+    let mut hexes: Vec<Hex> = main.iter().map(|&cell| Hex { cell, terrain: Dunes, number: 0, region: 0 }).collect();
     let mut open: Vec<usize> = Vec::new();
     for _ in 0..NUMBER_TRIES {
         rng.shuffle(&mut terrains);
@@ -392,7 +405,7 @@ fn dress_spiral(rng: &mut Rng, main: &[Cell], s: &Settings) -> Vec<Hex> {
     let mut terrains: Vec<Terrain> = PRODUCING.iter().zip(s.tile_counts()).flat_map(|(&t, n)| std::iter::repeat_n(t, n as usize)).collect();
     terrains.extend(std::iter::repeat_n(Dunes, s.island_dunes as usize));
     rng.shuffle(&mut terrains);
-    let mut hexes: Vec<Hex> = main.iter().zip(&terrains).map(|(&cell, &terrain)| Hex { cell, terrain, number: 0 }).collect();
+    let mut hexes: Vec<Hex> = main.iter().zip(&terrains).map(|(&cell, &terrain)| Hex { cell, terrain, number: 0, region: 0 }).collect();
     let index: HashMap<Cell, usize> = main.iter().enumerate().map(|(i, &c)| (c, i)).collect();
     let mut numbers = SPIRAL_NUMBERS.iter();
     for c in spiral_cells(rng.below(6)) {
@@ -415,6 +428,95 @@ fn numbers_apart(hexes: &[Hex], index: &HashMap<Cell, usize>) -> bool {
             None => true,
         })
     })
+}
+
+// ---- The sea expansion ----
+
+// Small islands' tiles for New Shores (the rulebook's 4-player list in our names: 2 Mine, 1 Forest,
+// 1 Paddy, 1 Fields, 2 Quarry, 2 Gold), their numbers (the 27 discs less the main island's 18), and
+// for 5-6 players 2 more Gold with a 3 and an 11 (our own: that map is only a picture)
+fn small_island_tiles(s: &Settings) -> (Vec<Terrain>, Vec<u8>, Vec<usize>) {
+    let mut tiles = vec![Mine, Mine, Forest, Paddy, Fields, Quarry, Quarry, Gold, Gold];
+    let mut numbers = vec![2, 3, 4, 5, 6, 8, 9, 10, 11];
+    let mut sizes = vec![3, 3, 3];
+    if s.island_large {
+        tiles.extend([Gold, Gold]);
+        numbers.extend([3, 11]);
+        sizes.push(2);
+    }
+    (tiles, numbers, sizes)
+}
+
+// The small islands: each a few hexes, with at least one sea hex between it and any other land, near
+// enough to the main island to sail to (2 or 3 steps from its coast). Numbers: no 6 or 8 together.
+fn small_islands(rng: &mut Rng, main: &HashSet<Cell>, s: &Settings) -> Option<Vec<Hex>> {
+    let (mut tiles, mut numbers, sizes) = small_island_tiles(s);
+    let near_main = |c: Cell| main.iter().map(|m| m.distance(c)).min().unwrap();
+    let mut taken: Vec<Cell> = main.iter().copied().collect();
+    let mut out: Vec<Hex> = Vec::new();
+    let far = |c: Cell, taken: &[Cell], own: &[Cell]| taken.iter().all(|t| own.contains(t) || t.distance(c) >= 2);
+    let reach = taken.iter().map(|c| c.distance(Cell::new(0, 0))).max().unwrap() + 3;
+    let candidates: Vec<Cell> = within(Cell::new(0, 0), reach).into_iter().filter(|&c| (3..=4).contains(&near_main(c))).collect();
+    for (k, &size) in sizes.iter().enumerate() {
+        let mut placed = None;
+        for _ in 0..60 {
+            let start = *rng.pick(&candidates);
+            if !far(start, &taken, &[]) {
+                continue;
+            }
+            let mut cells = vec![start];
+            while cells.len() < size {
+                let options: Vec<Cell> = cells.iter().flat_map(|c| c.neighbors()).filter(|&n| {
+                    !cells.contains(&n) && (3..=4).contains(&near_main(n)) && far(n, &taken, &cells)
+                }).collect();
+                if options.is_empty() {
+                    break;
+                }
+                let next = *rng.pick(&options);
+                cells.push(next);
+            }
+            if cells.len() == size {
+                placed = Some(cells);
+                break;
+            }
+        }
+        let cells = placed?;
+        taken.extend(&cells);
+        for c in cells {
+            out.push(Hex { cell: c, terrain: Sea, number: 0, region: k as u8 + 1 });
+        }
+    }
+    // Tiles and numbers, redrawn until no 6 or 8 is next to another
+    let set: HashMap<Cell, usize> = out.iter().enumerate().map(|(i, h)| (h.cell, i)).collect();
+    for _ in 0..NUMBER_TRIES {
+        rng.shuffle(&mut tiles);
+        rng.shuffle(&mut numbers);
+        for (h, &t) in out.iter_mut().zip(&tiles) {
+            h.terrain = t;
+        }
+        let mut next = numbers.iter();
+        for h in out.iter_mut() {
+            h.number = *next.next().unwrap();
+        }
+        let ok = out.iter().all(|h| !strong(h.number) || h.cell.neighbors().iter().all(|n| set.get(n).is_none_or(|&j| !strong(out[j].number))));
+        if ok {
+            return Some(out);
+        }
+    }
+    None
+}
+
+// The pirate starts on a sea hex two steps from the main island (between it and the small islands)
+fn pirate_start(rng: &mut Rng, hexes: &[Hex]) -> Option<u16> {
+    let main: Vec<Cell> = hexes.iter().filter(|h| h.region == 0).map(|h| h.cell).collect();
+    let land: Vec<Cell> = hexes.iter().filter(|h| h.terrain != Sea).map(|h| h.cell).collect();
+    let options: Vec<u16> = (0..hexes.len())
+        .filter(|&i| hexes[i].terrain == Sea)
+        .filter(|&i| main.iter().map(|m| m.distance(hexes[i].cell)).min() == Some(2))
+        .filter(|&i| land.iter().all(|l| l.distance(hexes[i].cell) >= 2))
+        .map(|i| i as u16)
+        .collect();
+    if options.is_empty() { None } else { Some(*rng.pick(&options)) }
 }
 
 // Each resource's total pips (how often it's produced, over all its hexes)
@@ -451,7 +553,8 @@ fn place_markets(rng: &mut Rng, hexes: &[Hex], g: &Graph, any: u8, each: u8, ext
     rng.shuffle(&mut kinds);
     let mut coast: Vec<(u16, u8, u16)> = Vec::new();
     for (h, hex) in hexes.iter().enumerate() {
-        if hex.terrain == Sea {
+        // Markets are on the main island's coast (the sea expansion's small islands have none)
+        if hex.terrain == Sea || hex.region != 0 {
             continue;
         }
         for side in 0..6 {
@@ -501,7 +604,7 @@ fn spread_markets(rng: &mut Rng, hexes: &[Hex], g: &Graph, coast: &[(u16, u8, u1
         let (x, y) = c.center();
         (x as f64 * 3f64.sqrt() / 2.0, y as f64 / 2.0)
     };
-    let land: Vec<(f64, f64)> = hexes.iter().filter(|h| h.terrain != Sea).map(|h| point(h.cell)).collect();
+    let land: Vec<(f64, f64)> = hexes.iter().filter(|h| h.terrain != Sea && h.region == 0).map(|h| point(h.cell)).collect();
     let mid = (land.iter().map(|p| p.0).sum::<f64>() / land.len() as f64, land.iter().map(|p| p.1).sum::<f64>() / land.len() as f64);
     // Each coastal edge's angle around the island's middle (its midpoint: halfway to the sea hex)
     let mut around: Vec<(f64, (u16, u8, u16))> = coast.iter().map(|&(h, side, e)| {

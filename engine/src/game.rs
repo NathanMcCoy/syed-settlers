@@ -7,16 +7,19 @@
 // copies only the small changing state. Nothing here searches through lists during play except a
 // player's own Paths (Longest Path), at most a few dozen.
 use crate::hex::{Graph, listed};
-use crate::island::{ANY, Island, Terrain, pips};
+use crate::hex::NONE;
+use crate::island::{ANY, Island, SEA, Terrain, pips};
 use crate::rng::Rng;
 use crate::settings::Settings;
 use std::sync::Arc;
 
 mod pending;
+mod sea;
 mod titles;
 mod tokens;
 mod turns;
 pub use pending::{Decision, Pending};
+pub use sea::{GOLD, P_SHIP, SHIP, SHIP_COST};
 pub use titles::{TITLE_COUNT, TITLES, Title, title};
 pub use tokens::{TOKEN_COUNT, TOKENS, Token};
 
@@ -54,6 +57,9 @@ pub const PROJECTS: [Project; 5] = [Project::Pilot, Project::Lighthouse, Project
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum Action {
     Hut(u16),        // build (or in setup, place) a Hut on a corner
+    Ship(u16),       // the sea expansion: build (or in setup, place) a ship on a sea edge
+    MoveShip(u16, u16), // move your ship from this edge to that one (once a turn)
+    Pirate(u16),     // move the pirate to this sea hex (instead of the squall)
     Lodge(u16),      // upgrade your Hut on this corner
     Path(u16),       // on an edge
     Roll,
@@ -108,6 +114,9 @@ pub struct Board {
     pub corner_market: Vec<u8>,       // which market (index into markets), or NOBODY
     pub market_kind: Vec<u8>,         // per market: 0â€“4 (2:1) or ANY (3:1)
     pub edge_land: Vec<bool>,         // can take a Path
+    pub edge_sea: Vec<bool>,          // touches the sea: can take a ship (the sea expansion)
+    pub corner_region: Vec<u8>,       // which island the corner's land is on (0 main), or SEA
+    pub sea_hexes: Vec<u16>,          // where the pirate may go
 }
 
 impl Board {
@@ -132,13 +141,21 @@ impl Board {
             settings: settings.clone(),
             terrain: hexes.iter().map(|h| h.terrain).collect(),
             number: hexes.iter().map(|h| h.number).collect(),
-            resource: hexes.iter().map(|h| h.terrain.resource().map_or(NOBODY, |r| r as u8)).collect(),
+            resource: hexes.iter().map(|h| match h.terrain {
+                Terrain::Gold => GOLD,
+                t => t.resource().map_or(NOBODY, |r| r as u8),
+            }).collect(),
             land_hexes: (0..hexes.len()).filter(|&h| land(h)).map(|h| h as u16).collect(),
             by_number,
             corner_land: (0..graph.corners()).map(|c| listed(&graph.corner_hexes[c]).any(land)).collect(),
             corner_market,
             market_kind: island.markets.iter().map(|m| m.kind).collect(),
             edge_land: (0..graph.edges()).map(|e| listed(&graph.edge_hexes[e]).any(land)).collect(),
+            edge_sea: (0..graph.edges()).map(|e| listed(&graph.edge_hexes[e]).any(|h| !land(h))).collect(),
+            corner_region: (0..graph.corners())
+                .map(|c| listed(&graph.corner_hexes[c]).filter(|&h| land(h)).map(|h| hexes[h].region).min().unwrap_or(SEA))
+                .collect(),
+            sea_hexes: (0..hexes.len()).filter(|&h| !land(h)).map(|h| h as u16).collect(),
             graph,
         }
     }
@@ -162,7 +179,7 @@ pub struct Game {
     pub edge_owner: Vec<u8>,
     pub edge_kind: Vec<u8>,
     pub hands: [Hand; MAX_PLAYERS],
-    pub pieces: [[u8; 3]; MAX_PLAYERS], // Paths, Huts, Lodges still in hand (P_PATH, P_HUT, P_LODGE)
+    pub pieces: [[u8; 4]; MAX_PLAYERS], // Paths, Huts, Lodges, ships still in hand (P_PATH, P_HUT, P_LODGE, P_SHIP)
     pub held: [[u8; 5]; MAX_PLAYERS], // projects held, by Project (Lighthouses count for Renown)
     pub bought: [u8; 5],              // projects the current player bought this turn
     pub project_used: bool,
@@ -173,6 +190,14 @@ pub struct Game {
     pub line: [u8; MAX_PLAYERS],      // each player's longest line of Paths
     pub pilots: [u8; MAX_PLAYERS],    // Pilots each player has played (everyone sees them)
     pub squall: u16,
+    // The sea expansion (sea.rs): the pirate's hex (NONE without the sea), whether the steal now is
+    // the pirate's, ships built this phase (they can't move), whether a ship moved this phase, and
+    // the small islands each player has a Hut on (a bit per region)
+    pub pirate: u16,
+    pub at_sea: bool,
+    pub ships_new: Vec<u16>,
+    pub ship_moved: bool,
+    pub islands_reached: [u16; MAX_PLAYERS],
     pub pending: Vec<Pending>,        // decisions waiting (pending.rs); the first is being made
     pub after: Phase,                 // where the game goes once they're all made
     pub last_take: [u8; MAX_PLAYERS], // what each player handed over on the last Market Day
@@ -258,7 +283,7 @@ impl Game {
             edge_owner: vec![NOBODY; g.edges()],
             edge_kind: vec![0; g.edges()],
             hands: [[0; 5]; MAX_PLAYERS],
-            pieces: [[s.pieces_path, s.pieces_hut, s.pieces_lodge]; MAX_PLAYERS],
+            pieces: [[s.pieces_path, s.pieces_hut, s.pieces_lodge, if s.sea { s.pieces_ship } else { 0 }]; MAX_PLAYERS],
             held: [[0; 5]; MAX_PLAYERS],
             bought: [0; 5],
             project_used: false,
@@ -269,6 +294,11 @@ impl Game {
             line: [0; MAX_PLAYERS],
             pilots: [0; MAX_PLAYERS],
             squall: island.squall,
+            pirate: island.pirate,
+            at_sea: false,
+            ships_new: Vec::new(),
+            ship_moved: false,
+            islands_reached: [0; MAX_PLAYERS],
             pending: Vec::new(),
             after: Phase::PreRoll,
             last_take: [0; MAX_PLAYERS],
@@ -367,7 +397,7 @@ impl Game {
         self.edge_owner[e] == NOBODY
             && self.board.graph.edge_corners[e].iter().any(|&c| {
                 let c = c as usize;
-                self.corner_owner[c] == p || (self.corner_owner[c] == NOBODY && self.touches_own_edge(p, c))
+                self.corner_owner[c] == p || (self.corner_owner[c] == NOBODY && self.touches_own(p, c, PATH))
             })
     }
 
@@ -406,8 +436,9 @@ impl Game {
         let pu = p as usize;
         match self.phase {
             Phase::SetupHut => {
+                let sea = self.sea();
                 for c in 0..g.corners() {
-                    if self.spaced(c) {
+                    if self.spaced(c) && (!sea || self.board.corner_region[c] == 0) {
                         out.push(Action::Hut(c as u16));
                     }
                 }
@@ -416,6 +447,9 @@ impl Game {
                 for e in listed(&g.corner_edges[hut as usize]) {
                     if self.edge_owner[e] == NOBODY && self.board.edge_land[e] && self.pieces[pu][P_PATH] > 0 {
                         out.push(Action::Path(e as u16));
+                    }
+                    if self.sea() && self.edge_owner[e] == NOBODY && self.board.edge_sea[e] && !self.by_pirate(e) && self.pieces[pu][P_SHIP] > 0 {
+                        out.push(Action::Ship(e as u16));
                     }
                 }
             }
@@ -435,6 +469,13 @@ impl Game {
                 for &h in &self.board.land_hexes {
                     if h != self.squall && (anywhere || self.board.hex_distance(h, self.squall) <= range) {
                         out.push(Action::Squall(h));
+                    }
+                }
+                if self.pirate != NONE {
+                    for &h in &self.board.sea_hexes {
+                        if h != self.pirate {
+                            out.push(Action::Pirate(h));
+                        }
                     }
                 }
             }
@@ -462,6 +503,12 @@ impl Game {
                 }
                 if afford(hand, &PATH_COST) && pieces[P_PATH] > 0 {
                     self.legal_paths(p, out);
+                }
+                if afford(hand, &SHIP_COST) && pieces[P_SHIP] > 0 {
+                    self.legal_ships(p, out);
+                }
+                if self.sea() && !self.ship_moved {
+                    self.legal_ship_moves(p, out);
                 }
                 for give in 0..5 {
                     if hand[give] >= self.rate(p, give) {
@@ -496,9 +543,13 @@ impl Game {
                 out.push(Action::EndTurn);
             }
             Phase::FreeBuild { .. } => {
+                // Road Crew: Paths, or with the sea, ships too (any mix of 2)
                 let p = self.current;
                 if self.pieces[p as usize][P_PATH] > 0 {
                     self.legal_paths(p, out);
+                }
+                if self.pieces[p as usize][P_SHIP] > 0 {
+                    self.legal_ships(p, out);
                 }
             }
             Phase::Harvest { .. } => {
@@ -639,6 +690,9 @@ impl Game {
     // Players the current player can steal from at the squall's hex: others with a building there
     // and at least one card
     pub fn victims(&self) -> Vec<u8> {
+        if self.at_sea {
+            return self.pirate_victims();
+        }
         let mut out = Vec::with_capacity(3);
         for &c in &self.board.graph.hex_corners[self.squall as usize] {
             let o = self.corner_owner[c as usize];
@@ -691,7 +745,27 @@ impl Game {
                 self.pieces[pu][P_LODGE] -= 1;
                 self.pieces[pu][P_HUT] += 1;
             }
-            Action::Path(e) => self.place_path(p, e as usize),
+            Action::Path(e) => self.place_edge(p, e as usize, PATH),
+            Action::Ship(e) => self.place_edge(p, e as usize, SHIP),
+            Action::MoveShip(from, to) => {
+                let (from, to) = (from as usize, to as usize);
+                self.edge_owner[from] = NOBODY;
+                self.edge_kind[from] = 0;
+                self.edge_owner[to] = p;
+                self.edge_kind[to] = SHIP;
+                self.ship_moved = true;
+                self.update_titles();
+            }
+            Action::Pirate(h) => {
+                self.pirate = h;
+                self.at_sea = true;
+                let victims = self.victims();
+                match victims.len() {
+                    0 => self.phase = self.back,
+                    1 => self.steal(victims[0]),
+                    _ => self.phase = Phase::Steal,
+                }
+            }
             Action::Roll => {
                 let total = self.production_roll();
                 self.rolled(total);
@@ -703,6 +777,7 @@ impl Game {
             }
             Action::Squall(h) => {
                 self.squall = h;
+                self.at_sea = false;
                 let victims = self.victims();
                 match victims.len() {
                     0 => self.phase = self.back,
@@ -749,6 +824,12 @@ impl Game {
                 self.finish_harvest();
             }
             Action::Take(r) => match self.phase {
+                Phase::Decide => {
+                    // A gold field: one resource of the player's choice
+                    self.hands[pu][r as usize] += 1;
+                    let Some(Pending { decision: Decision::Gold { left }, .. }) = self.deciding() else { unreachable!("gold is decided") };
+                    self.decided(if left > 1 { Some(Decision::Gold { left: left - 1 }) } else { None });
+                }
                 Phase::Harvest { left } => {
                     self.hands[pu][r as usize] += 1;
                     self.phase = if left > 1 { Phase::Harvest { left: left - 1 } } else { self.back };
@@ -834,32 +915,44 @@ impl Game {
         self.corner_owner[c] = p;
         self.corner_kind[c] = HUT;
         self.pieces[pu][P_HUT] -= 1;
+        let mut gold = [0u8; MAX_PLAYERS];
         if setup {
-            // The second round's Hut collects one of each resource around it
+            // The second round's Hut collects one of each resource around it (a gold field: one of
+            // the player's choice)
             if self.setup_step as usize >= self.players {
                 for h in listed(&self.board.graph.corner_hexes[c]) {
                     let r = self.board.resource[h];
-                    if r != NOBODY && self.bank(r as usize) > 0 {
+                    if r == GOLD {
+                        gold[pu] += 1;
+                    } else if r != NOBODY && self.bank(r as usize) > 0 {
                         self.hands[pu][r as usize] += 1;
                     }
                 }
             }
-            self.phase = Phase::SetupPath { hut: c as u16 };
+            let decisions = self.gold_decisions(&gold);
+            self.decide_then(decisions, Phase::SetupPath { hut: c as u16 });
+        } else {
+            self.island_bonus(pu, c);
         }
         // A new building can break other players' lines
         self.update_titles();
     }
 
-    fn place_path(&mut self, p: u8, e: usize) {
+    // A Path or a ship (kind PATH or SHIP): bought in the main phase, free with Road Crew or in setup
+    fn place_edge(&mut self, p: u8, e: usize, kind: u8) {
         let pu = p as usize;
+        let (cost, piece) = if kind == SHIP { (SHIP_COST, P_SHIP) } else { (PATH_COST, P_PATH) };
         match self.phase {
-            Phase::Main => pay(&mut self.hands[pu], &PATH_COST),
+            Phase::Main => pay(&mut self.hands[pu], &cost),
             Phase::FreeBuild { left } => self.phase = Phase::FreeBuild { left: left - 1 },
             _ => {}
         }
+        if kind == SHIP && !matches!(self.phase, Phase::SetupPath { .. }) {
+            self.ships_new.push(e as u16);
+        }
         self.edge_owner[e] = p;
-        self.edge_kind[e] = PATH;
-        self.pieces[pu][P_PATH] -= 1;
+        self.edge_kind[e] = kind;
+        self.pieces[pu][piece] -= 1;
         self.update_titles();
         if let Phase::SetupPath { .. } = self.phase {
             self.setup_step += 1;
@@ -896,9 +989,11 @@ impl Game {
     // With a limited bank, a resource the bank can't pay in full to everyone owed it goes to nobody
     // (that roll), unless only one player is owed it: they get what's left. `short` records the
     // resources not paid in full, for the page.
-    fn produce(&mut self, total: u8) {
+    // Returns the gold each player is owed (a resource of their choice each: pending.rs decides them)
+    pub(crate) fn produce(&mut self, total: u8) -> [u8; MAX_PLAYERS] {
         let g = &self.board.graph;
         let mut owed = [[0u8; 5]; MAX_PLAYERS];
+        let mut gold = [0u8; MAX_PLAYERS];
         for &h in &self.board.by_number[total as usize] {
             if h == self.squall {
                 continue;
@@ -907,7 +1002,11 @@ impl Game {
             for &c in &g.hex_corners[h as usize] {
                 let o = self.corner_owner[c as usize];
                 if o != NOBODY {
-                    owed[o as usize][r] += self.corner_kind[c as usize];
+                    if r == GOLD as usize {
+                        gold[o as usize] += self.corner_kind[c as usize];
+                    } else {
+                        owed[o as usize][r] += self.corner_kind[c as usize];
+                    }
                 }
             }
         }
@@ -927,6 +1026,7 @@ impl Game {
                 self.hands[p][r] += owed[p][r];
             }
         }
+        gold
     }
 
     // Cards of a resource left in the bank: the game's total less what players hold (u32::MAX when
@@ -988,13 +1088,15 @@ impl Game {
             }
             for &c in &g.edge_corners[e] {
                 // Start each line at an end of one of p's edges
-                best = best.max(self.extend_line(p, c as usize, &mut used, 0));
+                best = best.max(self.extend_line(p, c as usize, &mut used, 0, 0));
             }
         }
         best
     }
 
-    fn extend_line(&self, p: u8, c: usize, used: &mut Vec<u16>, len: u8) -> u8 {
+    // `came`: the kind of the edge the line arrived by (0 at the start). Paths and ships only join
+    // at one of p's own buildings (the sea expansion).
+    fn extend_line(&self, p: u8, c: usize, used: &mut Vec<u16>, len: u8, came: u8) -> u8 {
         let owner = self.corner_owner[c];
         if len > 0 && owner != NOBODY && owner != p {
             return len;
@@ -1005,10 +1107,13 @@ impl Game {
             if self.edge_owner[e] != p || used.contains(&(e as u16)) {
                 continue;
             }
+            if came != 0 && self.edge_kind[e] != came && owner != p {
+                continue;
+            }
             let [a, b] = g.edge_corners[e];
             let next = if a as usize == c { b } else { a } as usize;
             used.push(e as u16);
-            best = best.max(self.extend_line(p, next, used, len + 1));
+            best = best.max(self.extend_line(p, next, used, len + 1, self.edge_kind[e]));
             used.pop();
         }
         best

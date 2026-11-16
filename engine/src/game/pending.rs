@@ -8,6 +8,7 @@ use super::*;
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Decision {
     Discard { left: u8 }, // lose this many more cards, one Discard action each (after a 7)
+    Gold { left: u8 },    // take this many more resources of your choice, one Take each (a gold field)
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -21,6 +22,7 @@ impl Decision {
     pub fn name(self) -> &'static str {
         match self {
             Decision::Discard { .. } => "discard",
+            Decision::Gold { .. } => "gold",
         }
     }
 }
@@ -30,7 +32,20 @@ impl Game {
     pub(super) fn decide_then(&mut self, decisions: impl IntoIterator<Item = Pending>, after: Phase) {
         self.pending.extend(decisions);
         self.after = after;
+        self.drop_impossible();
         self.phase = if self.pending.is_empty() { after } else { Phase::Decide };
+    }
+
+    // Decisions that can't be made any more go: gold with nothing left in the bank
+    fn drop_impossible(&mut self) {
+        while let Some(d) = self.pending.first() {
+            match d.decision {
+                Decision::Gold { .. } if (0..5).all(|r| self.bank(r) == 0) => {
+                    self.pending.remove(0);
+                }
+                _ => break,
+            }
+        }
     }
 
     // The decision being made now
@@ -45,6 +60,7 @@ impl Game {
             .filter(|d| d.seat as usize == p)
             .map(|d| match d.decision {
                 Decision::Discard { left } => left,
+                _ => 0,
             })
             .sum()
     }
@@ -59,6 +75,13 @@ impl Game {
                     }
                 }
             }
+            Decision::Gold { .. } => {
+                for r in 0..5 {
+                    if self.bank(r) > 0 {
+                        out.push(Action::Take(r as u8));
+                    }
+                }
+            }
         }
     }
 
@@ -70,6 +93,7 @@ impl Game {
                 self.pending.remove(0);
             }
         }
+        self.drop_impossible();
         if self.pending.is_empty() {
             self.phase = self.after;
         }

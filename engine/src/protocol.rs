@@ -4,6 +4,7 @@
 //
 // Moves as text:
 //   hut C | lodge C | path E               C a corner number, E an edge number
+//   ship E | moveship E F | pirate H       the sea expansion: build a ship, move one, move the pirate
 //   roll | end
 //   discard R | take R                     R a resource: 0 Timber, 1 Stone, 2 Grain, 3 Copper, 4 Fish
 //   squall H | steal P                     H a hex number, P a seat
@@ -26,6 +27,9 @@ pub fn action_text(a: Action) -> String {
         Action::Hut(c) => format!("hut {c}"),
         Action::Lodge(c) => format!("lodge {c}"),
         Action::Path(e) => format!("path {e}"),
+        Action::Ship(e) => format!("ship {e}"),
+        Action::MoveShip(a, b) => format!("moveship {a} {b}"),
+        Action::Pirate(h) => format!("pirate {h}"),
         Action::Roll => "roll".into(),
         Action::Discard(r) => format!("discard {r}"),
         Action::Squall(h) => format!("squall {h}"),
@@ -74,6 +78,9 @@ pub fn parse_action(text: &str) -> Result<Action, String> {
         Some("hut") => Action::Hut(num(1)?),
         Some("lodge") => Action::Lodge(num(1)?),
         Some("path") => Action::Path(num(1)?),
+        Some("ship") => Action::Ship(num(1)?),
+        Some("moveship") => Action::MoveShip(num(1)?, num(2)?),
+        Some("pirate") => Action::Pirate(num(1)?),
         Some("roll") => Action::Roll,
         Some("end") => Action::EndTurn,
         Some("discard") => Action::Discard(small(1)?),
@@ -109,7 +116,7 @@ pub fn parse_action(text: &str) -> Result<Action, String> {
     };
     let expected = match a {
         Action::Roll | Action::EndTurn | Action::Withdraw => 1,
-        Action::Trade(..) | Action::Answer(..) => 3,
+        Action::Trade(..) | Action::Answer(..) | Action::MoveShip(..) => 3,
         Action::Offer { open, .. } => if open { 5 } else { 4 },
         Action::Counter { .. } => 4,
         _ => 2,
@@ -231,7 +238,7 @@ pub fn view_json(g: &Game, seat: u8) -> String {
             "{{\"phase\":\"{}\",\"current\":{},\"toAct\":{},\"turn\":{},\"lastRoll\":{},\"squall\":{},\"winner\":{},",
             "\"buildings\":[{}],\"roads\":[{}],\"players\":[{}],\"longestPath\":{},\"mostPilots\":{},",
             "\"row\":{},\"deck\":{},\"lastTake\":{},\"win\":{},\"you\":{},\"hand\":{},\"rates\":{},\"legal\":{},",
-            "\"offer\":{},\"canOffer\":{},\"offersLeft\":{},\"dice\":{},\"bank\":{},\"short\":{},\"handLimit\":{},\"round\":{},\"roundLimit\":{},\"byRounds\":{},\"bought\":{},\"turnOf\":{},\"paired\":{},\"titles\":{},\"deciding\":{}}}"
+            "\"offer\":{},\"canOffer\":{},\"offersLeft\":{},\"dice\":{},\"bank\":{},\"short\":{},\"handLimit\":{},\"round\":{},\"roundLimit\":{},\"byRounds\":{},\"bought\":{},\"turnOf\":{},\"paired\":{},\"titles\":{},\"deciding\":{},\"pirate\":{},\"shipMoved\":{}}}"
         ),
         // While decisions are being made (pending.rs), the phase is named after the first one ("discard")
         g.deciding().map_or(phase_name(g.phase), |d| d.decision.name()), g.current, g.to_act(), g.turn,
@@ -266,6 +273,9 @@ pub fn view_json(g: &Game, seat: u8) -> String {
             Some(d) => format!("{{\"seat\":{},\"decision\":\"{}\"}}", d.seat, d.decision.name()),
             None => "null".into(),
         },
+        // The sea expansion: the pirate's hex (null without the sea), and whether a ship moved this phase
+        if g.pirate == crate::hex::NONE { "null".into() } else { g.pirate.to_string() },
+        g.ship_moved,
     )
 }
 
