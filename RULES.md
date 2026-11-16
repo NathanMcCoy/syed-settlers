@@ -270,6 +270,22 @@ Each map is made from the seed to the scenario's rules and tile counts; the layo
   general supply; an empty village sends nothing). 2 cloth = 1 Renown. Ships on such a route can't move. The pirate
   can't be moved by a player with no trade relation. No Longest Path. Ends at 14 Renown, or at the end of a turn with
   5 empty villages: the most Renown wins, then the most cloth, else a draw.
+- **7 The Pirate Islands** (a fortress and 10 Renown): the main island and, evenly spread round it 3 hexes out, one pirate
+  islet of 2 hexes per possible seat (4, or 6 with 5-6 players), each with a fortress (its corner farthest out, held by 3
+  lairs; it produces nothing) and a beachhead (its nearest coast corner not touching the fortress). No squall and no
+  pirate: a 7 means discards, then the roller robs any player. The pirate fleet circles the sea hexes round the main
+  island: after every roll it sails the lower die's number of hexes, then fights each player with a building on its hex
+  (its strength the lower die, theirs their warships): stronger fleet, they lose a random card plus one per Lodge;
+  stronger player, they take a resource of their choice; a tie, nothing. Each player starts with a Hut on the main
+  island's coast nearest their beachhead and a ship from it (the rulebook's pre-placed pieces), then sets up two Huts as
+  usual. All of a player's ships form one unbranching line, built from its tip (or, to start, from their building
+  nearest the target) one step closer along a shortest free route to their beachhead, then their fortress; a line walled
+  in by others may take any free sea edge from its tip. Ships don't move. A Hut may go on the player's own beachhead.
+  Pilots only turn the line's first normal ship into a warship (Lighthouses are Pilots with 4+ players, left out with
+  fewer). At the end of each turn of a player whose line reached their fortress, they attack it: more warships than a
+  die take a lair (the last one makes the fortress their Hut); fewer lose the 2 ships nearest the fortress, a tie 1.
+  A captured fortress and 10 Renown win. No Longest Path or Most Pilots. (Ours: the islets' layout; a walled-in line's
+  detour; all ships being the one line.)
 - **8 Wonders**: New Shores' map (small islands a bonus of 1) with no pirate; 5 wall markers and 2 bridge markers on
   main-island coast corners (none touching), and no setup Hut on a marker or next to a bridge marker. Claim one wonder
   once its requirement is met (one each, never the same one): Great Bridge (a building on a bridge marker), Great Wall
@@ -282,7 +298,7 @@ Each map is made from the seed to the scenario's rules and tile counts; the layo
 - **9 New World** (12 Renown): the rulebook's 23 tiles (4 Mine, 5 Forest, 5 Paddy, 5 Fields, 4 Quarry; 2 more of
   each with 5-6 players) on 3 to 5 random islands; 10 markets (5 general) on any coast. Set up anywhere; every island
   beyond your home islands is a bonus of 1.
-- Still to come: 7 The Pirate Islands.
+- Every sea scenario is in.
 
 ## Not in version 1 (planned)
 

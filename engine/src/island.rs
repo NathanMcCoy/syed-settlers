@@ -161,6 +161,10 @@ pub struct Island {
     pub markers: Vec<(u16, u8, u8)>,
     // The Forgotten Tribe: prizes on sea edges, as (hex, side, kind: 1 Renown, 2 project, 10 + market kind)
     pub prizes: Vec<(u16, u8, u8)>,
+    // The Pirate Islands: per seat, its fortress and beachhead as (hex, corner of it); and the fleet's
+    // ring of sea hexes round the main island, in order
+    pub forts: Vec<((u16, u8), (u16, u8))>,
+    pub fleet: Vec<u16>,
     pub info: Info,
 }
 
@@ -281,10 +285,11 @@ fn attempt_island(s: &Settings, rng: &mut Rng) -> Option<Island> {
 
     let markets = place_markets(rng, &hexes, &graph, s.markets_any, s.markets_each, s.markets_extra_fish, everywhere)?;
     let squall = *rng.pick(&squall_starts(&hexes, everywhere));
-    // (Wonders has no pirate)
-    let pirate = if s.sea && s.sea_scenario != 8 { pirate_start(rng, &hexes, s.sea_scenario == 1)? } else { NONE };
+    // (Wonders and the Pirate Islands have no pirate; the Pirate Islands' fleet is its own)
+    let pirate = if s.sea && !matches!(s.sea_scenario, 7 | 8) { pirate_start(rng, &hexes, s.sea_scenario == 1)? } else { NONE };
     let markers = if s.sea && s.sea_scenario == 8 { wonder_markers(rng, &hexes, &graph)? } else { Vec::new() };
     let prizes = if s.sea && s.sea_scenario == 5 { tribe_prizes(rng, &hexes, &graph)? } else { Vec::new() };
+    let (forts, fleet) = if s.sea && s.sea_scenario == 7 { pirate_layout(&hexes, &graph)? } else { (Vec::new(), Vec::new()) };
 
     Some(Island {
         seed: String::new(),
@@ -296,6 +301,8 @@ fn attempt_island(s: &Settings, rng: &mut Rng) -> Option<Island> {
         fog_numbers,
         markers,
         prizes,
+        forts,
+        fleet,
         info: Info { main_size: main.len(), main_average, attempts: 0 },
     })
 }
@@ -564,6 +571,47 @@ fn wonder_markers(rng: &mut Rng, hexes: &[Hex], g: &Graph) -> Option<Vec<(u16, u
         let k = g.hex_corners[h].iter().position(|&x| x as usize == c).unwrap();
         (h as u16, k as u8, kind)
     }).collect())
+}
+
+// The Pirate Islands: each islet's fortress (its westmost coastal corner) and beachhead (its eastmost),
+// and the fleet's ring: the sea hexes touching the main island, in order round it
+fn pirate_layout(hexes: &[Hex], g: &Graph) -> Option<(Vec<((u16, u8), (u16, u8))>, Vec<u16>)> {
+    let regions: Vec<u8> = {
+        let mut r: Vec<u8> = hexes.iter().filter(|h| h.terrain != Sea && h.region != 0).map(|h| h.region).collect();
+        r.sort();
+        r.dedup();
+        r
+    };
+    let as_hex_corner = |c: usize, region: u8| {
+        let h = listed(&g.corner_hexes[c]).find(|&h| hexes[h].region == region).unwrap();
+        (h as u16, g.hex_corners[h].iter().position(|&x| x as usize == c).unwrap() as u8)
+    };
+    let mut forts = Vec::new();
+    for region in regions {
+        let coast: Vec<usize> = (0..g.corners())
+            .filter(|&c| {
+                let hs: Vec<usize> = listed(&g.corner_hexes[c]).collect();
+                hs.iter().any(|&h| hexes[h].region == region) && hs.iter().any(|&h| hexes[h].terrain == Sea)
+            })
+            .collect();
+        // The fortress: the islet's coastal corner farthest from the middle; the beachhead: the nearest
+        // one not next to the fortress (a Hut must fit there once the fortress is taken)
+        let far = |c: usize| { let (x, y) = g.corner_xy[c]; x * x * 3 + y * y };
+        let fort = *coast.iter().max_by_key(|&&c| (far(c), c))?;
+        let beach = *coast.iter().filter(|&&c| c != fort && !listed(&g.corner_corners[c]).any(|n| n == fort)).min_by_key(|&&c| (far(c), c))?;
+        forts.push((as_hex_corner(fort, region), as_hex_corner(beach, region)));
+    }
+    let main: Vec<Cell> = hexes.iter().filter(|h| h.terrain != Sea && h.region == 0).map(|h| h.cell).collect();
+    let (mx, my) = (main.iter().map(|c| c.center().0).sum::<i32>() as f64 / main.len() as f64, main.iter().map(|c| c.center().1).sum::<i32>() as f64 / main.len() as f64);
+    let mut ring: Vec<(f64, u16)> = (0..hexes.len())
+        .filter(|&h| hexes[h].terrain == Sea && main.iter().any(|m| m.distance(hexes[h].cell) == 1))
+        .map(|h| {
+            let (x, y) = hexes[h].cell.center();
+            (((y as f64 - my) * 0.5).atan2((x as f64 - mx) * 0.866), h as u16)
+        })
+        .collect();
+    ring.sort_by(|a, b| a.0.total_cmp(&b.0));
+    Some((forts, ring.into_iter().map(|(_, h)| h).collect()))
 }
 
 // The Forgotten Tribe: 8 Renown tokens, 4 projects and 3 markets (one general, two of random

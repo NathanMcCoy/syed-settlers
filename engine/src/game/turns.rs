@@ -26,10 +26,16 @@ impl Game {
         if total == 7 {
             // Everyone over the hand limit loses half, in seat order, then the squall moves
             let over = self.settings().discard_over as u32;
-            let discards: Vec<Pending> = (0..self.players)
+            let mut discards: Vec<Pending> = (0..self.players)
                 .filter(|&p| self.cards(p) > over)
                 .map(|p| Pending { seat: p as u8, decision: Decision::Discard { left: (self.cards(p) / 2) as u8 } })
                 .collect();
+            if self.pirate_islands() {
+                // No squall: the roller robs anyone
+                discards.push(Pending { seat: self.current, decision: Decision::Rob });
+                self.decide_then(discards, next);
+                return;
+            }
             self.decide_then(discards, Phase::MoveSquall { anywhere: false });
             return;
         }
@@ -43,6 +49,8 @@ impl Game {
 
     // The player acting ends their phase (their own turn's, or an extra phase)
     pub(super) fn end_phase(&mut self) {
+        // The Pirate Islands: a line at its fortress attacks it as the turn ends
+        self.attack_fortress(self.current as usize);
         self.offer = None;
         self.offers_made = 0;
         self.bought = [0; 5];

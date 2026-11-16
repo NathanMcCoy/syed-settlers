@@ -27,8 +27,8 @@ impl Title {
     // Is this title in play in this game?
     pub fn active(self, s: &Settings) -> bool {
         match self {
-            Title::LongestPath => !(s.sea && s.sea_scenario == 6), // no Longest Path in Cloth
-            Title::MostPilots => true,
+            Title::LongestPath => !(s.sea && matches!(s.sea_scenario, 6 | 7)), // none in Cloth or the Pirate Islands
+            Title::MostPilots => !(s.sea && s.sea_scenario == 7),
             Title::StrongestPorts => s.variant_ports,
         }
     }

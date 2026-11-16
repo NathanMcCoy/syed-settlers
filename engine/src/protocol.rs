@@ -264,7 +264,7 @@ pub fn view_json(g: &Game, seat: u8) -> String {
             "{{\"phase\":\"{}\",\"current\":{},\"toAct\":{},\"turn\":{},\"lastRoll\":{},\"squall\":{},\"winner\":{},",
             "\"buildings\":[{}],\"roads\":[{}],\"players\":[{}],\"longestPath\":{},\"mostPilots\":{},",
             "\"row\":{},\"deck\":{},\"lastTake\":{},\"win\":{},\"you\":{},\"hand\":{},\"rates\":{},\"legal\":{},",
-            "\"offer\":{},\"canOffer\":{},\"offersLeft\":{},\"dice\":{},\"bank\":{},\"short\":{},\"handLimit\":{},\"round\":{},\"roundLimit\":{},\"byRounds\":{},\"bought\":{},\"turnOf\":{},\"paired\":{},\"titles\":{},\"deciding\":{},\"pirate\":{},\"shipMoved\":{},\"event\":{},\"damaged\":{},\"revealed\":{},\"villages\":{},\"clothEnded\":{},\"wonders\":{},\"markers\":{},\"prizes\":{},\"heldMarkets\":{},\"markets\":{}}}"
+            "\"offer\":{},\"canOffer\":{},\"offersLeft\":{},\"dice\":{},\"bank\":{},\"short\":{},\"handLimit\":{},\"round\":{},\"roundLimit\":{},\"byRounds\":{},\"bought\":{},\"turnOf\":{},\"paired\":{},\"titles\":{},\"deciding\":{},\"pirate\":{},\"shipMoved\":{},\"event\":{},\"damaged\":{},\"revealed\":{},\"villages\":{},\"clothEnded\":{},\"wonders\":{},\"markers\":{},\"prizes\":{},\"heldMarkets\":{},\"markets\":{},\"fleet\":{},\"forts\":{},\"warships\":{},\"lastAttack\":{}}}"
         ),
         // While decisions are being made (pending.rs), the phase is named after the first one ("discard")
         g.deciding().map_or(phase_name(g.phase), |d| d.decision.name()), g.current, g.to_act(), g.turn,
@@ -329,6 +329,14 @@ pub fn view_json(g: &Game, seat: u8) -> String {
         list((0..g.prizes.len()).filter(|&e| g.prizes[e] != 0).map(|e| format!("[{e},{}]", g.prizes[e]))),
         list((0..g.players).map(|p| list(g.held_markets[p].iter().map(|&k| json::string(market_name(k)))))),
         list(g.board.markets.iter().map(|m| format!("[{},{},{}]", m.hex, m.side, json::string(market_name(m.kind))))),
+        // The Pirate Islands: the fleet's hex; per seat [fortress corner, lairs left, taken, beachhead
+        // corner]; warship edges; the last fortress attack [seat, die, warships] (seat null: none yet)
+        if g.fleet.is_empty() { "null".into() } else { g.fleet[g.fleet_at as usize].to_string() },
+        if !g.pirate_islands() { "[]".into() } else {
+            list((0..g.players).map(|p| format!("[{},{},{},{}]", g.fort_corner[p], g.lairs[p], g.fort_taken[p], g.beach_corner[p])))
+        },
+        list((0..g.warship.len()).filter(|&e| g.warship[e])),
+        if g.last_attack[0] == NOBODY { "null".into() } else { list(g.last_attack) },
     )
 }
 

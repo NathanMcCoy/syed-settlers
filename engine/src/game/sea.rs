@@ -39,6 +39,9 @@ impl Game {
     }
 
     pub(super) fn legal_ships(&self, p: u8, out: &mut Vec<Action>) {
+        if self.pirate_islands() {
+            return self.line_ships(p, out); // one line, by a shortest route
+        }
         for e in 0..self.edge_owner.len() {
             if self.ship_spot(p, e, NONE as usize) {
                 out.push(Action::Ship(e as u16));
@@ -116,6 +119,17 @@ impl Game {
         // The Forgotten Tribe: next to a numbered hex only
         let numbered = !self.tribe() || listed(&self.board.graph.corner_hexes[c]).any(|h| self.board.number[h] > 0);
         numbered && (!self.cloth() || self.board.corner_region[c] <= 1)
+    }
+
+    // May p ever build a Hut on corner c (scenario and event rules; not spacing or connection)? For
+    // the bot's planning, which must not aim at a spot the rules forbid
+    pub fn hut_allowed(&self, p: u8, c: usize) -> bool {
+        self.hut_spot(c) && self.pirate_hut_ok(p, c) && !self.by_damage(c)
+    }
+
+    // The Pirate Islands: Huts on the main island, or on p's own beachhead
+    pub(super) fn pirate_hut_ok(&self, p: u8, c: usize) -> bool {
+        !self.pirate_islands() || self.board.corner_region[c] == 0 || c as u16 == self.beach_corner[p as usize]
     }
 
     // Setup rounds: 2, or 3 in Cloth (only the last round's Hut collects)

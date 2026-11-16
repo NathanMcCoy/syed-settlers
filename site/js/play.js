@@ -311,8 +311,35 @@ function drawPieces(v, before) {
     piece.append(el('title', {}, `${nameOf(p)}'s ${kind === 2 ? 'Lodge' : 'Hut'}`));
     layers.buildings.append(piece);
   }
-  const sq = centre(board.island.hexes[v.squall]);
-  layers.squall.replaceChildren(el('circle', { cx: sq.x, cy: sq.y, r: SIZE * 0.6, class: `squall${before && before.squall !== v.squall ? ' new' : ''}` }));
+  layers.squall.replaceChildren();
+  // (The Pirate Islands has no squall)
+  if (board.island.hexes[v.squall]) {
+    const sq = centre(board.island.hexes[v.squall]);
+    layers.squall.append(el('circle', { cx: sq.x, cy: sq.y, r: SIZE * 0.6, class: `squall${before && before.squall !== v.squall ? ' new' : ''}` }));
+  }
+  // The Pirate Islands: the fleet, each fortress (lairs left) and beachhead, and warships
+  if (v.fleet !== null && v.fleet !== undefined) {
+    const fc = centre(board.island.hexes[v.fleet]);
+    const fleet = el('rect', { x: fc.x - 11, y: fc.y - 11, width: 22, height: 22, rx: 4, class: `fleet${before && before.fleet !== v.fleet ? ' new' : ''}`, 'data-fleet': v.fleet });
+    fleet.append(el('title', {}, 'The pirate fleet: it sails by the lower die and attacks the players with buildings on its hex'));
+    layers.squall.append(fleet);
+  }
+  (v.forts ?? []).forEach(([fort, lairs, taken, beach], s) => {
+    const f = cornerAt(fort);
+    if (!taken) {
+      const mark = el('text', { x: f.x, y: f.y - 10, class: `marker fort p${s}` }, `☠${lairs}`);
+      mark.append(el('title', {}, `${nameOf(s)}'s pirate fortress: ${lairs} lair${lairs === 1 ? '' : 's'} left`));
+      layers.squall.append(mark);
+    }
+    const b = cornerAt(beach);
+    const flag = el('text', { x: b.x + 9, y: b.y - 6, class: `marker beach p${s}` }, '⚑');
+    flag.append(el('title', {}, `${nameOf(s)}'s beachhead: a Hut may go here once their line reaches it`));
+    layers.squall.append(flag);
+  });
+  for (const e of v.warships ?? []) {
+    const line = layers.roads.querySelector(`[data-edge="${e}"]`);
+    if (line) line.classList.add('warship');
+  }
   // Wonders: the wall (W), bridge (B) and no-setup (×) markers on their corners
   for (const [c, kind] of v.markers ?? []) {
     const { x, y } = cornerAt(c);
