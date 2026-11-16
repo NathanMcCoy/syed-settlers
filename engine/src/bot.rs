@@ -86,9 +86,19 @@ impl Greedy {
                     // Lose what's least needed; take (gold) what's most short
                     Action::Discard(r) => hand[*r as usize] as f64 - need[*r as usize] as f64,
                     Action::Take(r) => need[*r as usize] as f64 - hand[*r as usize] as f64,
+                    // Event cards: give what's least needed, to whoever is furthest behind; rob the
+                    // leader; damage any Path (they're repaired later)
+                    Action::Gift(to, r) => hand[*r as usize] as f64 - need[*r as usize] as f64 - g.renown(*to as usize) as f64 / 10.0,
+                    Action::Rob(v) => g.renown(*v as usize) as f64 * 10.0 + g.cards(*v as usize) as f64,
+                    Action::Damage(_) => 0.0,
+                    // The two-player variant: a neutral Hut where the other player would most like to
+                    // build (denying it); neutral Paths anywhere
+                    Action::NeutralHut(_, c) => spot_value(g, 1 - p, *c as usize),
+                    Action::NeutralPath(..) => 0.0,
                     _ => f64::MIN,
                 })
             }
+            Phase::Rolled { .. } | Phase::SecondRoll => legal[0],
             Phase::MoveSquall { .. } => self.best_by(legal, |a| match a {
                 Action::Squall(h) => squall_value(g, p, *h as usize),
                 Action::Pirate(h) => pirate_value(g, p, *h as usize),
@@ -153,6 +163,14 @@ impl Greedy {
             if legal.contains(&Action::Ship(e as u16)) {
                 return Action::Ship(e as u16);
             }
+        }
+        // The two-player variant: trade tokens send the squall off this bot's own hex
+        if legal.contains(&Action::SquallHome) && g.board.graph.hex_corners[g.squall as usize].iter().any(|&c| g.corner_owner[c as usize] == p) {
+            return Action::SquallHome;
+        }
+        // Event cards: a damaged Path stops new Paths; repair it as soon as it can be afforded
+        if let Some(&a) = legal.iter().find(|a| matches!(a, Action::Repair(_))) {
+            return a;
         }
         if let Goal::Edge(e) = goal {
             if legal.contains(&Action::Path(e as u16)) {
@@ -410,7 +428,7 @@ fn reachable_by_sea(g: &Game, p: u8) -> Option<(usize, u32, Option<usize>)> {
     }
     let mut best: Option<(usize, u32, Option<usize>, f64)> = None;
     for c in 0..corners {
-        if dist[c] == u32::MAX || dist[c] == 0 || !g.spaced(c) || g.board.corner_region[c] == crate::island::SEA {
+        if dist[c] == u32::MAX || dist[c] == 0 || !g.spaced(c) || g.by_damage(c) || g.board.corner_region[c] == crate::island::SEA {
             continue;
         }
         let score = sea_score(g, p, c, dist[c]);
@@ -475,7 +493,8 @@ fn reachable_spot(g: &Game, p: u8) -> Option<(usize, u32, Option<usize>)> {
     }
     let mut best: Option<(usize, u32, Option<usize>, f64)> = None;
     for c in 0..corners {
-        if dist[c] == u32::MAX || !g.spaced(c) {
+        // (A corner by a damaged Path takes no Hut until it's repaired: event cards)
+        if dist[c] == u32::MAX || !g.spaced(c) || g.by_damage(c) {
             continue;
         }
         let connected = listed(&gr.corner_edges[c]).any(|e| g.edge_owner[e] == p);

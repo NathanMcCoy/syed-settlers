@@ -1,6 +1,6 @@
 # Syed Settlers: rules
 
-Version 0.6 (draft, Nov 16 2026: the sea expansion's first scenario, New Shores. 0.5: 5 and 6 players, from the classic game's 5-6 player rules: the
+Version 0.7 (draft, Nov 16 2026: the variants box's four variants. 0.6: the sea expansion's first scenario, New Shores. 0.5: 5 and 6 players, from the classic game's 5-6 player rules: the
 large island, more cards and projects, and paired turns. 0.4 (Nov 15): as close as we can make it to
 the classic game this one is modelled on, checked against its rulebook: other players' buildings block Paths and break
 Longest Path again; no limit on trade offers; markets spread evenly round the coast; numbers in the
@@ -187,6 +187,32 @@ Cost: **Stone + Grain + Fish.** The deck ⚙ has 25 cards:
   on show to everyone.
 - To take a title from its holder you need strictly more. If two or more players tie for the lead
   when nobody holds it yet, nobody holds it until one of them is strictly ahead.
+
+## The variants box: variants ⚙ (chosen when starting a game)
+
+- **Friendly squall** (`variant.friendly`): the squall may not go next to a building of a player with 2 Renown or less
+  (public Renown: hidden Lighthouses don't count) and never robs them. With nowhere allowed, it goes to the Dunes.
+- **Strongest Ports** (`variant.ports`): a title worth 2 Renown for the most Renown in buildings on markets (a Hut 1,
+  a Lodge 2), at least 3. 1 more Renown to win.
+- **Event cards** (`variant.events`): a deck of 36 cards replaces the dice, one per two-dice combination (so the numbers
+  come up as often as with dice, but every number in a deck comes up exactly as often as it should). Each card's event
+  is resolved, then its number produces. Every 7 is "the squall attacks" (a 7 as usual). The other events: a beautiful
+  day (nothing), the squall flees (to the Dunes, no theft), conflict (Most Pilots' holder, or whoever has played the most,
+  robs a player of their choice), trade advantage (Longest Path's holder does the same), calm seas (the most buildings on
+  markets: a resource of their choice), tournament (the most Pilots played: the same), a plentiful year (everyone takes a
+  resource of their choice), good neighbours (everyone gives a card of their choice to the player on their left), a
+  helpful neighbour (the player(s) with the most Renown give a card to someone with less), epidemic (Lodges produce 1),
+  earthquake (everyone damages one of their own Paths: no new Paths until it's repaired for Timber + Copper, and no Hut
+  next to a damaged Path; damaged Paths still count for Longest Path). The New Year card lies 5 cards from the bottom and
+  rebuilds the deck. Which card carries which event is ours (the rulebook shows the cards only as pictures): ten
+  beautiful days, two of each other event, six 7s.
+- **Two players** (`variant.two`, 2 seats only): two neutral colours start with a Hut each on the main island. After
+  building a Path you build one for a neutral (either, joined to its network); after a Hut, a neutral Hut (or a Path if
+  no Hut fits). Neutrals get no resources and can hold Longest Path. Each turn has two production rolls, the second a
+  different number. Trade tokens: 2 for a Hut next to the Dunes, 1 for a Hut on the coast (setup Huts too), 2 for
+  cashing in one played Pilot a turn (it no longer counts for Most Pilots). Once a turn, before or after rolling, spend
+  1 token (2 if your public Renown is higher than the other player's) on a forced trade (take 2 random cards from the
+  other player, then give back 2 of your choice) or on sending the squall to the Dunes (no theft).
 
 ## The sea expansion ⚙ (`sea`, chosen when starting a game)
 

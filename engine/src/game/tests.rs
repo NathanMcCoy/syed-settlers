@@ -56,7 +56,8 @@ fn check(g: &Game) {
         assert_eq!(huts, g.huts(p), "huts on the board match pieces used");
         assert_eq!(lodges, g.lodges(p));
         assert_eq!(paths + g.pieces[p][P_PATH], s.pieces_path);
-        assert_eq!(g.renown(p), renown_sources(g, p).iter().sum::<u32>() + g.token_renown(p));
+        let ports = if g.holder(Title::StrongestPorts) as usize == p { 2 } else { 0 };
+        assert_eq!(g.renown(p), renown_sources(g, p).iter().sum::<u32>() + g.token_renown(p) + ports);
         assert_eq!(g.line[p], g.longest_line(p as u8));
         for r in 0..5 {
             assert!(g.hands[p][r] < 200, "a hand ran away (or wrapped below zero)");

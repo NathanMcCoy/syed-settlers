@@ -30,6 +30,15 @@ pub fn action_text(a: Action) -> String {
         Action::Ship(e) => format!("ship {e}"),
         Action::MoveShip(a, b) => format!("moveship {a} {b}"),
         Action::Pirate(h) => format!("pirate {h}"),
+        Action::Gift(s, r) => format!("gift {s} {r}"),
+        Action::Rob(s) => format!("rob {s}"),
+        Action::Damage(e) => format!("damage {e}"),
+        Action::Repair(e) => format!("repair {e}"),
+        Action::NeutralHut(n, c) => format!("neutralhut {n} {c}"),
+        Action::NeutralPath(n, e) => format!("neutralpath {n} {e}"),
+        Action::CashPilot => "cashpilot".into(),
+        Action::ForceTrade => "forcetrade".into(),
+        Action::SquallHome => "squallhome".into(),
         Action::Roll => "roll".into(),
         Action::Discard(r) => format!("discard {r}"),
         Action::Squall(h) => format!("squall {h}"),
@@ -81,6 +90,15 @@ pub fn parse_action(text: &str) -> Result<Action, String> {
         Some("ship") => Action::Ship(num(1)?),
         Some("moveship") => Action::MoveShip(num(1)?, num(2)?),
         Some("pirate") => Action::Pirate(num(1)?),
+        Some("gift") => Action::Gift(small(1)?, small(2)?),
+        Some("rob") => Action::Rob(small(1)?),
+        Some("damage") => Action::Damage(num(1)?),
+        Some("repair") => Action::Repair(num(1)?),
+        Some("neutralhut") => Action::NeutralHut(small(1)?, num(2)?),
+        Some("neutralpath") => Action::NeutralPath(small(1)?, num(2)?),
+        Some("cashpilot") => Action::CashPilot,
+        Some("forcetrade") => Action::ForceTrade,
+        Some("squallhome") => Action::SquallHome,
         Some("roll") => Action::Roll,
         Some("end") => Action::EndTurn,
         Some("discard") => Action::Discard(small(1)?),
@@ -115,8 +133,8 @@ pub fn parse_action(text: &str) -> Result<Action, String> {
         _ => return Err(format!("unknown move \"{text}\"")),
     };
     let expected = match a {
-        Action::Roll | Action::EndTurn | Action::Withdraw => 1,
-        Action::Trade(..) | Action::Answer(..) | Action::MoveShip(..) => 3,
+        Action::Roll | Action::EndTurn | Action::Withdraw | Action::CashPilot | Action::ForceTrade | Action::SquallHome => 1,
+        Action::Trade(..) | Action::Answer(..) | Action::MoveShip(..) | Action::Gift(..) | Action::NeutralHut(..) | Action::NeutralPath(..) => 3,
         Action::Offer { open, .. } => if open { 5 } else { 4 },
         Action::Counter { .. } => 4,
         _ => 2,
@@ -133,6 +151,8 @@ fn phase_name(p: Phase) -> &'static str {
         Phase::SetupPath { .. } => "setupPath",
         Phase::PreRoll => "preRoll",
         Phase::Decide => "decide",
+        Phase::Rolled { .. } => "rolled",
+        Phase::SecondRoll => "secondRoll",
         Phase::MoveSquall { .. } => "moveSquall",
         Phase::Steal => "steal",
         Phase::Main => "main",
@@ -238,7 +258,7 @@ pub fn view_json(g: &Game, seat: u8) -> String {
             "{{\"phase\":\"{}\",\"current\":{},\"toAct\":{},\"turn\":{},\"lastRoll\":{},\"squall\":{},\"winner\":{},",
             "\"buildings\":[{}],\"roads\":[{}],\"players\":[{}],\"longestPath\":{},\"mostPilots\":{},",
             "\"row\":{},\"deck\":{},\"lastTake\":{},\"win\":{},\"you\":{},\"hand\":{},\"rates\":{},\"legal\":{},",
-            "\"offer\":{},\"canOffer\":{},\"offersLeft\":{},\"dice\":{},\"bank\":{},\"short\":{},\"handLimit\":{},\"round\":{},\"roundLimit\":{},\"byRounds\":{},\"bought\":{},\"turnOf\":{},\"paired\":{},\"titles\":{},\"deciding\":{},\"pirate\":{},\"shipMoved\":{}}}"
+            "\"offer\":{},\"canOffer\":{},\"offersLeft\":{},\"dice\":{},\"bank\":{},\"short\":{},\"handLimit\":{},\"round\":{},\"roundLimit\":{},\"byRounds\":{},\"bought\":{},\"turnOf\":{},\"paired\":{},\"titles\":{},\"deciding\":{},\"pirate\":{},\"shipMoved\":{},\"event\":{},\"damaged\":{}}}"
         ),
         // While decisions are being made (pending.rs), the phase is named after the first one ("discard")
         g.deciding().map_or(phase_name(g.phase), |d| d.decision.name()), g.current, g.to_act(), g.turn,
@@ -264,7 +284,7 @@ pub fn view_json(g: &Game, seat: u8) -> String {
         // Whose turn it is, and whether `current` is the paired player's extra build phase
         g.owner, g.paired,
         // Every title (titles.rs): its name, holder, minimum and Renown, so new titles need no page code
-        list(TITLES.iter().map(|&t| format!(
+        list(TITLES.iter().filter(|t| t.active(s)).map(|&t| format!(
             "{{\"name\":\"{}\",\"holder\":{},\"min\":{},\"renown\":{}}}",
             t.name(), seat_or_null(g.holder(t)), t.min(s), t.renown(s),
         ))),
@@ -276,6 +296,11 @@ pub fn view_json(g: &Game, seat: u8) -> String {
         // The sea expansion: the pirate's hex (null without the sea), and whether a ship moved this phase
         if g.pirate == crate::hex::NONE { "null".into() } else { g.pirate.to_string() },
         g.ship_moved,
+        // Event cards: the last card's number and event, and the damaged Paths
+        if g.last_event == NOBODY { "null".into() } else {
+            format!("{{\"number\":{},\"name\":\"{}\"}}", g.last_roll, EVENTS[g.last_event as usize].name())
+        },
+        list((0..g.damaged.len()).filter(|&e| g.damaged[e])),
     )
 }
 

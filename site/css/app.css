@@ -47,6 +47,10 @@ button { font: inherit; padding: 6px 12px; border-radius: 6px; border: 1px solid
 .pirate { fill: #1d2228; fill-opacity: 0.55; stroke: #fffaf0; stroke-width: 2; }
 .target.edge.sea { stroke-dasharray: 6 3; }
 .target.edge.from { stroke: #ffd400; }
+.road.damaged { stroke-dasharray: 2 4; stroke-linecap: round; }
+.event-card { display: inline-flex; gap: 6px; align-items: baseline; padding: 3px 9px; border-radius: 6px; background: #fffaf0; border: 1px solid rgba(0, 0, 0, 0.25); font-size: 0.9rem; }
+.event-card strong { font-size: 1.1rem; }
+.variants { border: 1px solid rgba(0, 0, 0, 0.15); border-radius: 6px; padding: 6px 10px; display: grid; gap: 4px; }
 .token { fill: #fffaf0; stroke: rgba(0, 0, 0, 0.3); }
 .number { font: 700 15px system-ui, sans-serif; fill: #1d2228; text-anchor: middle; dominant-baseline: central; }
 .number.strong { fill: #b3261e; }
@@ -229,3 +233,16 @@ body.in-game h1 { font-size: 1.2rem; margin: 8px 0 6px; }
 .k-forest { background: var(--forest); } .k-quarry { background: var(--quarry); } .k-fields { background: var(--fields); }
 .k-mine { background: var(--mine); } .k-paddy { background: var(--paddy); } .k-dunes { background: var(--dunes); }
 .k-sea { background: var(--sea); }
+
+/* The rules page */
+.rules { display: grid; gap: 16px; max-width: 860px; }
+.rules h2 { margin-top: 0; }
+.rules h3 { margin: 18px 0 6px; font-size: 1.02rem; }
+.rules table { border-collapse: collapse; width: 100%; margin: 6px 0 10px; }
+.rules th, .rules td { text-align: left; padding: 5px 8px; border-bottom: 1px solid rgba(0, 0, 0, 0.12); vertical-align: top; }
+.rules ul, .rules ol { padding-left: 1.3em; }
+.rules li { margin: 4px 0; }
+.toc ol { margin: 0; }
+.badge { display: inline-block; font-size: 0.75rem; font-weight: 700; padding: 1px 7px; border-radius: 999px; margin-left: 4px; vertical-align: middle; }
+.badge.ready { background: #2f9a4e; color: #fff; }
+.badge.soon { background: #d8d2c2; color: #1d2228; }

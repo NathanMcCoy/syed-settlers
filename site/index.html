@@ -10,7 +10,7 @@
 <body>
   <header>
     <h1><a href="/">Syed Settlers</a></h1>
-    <p class="sub">Build on the island, trade, race to Renown. <a href="/viewer.html">Island viewer</a></p>
+    <p class="sub">Build on the island, trade, race to Renown. <a href="/rules.html">Rules</a> · <a href="/viewer.html">Island viewer</a></p>
   </header>
   <main>
     <section id="home" hidden>
@@ -28,6 +28,13 @@
         <p class="note">0: no limit. Otherwise, after that many rounds the most Renown wins (a tie goes to more Lodges).</p>
         <label class="open-offer"><input name="faceUp" type="checkbox"> Projects face up</label>
         <label class="open-offer"><input name="sea" type="checkbox"> Sea expansion: New Shores (ships, the pirate, gold, small islands; 14 Renown to win)</label>
+        <fieldset class="variants">
+          <legend>Variants (<a href="/rules.html#variants">rules</a>)</legend>
+          <label class="open-offer"><input name="friendly" type="checkbox"> Friendly squall: it leaves players with 2 Renown alone</label>
+          <label class="open-offer"><input name="ports" type="checkbox"> Strongest Ports: a title for buildings on markets (1 more Renown to win)</label>
+          <label class="open-offer"><input name="events" type="checkbox"> Event cards instead of dice</label>
+          <label class="open-offer"><input name="two" type="checkbox"> Two players: neutral colours, two rolls a turn, trade tokens (needs exactly 2 seats)</label>
+        </fieldset>
         <p class="note">Off (the default): you draw projects unseen, and others don't see which ones you hold. Face up: 3 projects show and you choose.</p>
         <button type="submit">Start</button>
         <p class="note">Seat order is random. Friends get a link each to join.</p>

@@ -20,7 +20,9 @@ impl Game {
     pub(crate) fn rolled(&mut self, total: u8) {
         self.last_roll = total;
         self.short = 0;
-        self.back = Phase::Main;
+        // The two-player variant: the first roll leads to a second (a different number)
+        let next = if self.two() && !self.rolled_once { Phase::SecondRoll } else { Phase::Main };
+        self.back = next;
         if total == 7 {
             // Everyone over the hand limit loses half, in seat order, then the squall moves
             let over = self.settings().discard_over as u32;
@@ -33,8 +35,9 @@ impl Game {
         }
         // Gold fields' owners then choose their resources (pending.rs), starting with this player
         let gold = self.produce(total);
+        self.epidemic = false;
         let decisions = self.gold_decisions(&gold);
-        self.decide_then(decisions, Phase::Main);
+        self.decide_then(decisions, next);
     }
 
     // The player acting ends their phase (their own turn's, or an extra phase)
@@ -45,6 +48,9 @@ impl Game {
         self.project_used = false;
         self.ships_new.clear();
         self.ship_moved = false;
+        self.rolled_once = false;
+        self.token_used = false;
+        self.pilot_cashed = false;
         if self.pairs() && !self.paired {
             self.start_extra_phase(self.partner(self.owner));
         } else {
