@@ -145,7 +145,9 @@ impl Game {
             return false;
         }
         if (self.setup_step as usize) < self.players {
-            hexes.iter().any(|&h| self.board.terrain[h] == Terrain::Sea) && g.corner_xy[c].0 > 0
+            // (the east coast; with 5-6 players it reaches a little further round)
+            let east = if self.players >= 5 { -2 } else { 0 };
+            hexes.iter().any(|&h| self.board.terrain[h] == Terrain::Sea) && g.corner_xy[c].0 > east
         } else {
             true
         }

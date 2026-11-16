@@ -114,6 +114,12 @@ impl Game {
         }
         e.stacks = [Vec::new(), vec![3, 4, 5, 6, 9, 10], vec![4, 5, 8, 9, 10, 11]];
         e.lair_numbers = vec![3, 4, 5, 9, 10, 11];
+        // 5-6 players: 3 more numbers a region, 2 more lairs
+        if self.board.settings.island_large {
+            e.stacks[1].extend([5, 8, 11]);
+            e.stacks[2].extend([3, 6, 10]);
+            e.lair_numbers.extend([4, 9]);
+        }
         e.lair_crews = vec![Vec::new(); n];
         e.lair_taken = vec![false; n];
         e.farm_crews = vec![Vec::new(); n];

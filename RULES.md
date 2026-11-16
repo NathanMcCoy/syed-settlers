@@ -364,7 +364,7 @@ Played on their own: not with the sea, the city expansion, event cards or the tw
 
 ## The exploration expansion ⚙ (`explore` 1-5, chosen when starting a game)
 
-Its own game, 2-4 players, not combined with anything else. Scenarios (each adds to the one before): 1 Land Ho! (8),
+Its own game, 2-6 players, not combined with anything else. Scenarios (each adds to the one before): 1 Land Ho! (8),
 2 Pirate lairs (12), 3 Fish (15), 4 Spices (15), 5 the full game (17).
 
 - **Map:** a start island of 15 hexes (2 Mine, 4 Forest, 3 Paddy, 3 Fields, 3 Quarry; numbers 3 3 4 4 5 6 6 8 8 9 10
@@ -397,7 +397,7 @@ Its own game, 2-4 players, not combined with anything else. Scenarios (each adds
   island (anyone else's goes home); rob a player with a ship on that hex (a card, or a coin). Moving a ship from or to
   an edge of its hex costs a coin. An unmoved ship by another's pirate ship may roll to chase it (6), then place yours.
 - **Ours:** no harbour storage; one-go ship moves; tribute at the start or end only; the map; lair numbers 3 4 5 9 10
-  11; 5-6 players not in yet.
+  11; 5-6 players (ours): paired turns as in the base game, a start island of 21 (6 more on the west: Mine, Forest, Paddy, Fields, 2 Quarry; numbers 3 4 5 9 10 11), each region +3 land (parrot Fields, Quarry, Forest; goose Mine, Paddy, Quarry), +1 sea, +1 gold with lairs, numbers parrot +5 8 11, goose +3 6 10, lairs +4 9; harbours a little further round the coast. Sims: the last seat wins about 3% less with 6.
 
 ## The city expansion ⚙ (`city`, chosen when starting a game)
 

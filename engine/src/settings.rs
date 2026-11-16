@@ -176,16 +176,13 @@ impl Settings {
             if s.sea || s.city || s.box_scenario != 0 || s.variant_events || s.variant_two {
                 return Err("the exploration expansion is played on its own".into());
             }
-            if players > 4 {
-                return Err("the exploration expansion is for 2 to 4 players (its 5-6 player map isn't in yet)".into());
-            }
             // Its own game: the win by scenario, no projects, no markets
             let mut base = Settings::for_players(players);
             base.explore = s.explore;
             base.win = [0, 8, 12, 15, 15, 17][s.explore as usize];
             (base.deck_pilot, base.deck_lighthouse, base.deck_road_crew, base.deck_harvest, base.deck_market_day) = (0, 0, 0, 0, 0);
             (base.markets_any, base.markets_each, base.markets_extra_fish) = (0, 0, 0);
-            base.island_large = false;
+            // (island.large, on for 5-6 players, makes the bigger exploration map)
             return Settings::parse_onto(base, text);
         }
         if s.box_scenario != 0 {
