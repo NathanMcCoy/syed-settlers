@@ -8,7 +8,7 @@
 // player's own Paths (Longest Path), at most a few dozen.
 use crate::hex::{Graph, listed};
 use crate::hex::NONE;
-use crate::island::{ANY, Island, SEA, Terrain, pips};
+use crate::island::{ANY, Hex, Island, Market, SEA, Terrain, pips};
 use crate::rng::Rng;
 use crate::settings::Settings;
 use std::sync::Arc;
@@ -118,8 +118,11 @@ pub enum Phase {
 
 // The board for play: the island's graph plus, per corner and edge, everything the rules ask about,
 // worked out once
+#[derive(Clone)]
 pub struct Board {
     pub settings: Settings,
+    pub hexes: Vec<Hex>,              // the island's hexes (Fog Islands turns hidden ones over)
+    pub markets: Vec<Market>,
     pub graph: Graph,
     pub terrain: Vec<Terrain>,
     pub number: Vec<u8>,
@@ -137,9 +140,16 @@ pub struct Board {
 
 impl Board {
     pub fn new(island: &Island, settings: &Settings) -> Board {
-        let graph = island.graph();
-        let hexes = &island.hexes;
-        let land = |h: usize| hexes[h].terrain != Terrain::Sea;
+        Board::from_parts(island.graph(), island.hexes.clone(), island.markets.clone(), settings.clone())
+    }
+
+    // Everything the rules ask about, worked out from the hexes (again after a hex is revealed)
+    pub fn from_parts(graph: Graph, hexes: Vec<Hex>, markets: Vec<Market>, settings: Settings) -> Board {
+        let hexes_ref = &hexes;
+        // Land: not sea and not still hidden under fog
+        let land = |h: usize| !matches!(hexes_ref[h].terrain, Terrain::Sea | Terrain::Fog);
+        let sea = |h: usize| hexes_ref[h].terrain == Terrain::Sea;
+        let island = (&hexes, &markets);
         let mut by_number: [Vec<u16>; 13] = Default::default();
         for (i, h) in hexes.iter().enumerate() {
             if h.number != 0 {
@@ -147,14 +157,15 @@ impl Board {
             }
         }
         let mut corner_market = vec![NOBODY; graph.corners()];
-        for (m, market) in island.markets.iter().enumerate() {
+        for (m, market) in island.1.iter().enumerate() {
             let e = graph.hex_edges[market.hex as usize][market.side as usize];
             for &c in &graph.edge_corners[e as usize] {
                 corner_market[c as usize] = m as u8;
             }
         }
+        let hexes = island.0;
         Board {
-            settings: settings.clone(),
+            settings,
             terrain: hexes.iter().map(|h| h.terrain).collect(),
             number: hexes.iter().map(|h| h.number).collect(),
             resource: hexes.iter().map(|h| match h.terrain {
@@ -165,14 +176,16 @@ impl Board {
             by_number,
             corner_land: (0..graph.corners()).map(|c| listed(&graph.corner_hexes[c]).any(land)).collect(),
             corner_market,
-            market_kind: island.markets.iter().map(|m| m.kind).collect(),
+            market_kind: island.1.iter().map(|m| m.kind).collect(),
             edge_land: (0..graph.edges()).map(|e| listed(&graph.edge_hexes[e]).any(land)).collect(),
-            edge_sea: (0..graph.edges()).map(|e| listed(&graph.edge_hexes[e]).any(|h| !land(h))).collect(),
+            edge_sea: (0..graph.edges()).map(|e| listed(&graph.edge_hexes[e]).any(sea)).collect(),
             corner_region: (0..graph.corners())
                 .map(|c| listed(&graph.corner_hexes[c]).filter(|&h| land(h)).map(|h| hexes[h].region).min().unwrap_or(SEA))
                 .collect(),
-            sea_hexes: (0..hexes.len()).filter(|&h| !land(h)).map(|h| h as u16).collect(),
+            sea_hexes: (0..hexes.len()).filter(|&h| sea(h)).map(|h| h as u16).collect(),
             graph,
+            hexes: hexes.clone(),
+            markets: island.1.clone(),
         }
     }
 
@@ -214,6 +227,11 @@ pub struct Game {
     pub ships_new: Vec<u16>,
     pub ship_moved: bool,
     pub islands_reached: [u16; MAX_PLAYERS],
+    // Fog Islands: the hidden tiles and numbers (shuffled, top last; never shown), and the hexes
+    // revealed so far
+    pub fog_tiles: Vec<Terrain>,
+    pub fog_numbers: Vec<u8>,
+    pub revealed: Vec<u16>,
     // Event cards (events.rs): the deck (top last), the last card's event (NOBODY before the first),
     // whether this production is an epidemic, and Paths an earthquake damaged
     pub event_deck: Vec<u8>,
@@ -327,6 +345,9 @@ impl Game {
             ships_new: Vec::new(),
             ship_moved: false,
             islands_reached: [0; MAX_PLAYERS],
+            fog_tiles: island.fog_tiles.clone(),
+            fog_numbers: island.fog_numbers.clone(),
+            revealed: Vec::new(),
             event_deck: Vec::new(),
             last_event: NOBODY,
             epidemic: false,
@@ -355,6 +376,12 @@ impl Game {
         }
         if g.settings().variant_two {
             g.place_neutrals();
+        }
+        if !g.fog_tiles.is_empty() {
+            let (mut tiles, mut numbers) = (std::mem::take(&mut g.fog_tiles), std::mem::take(&mut g.fog_numbers));
+            g.rng.shuffle(&mut tiles);
+            g.rng.shuffle(&mut numbers);
+            (g.fog_tiles, g.fog_numbers) = (tiles, numbers);
         }
         g
     }
@@ -817,6 +844,7 @@ impl Game {
                 self.edge_kind[to] = SHIP;
                 self.ship_moved = true;
                 self.update_titles();
+                self.lift_fog(pu, to);
             }
             Action::Pirate(h) => {
                 self.pirate = h;
@@ -1108,6 +1136,9 @@ impl Game {
             }
         }
         self.finish_free_build();
+        // Fog Islands: hidden hexes at its corners are revealed (after setup has moved on, so a gold
+        // choice comes before the next setup step)
+        self.lift_fog(pu, e);
         // The two-player variant: a Path built owes a neutral Path
         if kind == PATH && built {
             if let Some(d) = self.owe_neutral(p, false) {

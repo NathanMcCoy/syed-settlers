@@ -21,6 +21,7 @@ pub enum Terrain {
     Paddy,
     Dunes,
     Gold, // the sea expansion: produces a resource of the player's choice
+    Fog,  // the sea expansion's Fog Islands: a hidden hex, turned over when a Path or ship reaches it
 }
 use Terrain::*;
 
@@ -37,11 +38,11 @@ impl Terrain {
             Fields => Some(2),
             Mine => Some(3),
             Paddy => Some(4),
-            Sea | Dunes | Gold => None,
+            Sea | Dunes | Gold | Fog => None,
         }
     }
     pub fn name(self) -> &'static str {
-        ["sea", "forest", "quarry", "fields", "mine", "paddy", "dunes", "gold"][self as usize]
+        ["sea", "forest", "quarry", "fields", "mine", "paddy", "dunes", "gold", "fog"][self as usize]
     }
 }
 
@@ -152,6 +153,9 @@ pub struct Island {
     pub markets: Vec<Market>,
     pub squall: u16,
     pub pirate: u16, // the pirate's starting sea hex (the sea expansion), or NONE
+    // Fog Islands: what lies under the fog (tiles and numbers, in no order: the game shuffles them)
+    pub fog_tiles: Vec<Terrain>,
+    pub fog_numbers: Vec<u8>,
     pub info: Info,
 }
 
@@ -250,6 +254,7 @@ fn attempt_island(s: &Settings, rng: &mut Rng) -> Option<Island> {
         // The other sea scenarios make all their land themselves (sea_maps.rs)
         land = crate::sea_maps::scenario_land(rng, s)?;
     }
+    let (fog_tiles, fog_numbers) = if s.sea && s.sea_scenario == 3 { crate::sea_maps::fog_stacks() } else { (Vec::new(), Vec::new()) };
     // Markets and the squall's start: on the main island, or anywhere where setup is anywhere
     let everywhere = s.sea && crate::sea_maps::setup_anywhere(s.sea_scenario);
 
@@ -279,13 +284,15 @@ fn attempt_island(s: &Settings, rng: &mut Rng) -> Option<Island> {
         markets,
         squall,
         pirate,
+        fog_tiles,
+        fog_numbers,
         info: Info { main_size: main.len(), main_average, attempts: 0 },
     })
 }
 
 // Where the squall may start: the island's Dunes, or with none, its weakest hexes (fewest pips)
 fn squall_starts(hexes: &[Hex], everywhere: bool) -> Vec<u16> {
-    let main = |i: &usize| hexes[*i].terrain != Sea && (everywhere || hexes[*i].region == 0);
+    let main = |i: &usize| !matches!(hexes[*i].terrain, Sea | Fog) && (everywhere || hexes[*i].region == 0);
     let dunes: Vec<u16> = (0..hexes.len()).filter(main).filter(|&i| hexes[i].terrain == Dunes).map(|i| i as u16).collect();
     if !dunes.is_empty() {
         return dunes;
@@ -564,7 +571,7 @@ fn place_markets(rng: &mut Rng, hexes: &[Hex], g: &Graph, any: u8, each: u8, ext
     let mut coast: Vec<(u16, u8, u16)> = Vec::new();
     for (h, hex) in hexes.iter().enumerate() {
         // Markets are on the main island's coast (the sea expansion's small islands have none)
-        if hex.terrain == Sea || (hex.region != 0 && !everywhere) {
+        if hex.terrain == Sea || hex.terrain == Fog || (hex.region != 0 && !everywhere) {
             continue;
         }
         for side in 0..6 {
@@ -614,7 +621,7 @@ fn spread_markets(rng: &mut Rng, hexes: &[Hex], g: &Graph, coast: &[(u16, u8, u1
         let (x, y) = c.center();
         (x as f64 * 3f64.sqrt() / 2.0, y as f64 / 2.0)
     };
-    let land: Vec<(f64, f64)> = hexes.iter().filter(|h| h.terrain != Sea && (everywhere || h.region == 0)).map(|h| point(h.cell)).collect();
+    let land: Vec<(f64, f64)> = hexes.iter().filter(|h| !matches!(h.terrain, Sea | Fog) && (everywhere || h.region == 0)).map(|h| point(h.cell)).collect();
     let mid = (land.iter().map(|p| p.0).sum::<f64>() / land.len() as f64, land.iter().map(|p| p.1).sum::<f64>() / land.len() as f64);
     // Each coastal edge's angle around the island's middle (its midpoint: halfway to the sea hex)
     let mut around: Vec<(f64, (u16, u8, u16))> = coast.iter().map(|&(h, side, e)| {

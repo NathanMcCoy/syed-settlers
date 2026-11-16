@@ -122,6 +122,45 @@ impl Game {
     }
 }
 
+impl Game {
+    // Fog Islands: a Path or ship on edge e, placed (or moved) by p, reveals every hidden hex at its
+    // corners: the next hidden tile goes there, with the next hidden number if it's land, and p takes
+    // one of what it produces (gold: one of p's choice)
+    pub(super) fn lift_fog(&mut self, p: usize, e: usize) {
+        if self.fog_tiles.is_empty() && !self.board.terrain.contains(&Terrain::Fog) {
+            return;
+        }
+        let g = &self.board.graph;
+        let mut hidden: Vec<usize> = Vec::new();
+        for &c in &g.edge_corners[e] {
+            for h in listed(&g.corner_hexes[c as usize]) {
+                if self.board.terrain[h] == Terrain::Fog && !hidden.contains(&h) {
+                    hidden.push(h);
+                }
+            }
+        }
+        for h in hidden {
+            let Some(terrain) = self.fog_tiles.pop() else { return };
+            let mut board = (*self.board).clone();
+            let number = if matches!(terrain, Terrain::Sea | Terrain::Dunes) { 0 } else { self.fog_numbers.pop().unwrap_or(0) };
+            board.hexes[h].terrain = terrain;
+            board.hexes[h].number = number;
+            board.hexes[h].region = if terrain == Terrain::Sea { SEA } else { 15 };
+            let Board { graph, hexes, markets, settings, .. } = board;
+            self.board = Arc::new(Board::from_parts(graph, hexes, markets, settings));
+            self.revealed.push(h as u16);
+            match self.board.resource[h] {
+                GOLD => {
+                    let after = self.phase;
+                    self.decide_then([Pending { seat: p as u8, decision: Decision::Gold { left: 1 } }], after);
+                }
+                r if r != NOBODY && self.bank(r as usize) > 0 => self.hands[p][r as usize] += 1,
+                _ => {}
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 #[path = "sea_tests.rs"]
 mod tests;

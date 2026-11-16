@@ -64,6 +64,7 @@ pub fn within(c: Cell, radius: i32) -> Vec<Cell> {
     out
 }
 
+#[derive(Clone)]
 pub struct Graph {
     pub cells: Vec<Cell>,
     pub hex_corners: Vec<[u16; 6]>,   // N first, clockwise

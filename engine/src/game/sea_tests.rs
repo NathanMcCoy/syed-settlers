@@ -388,3 +388,49 @@ fn the_other_scenarios_never_get_stuck_and_greedy_finishes_them() {
         }
     }
 }
+
+#[test]
+fn fog_hides_hexes_until_a_path_or_ship_reaches_them() {
+    let s = Settings::parse_for("sea=true;sea.scenario=3", 4).unwrap();
+    assert_eq!((s.win, s.sea_island_bonus), (12, 0));
+    let island = generate(&s, "fog").unwrap();
+    assert_eq!(island.hexes.iter().filter(|h| h.terrain == Terrain::Fog).count(), 12);
+    assert!(!island.to_json().contains("\"fog_tiles\""), "the hidden stacks aren't in the island JSON");
+    let mut g = Game::new(&island, &s, 4, 7);
+    // Nobody builds on fog
+    assert!(legal(&g).iter().all(|a| matches!(a, Action::Hut(c) if g.board.corner_land[*c as usize])));
+    let fog: Vec<usize> = (0..g.board.terrain.len()).filter(|&h| g.board.terrain[h] == Terrain::Fog).collect();
+    assert!(fog.iter().all(|h| !g.board.land_hexes.contains(&(*h as u16)) && !g.board.sea_hexes.contains(&(*h as u16))));
+    // A ship next to a fog hex's corner reveals it: the top hidden tile, a number if it's land
+    let h = fog[0];
+    let c = g.board.graph.hex_corners[h][0] as usize;
+    let e = listed(&g.board.graph.corner_edges[c]).find(|&e| g.board.edge_sea[e]).unwrap();
+    let top = *g.fog_tiles.last().unwrap();
+    g.turn = 1;
+    g.phase = Phase::Main;
+    g.hands = [[0; 5]; MAX_PLAYERS];
+    g.lift_fog(0, e);
+    assert_eq!(g.board.terrain[h], top);
+    assert!(g.revealed.contains(&(h as u16)));
+    assert_eq!(g.board.number[h] != 0, !matches!(top, Terrain::Sea | Terrain::Dunes));
+    if let Some(r) = top.resource() {
+        assert_eq!(g.hands[0][r], 1, "one of what it produces");
+    }
+    if top == Terrain::Gold {
+        assert_eq!(g.deciding().unwrap().decision, Decision::Gold { left: 1 });
+    }
+    assert!(crate::protocol::view_json(&g, 1).contains(&format!("\"revealed\":[[{h},\"{}\"", top.name())));
+}
+
+#[test]
+fn fog_games_never_get_stuck_and_greedy_finishes_them() {
+    use crate::sim::{BotKind, play_with};
+    for players in [2, 4, 6] {
+        let s = Settings::parse_for("sea=true;sea.scenario=3", players).unwrap();
+        for seed in 0..15 {
+            play_with(&s, seed, players, 300, &[BotKind::Random]).unwrap();
+            let o = play_with(&s, seed, players, 400, &[BotKind::Greedy]).unwrap();
+            assert_ne!(o.winner, NOBODY, "{players} players, game {seed} didn't finish");
+        }
+    }
+}

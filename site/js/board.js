@@ -5,7 +5,7 @@ export const SIZE = 34;                                                    // pi
 export const X = SIZE * Math.sqrt(3) / 2, Y = SIZE / 2;
 export const CORNERS = [[0, -2], [1, -1], [1, 1], [0, 2], [-1, 1], [-1, -1]];
 export const RESOURCES = ['Timber', 'Stone', 'Grain', 'Copper', 'Fish'];
-export const TERRAIN_RESOURCE = { forest: 'Timber', quarry: 'Stone', fields: 'Grain', mine: 'Copper', paddy: 'Fish', gold: 'any resource' };
+export const TERRAIN_RESOURCE = { forest: 'Timber', quarry: 'Stone', fields: 'Grain', mine: 'Copper', paddy: 'Fish', gold: 'any resource', fog: 'hidden: reach it with a Path or ship' };
 const MARKET = { any: '3:1 any', timber: '2:1 Timber', stone: '2:1 Stone', grain: '2:1 Grain', copper: '2:1 Copper', fish: '2:1 Fish' };
 const SVG = 'http://www.w3.org/2000/svg';
 
