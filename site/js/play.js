@@ -36,6 +36,50 @@ const PROJECT_HELP = {
   marketDay: 'Name a resource: everyone else gives you all of theirs',
 };
 
+// The city expansion (city.rs): commodities, tracks, progress cards [name, what it does]
+const COMMODITIES = ['Paper', 'Cloth', 'Coin'];
+const CARD_NAMES = [...RESOURCES, ...COMMODITIES];
+const TRACKS = [
+  ['Science', 'Paper', 'a resource of your choice when a roll gives you nothing (not a 7)'],
+  ['Trade', 'Cloth', 'commodities 2:1 with the bank'],
+  ['Politics', 'Coin', 'promote strong knights to mighty'],
+];
+const DECKS = ['Science', 'Trade', 'Politics'];
+const KNIGHT_NAMES = ['', 'basic', 'strong', 'mighty'];
+const PROGRESS = {
+  fixedRoll: ['Fixed Roll', 'Before rolling: choose the production dice'],
+  crane: ['Crane', 'Your next improvement costs 1 commodity less'],
+  engineer: ['Engineer', 'A wall for free'],
+  numberSwap: ['Number Swap', 'Swap two number discs (not 2, 6, 8 or 12)'],
+  irrigation: ['Irrigation', '2 Grain for each Fields hex by your buildings'],
+  medicine: ['Medicine', 'Your next Lodge this turn costs 2 Stone + 1 Grain'],
+  quarrying: ['Quarrying', '2 Stone for each Quarry hex by your buildings'],
+  printingPress: ['Printing Press', '1 Renown'],
+  pathBuilders: ['Path Builders', '2 free Paths'],
+  smithing: ['Smithing', 'Promote up to 2 knights for free'],
+  harbourDeal: ['Harbour Deal', 'Give each player with commodities a resource; they give you a commodity'],
+  guildDues: ['Guild Dues', 'Take 2 cards of your choice from a player with more Renown'],
+  merchant: ['Merchant', 'Place the merchant by your building: 1 Renown, its resource 2:1'],
+  tradeFleet: ['Trade Fleet', 'Name a card kind: 2:1 with the bank this turn'],
+  monopoly: ['Monopoly', 'Name a resource: everyone gives you 2 (or their 1)'],
+  goodsMonopoly: ['Goods Monopoly', 'Name a commodity: everyone gives you 1'],
+  charter: ['Charter', '1 Renown'],
+  diplomacy: ['Diplomacy', 'Remove an open Path (your own: build one free)'],
+  rally: ['Rally', 'Activate all your knights for free'],
+  spy: ['Spy', "Look at a player's progress cards and take one"],
+  intrigue: ['Intrigue', "Push off another player's knight touching your routes"],
+  taxes: ['Taxes', 'Move the squall and take a card from everyone there'],
+  treason: ['Treason', 'A player removes a knight; you may place one of yours no stronger'],
+  wedding: ['Wedding', 'Everyone with more Renown gives you 2 cards of their choice'],
+  sabotage: ['Sabotage', 'Everyone with as much Renown or more discards half'],
+};
+const cardName = k => PROGRESS[k]?.[0] ?? k;
+// A card of yours by kind: resources from the hand, commodities from the city part of the view
+const held = (v, k) => (k < 5 ? v.hand[k] : v.city?.goods?.[k - 5] ?? 0);
+const rateOf = (v, k) => (k < 5 ? v.rates[k] : v.city.goodsRates[k - 5]);
+// A game with the sea (ships), whether or not the pirate is on the board yet
+const seaGame = () => /(^|;)sea=true/.test(board.settings);
+
 const store = {
   get(k) { try { return localStorage.getItem(k); } catch { return null; } },
   set(k, v) { try { localStorage.setItem(k, v); } catch { /* private mode: the link still works */ } },
@@ -100,12 +144,14 @@ function home() {
     if (Number(f.over.value) !== 7) settings['discard.over'] = Number(f.over.value);
     if (Number(f.rounds.value) !== 0) settings.rounds = Number(f.rounds.value);
     if (f.faceUp.checked) settings['projects.faceUp'] = true;
+    const box = new FormData(e.target).get('box');
+    if (box && box !== '0') settings['box.scenario'] = Number(box);
     const sea = new FormData(e.target).get('sea');
     if (sea && sea !== '0') {
       settings.sea = true;
       settings['sea.scenario'] = Number(sea);
     }
-    for (const [box, name] of [['friendly', 'variant.friendly'], ['ports', 'variant.ports'], ['events', 'variant.events'], ['two', 'variant.two']]) {
+    for (const [box, name] of [['friendly', 'variant.friendly'], ['ports', 'variant.ports'], ['events', 'variant.events'], ['two', 'variant.two'], ['city', 'city']]) {
       if (f[box].checked) settings[name] = true;
     }
     $('home-error').textContent = '';
@@ -157,12 +203,12 @@ async function game(gameId) {
   });
   $('make-offer').addEventListener('click', () => {
     const to = deal.to.reduce((mask, s) => mask | (1 << s), 0);
-    send(`offer ${deal.give.join(',')} ${deal.get.join(',')} ${to}${$('deal-open').checked ? ' open' : ''}`);
+    send(`offer ${countsText(deal.give)} ${countsText(deal.get)} ${to}${$('deal-open').checked ? ' open' : ''}`);
   });
   // A counter-offer is written from the offerer's side, as the engine keeps it: what they'd give
   // (counter.theirs, what you get) and get (counter.mine, what you give)
   $('send-counter').addEventListener('click', () => {
-    if (counter) send(`counter ${snap.view.you} ${counter.theirs.join(',')} ${counter.mine.join(',')}`).then(() => { counter = null; render(snap); });
+    if (counter) send(`counter ${snap.view.you} ${countsText(counter.theirs)} ${countsText(counter.mine)}`).then(() => { counter = null; render(snap); });
   });
   $('cancel-counter').addEventListener('click', () => { counter = null; render(snap); });
   // Esc puts away what was picked in the shop
@@ -220,7 +266,7 @@ async function send(move) {
   try {
     const res = await fetch(`/api/games/${id}/move`, { method: 'POST', body: JSON.stringify({ k: key, move }) });
     if (!res.ok) $('move-error').textContent = (await res.json()).error;
-    if (res.ok && /^(hut|lodge|path|ship|moveship) /.test(move)) { mode = null; moveFrom = null; }
+    if (res.ok && /^(hut|lodge|path|ship|moveship|wall|recruit|promote|activate|knightmove|displace|chase) /.test(move)) { mode = null; moveFrom = null; }
   } catch {
     $('move-error').textContent = 'Couldn\'t reach the server. Check your connection and try again.';
   } finally {
@@ -260,6 +306,7 @@ function render(data) {
   drawTrade(v);
   drawDeal(v);
   drawProjects(v);
+  drawCity(v);
   drawLog();
   $('trade-empty').hidden = !$('offer-box').hidden || !$('trade-box').hidden || !$('deal-box').hidden;
   document.body.dataset.phase = v.phase;
@@ -311,6 +358,7 @@ function drawPieces(v, before) {
     piece.append(el('title', {}, `${nameOf(p)}'s ${kind === 2 ? 'Lodge' : 'Hut'}`));
     layers.buildings.append(piece);
   }
+  drawCityPieces(v);
   layers.squall.replaceChildren();
   // (The Pirate Islands has no squall)
   if (board.island.hexes[v.squall]) {
@@ -375,6 +423,40 @@ function drawPieces(v, before) {
   }
 }
 
+// The city expansion on the board: walls round Lodges, metropolises (★), knights (their level, filled
+// when active) and the merchant
+function drawCityPieces(v) {
+  if (!v.city) return;
+  for (const c of v.city.walls) {
+    const { x, y } = cornerAt(c);
+    const owner = v.buildings.find(b => b[0] === c)?.[1] ?? 0;
+    const wall = el('rect', { x: x - 13, y: y - 13, width: 26, height: 26, rx: 3, class: `wall p${owner}`, 'data-wall': c });
+    wall.append(el('title', {}, `${nameOf(owner)}'s wall: +2 to their hand limit`));
+    layers.buildings.prepend(wall);
+  }
+  v.city.metro.forEach((m, t) => {
+    if (!m) return;
+    const { x, y } = cornerAt(m[0]);
+    const star = el('text', { x, y: y + 4, class: 'metro', 'data-metro': t }, '★');
+    star.append(el('title', {}, `${nameOf(m[1])}'s ${TRACKS[t][0]} metropolis: +2 Renown, can't be pillaged`));
+    layers.buildings.append(star);
+  });
+  for (const [c, p, level, active, fresh] of v.city.knights) {
+    const { x, y } = cornerAt(c);
+    const g = el('g', { class: `knight p${p}${active ? ' active' : ''}`, 'data-knight': c });
+    g.append(el('circle', { cx: x, cy: y, r: 8 }), el('text', { x, y: y + 4 }, String(level)));
+    g.append(el('title', {}, `${nameOf(p)}'s ${KNIGHT_NAMES[level]} knight (${active ? (fresh ? 'active from next turn' : 'active') : 'inactive'})`));
+    layers.buildings.append(g);
+  }
+  if (v.city.merchant) {
+    const [h, owner] = v.city.merchant;
+    const c = centre(board.island.hexes[h]);
+    const m = el('text', { x: c.x + SIZE * 0.42, y: c.y - SIZE * 0.3, class: `marker merchant p${owner}`, 'data-merchant': h }, 'M');
+    m.append(el('title', {}, `${nameOf(owner)}'s merchant: 1 Renown, this hex's resource 2:1 for them`));
+    layers.squall.append(m);
+  }
+}
+
 // The last roll as two dice faces (pips on a 3 × 3 grid)
 const PIPS = { 1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8] };
 function drawDice(v) {
@@ -398,6 +480,16 @@ function drawDice(v) {
       }
       return die;
     }), Object.assign(document.createElement('span'), { className: 'total', textContent: v.dice[0] + v.dice[1] }));
+    // The city expansion's event die: a ship (the raiders come closer) or a track's gate
+    if (v.city && v.city.eventDie !== null) {
+      const ship = v.city.eventDie < 3;
+      const face = Object.assign(document.createElement('span'), {
+        className: `event-die${ship ? ' ship' : ` gate t${v.city.eventDie - 3}`}`,
+        textContent: ship ? '⛵' : DECKS[v.city.eventDie - 3][0],
+        title: ship ? 'Event die: the raiders come a step closer' : `Event die: the ${DECKS[v.city.eventDie - 3]} gate (red die ${v.dice[0]})`,
+      });
+      parts.push(face);
+    }
   }
   // With a round limit, where the game stands ("15 rounds" during setup)
   if (v.roundLimit) {
@@ -427,16 +519,37 @@ function showRoll(v, before) {
   }
   const who = last.seat === v.you ? 'You' : nameOf(last.seat);
   let text = `${who} rolled ${total}.`;
-  if (total === 7) text += ' The squall moves.';
+  if (v.city) text += cityRollText(v, before.view);
+  if (total === 7) text += v.city && !v.city.landed ? ' Big hands lose half (no squall before the raiders land).' : ' The squall moves.';
   else if (v.hand && before.view.hand) {
-    const got = v.hand.map((n, r) => n - before.view.hand[r]);
-    const parts = got.map((n, r) => (n > 0 ? `+${n} ${RESOURCES[r]}` : null)).filter(Boolean);
+    const cards = view => [...view.hand, ...(view.city?.goods ?? [])];
+    const was = cards(before.view);
+    const got = cards(v).map((n, k) => n - was[k]);
+    const parts = got.map((n, k) => (n > 0 ? `+${n} ${CARD_NAMES[k]}` : null)).filter(Boolean);
     text += parts.length ? ` You got ${parts.join(', ')}.` : ' Nothing for you this time.';
   }
   if (v.short?.length) {
     text += ` The bank ran short of ${v.short.map(r => RESOURCES[r]).join(' and ')}: nobody got ${v.short.length > 1 ? 'those' : 'it'}, unless only one player was owed it (they got what was left).`;
   }
   toast(text);
+}
+
+// The event die's news: the raiders' step or landing, and who drew progress cards
+function cityRollText(v, was) {
+  const c = v.city;
+  if (c.eventDie === null) return '';
+  if (c.eventDie < 3) {
+    if (c.raiders === 0 && was.city && was.city.raiders > 0) {
+      const [strength, defence, won] = c.lastRaid ?? [0, 0, 0];
+      return won
+        ? ` The raiders landed (${strength} against ${defence}) and pillaged the weakest defenders.`
+        : ` The raiders landed (${strength} against ${defence}) and were driven off.`;
+    }
+    return ` The raiders came closer (${c.raiders} of ${c.raidersAt}).`;
+  }
+  const deck = DECKS[c.eventDie - 3];
+  const who = c.drawn.map(([s]) => (s === v.you ? 'you' : nameOf(s)));
+  return who.length ? ` ${deck} gate: ${who.join(', ')} drew a progress card.` : ` ${deck} gate: nobody drew.`;
 }
 
 let toastTimer = null;
@@ -455,16 +568,21 @@ function drawTargets(v) {
   // Paths and squall moves, every spot does
   // (Placing a market you took is always shown: it isn't bought in the shop)
   const moves = v.phase === 'main' ? legal().filter(m => (mode && m.startsWith(`${mode} `)) || m.startsWith('placemarket ')) : legal();
-  // Moving a ship: first the ship (its edge lights up), then where it goes
-  if (mode === 'moveship') {
-    const pairs = moves.map(m => m.split(' ').slice(1).map(Number));
-    const lit = moveFrom === null ? [...new Set(pairs.map(([a]) => a))] : pairs.filter(([a]) => a === moveFrom).map(([, b]) => b);
-    for (const e of lit) {
-      const [a, b] = seaEdgeEnds(e);
-      const t = el('line', { x1: a.x, y1: a.y, x2: b.x, y2: b.y, class: `target edge sea${moveFrom === null ? ' from' : ''}`, tabindex: 0, 'data-moveship': e });
-      t.append(el('title', {}, moveFrom === null ? 'Move this ship' : 'Move the ship here'));
+  // Two-step moves: first what moves (a ship, a knight, a number), then where it goes. A decision with
+  // only one starting point (a displaced knight) skips the first step.
+  const word = TWO_STEP[mode] ? mode : moves.length && moves.every(m => TWO_STEP[m.split(' ')[0]] && m.split(' ')[0] === moves[0].split(' ')[0]) ? moves[0].split(' ')[0] : null;
+  if (word) {
+    const pairs = moves.filter(m => m.startsWith(`${word} `)).map(m => m.split(' ').slice(1).map(Number));
+    const starts = [...new Set(pairs.map(([a]) => a))];
+    const from = moveFrom ?? (starts.length === 1 && word !== 'swap' ? starts[0] : null);
+    const lit = from === null ? starts : pairs.filter(([a]) => a === from).map(([, b]) => b);
+    const [kind, first, second] = TWO_STEP[word];
+    for (const n of lit) {
+      const t = targetShape(kind, n, from === null ? ' from' : '', word === 'moveship');
+      t.dataset[word] = n;
+      t.append(el('title', {}, from === null ? first : second));
       const pick = () => {
-        if (moveFrom === null) { moveFrom = e; render(snap); } else { const from = moveFrom; moveFrom = null; send(`moveship ${from} ${e}`); }
+        if (from === null) { moveFrom = n; render(snap); } else { moveFrom = null; send(`${word} ${from} ${n}`); }
       };
       t.addEventListener('click', pick);
       t.addEventListener('keydown', ev => { if (ev.key === 'Enter' || ev.key === ' ') pick(); });
@@ -507,6 +625,21 @@ function drawTargets(v) {
       const t = el('line', { x1: a.x, y1: a.y, x2: b.x, y2: b.y, class: 'target edge sea', 'data-move': m, 'data-edge-target': n, tabindex: 0 });
       t.append(el('title', {}, 'Build a ship here'));
       layers.targets.append(t);
+    } else if (CORNER_WORDS[word]) {
+      const t = targetShape('corner', Number(n));
+      t.dataset.move = m;
+      t.append(el('title', {}, CORNER_WORDS[word]));
+      layers.targets.append(t);
+    } else if (word === 'removepath') {
+      const t = targetShape('edge', Number(n));
+      t.dataset.move = m;
+      t.append(el('title', {}, 'Remove this Path'));
+      layers.targets.append(t);
+    } else if (word === 'merchant') {
+      const t = targetShape('hex', Number(n));
+      t.dataset.move = m;
+      t.append(el('title', {}, 'Place the merchant here'));
+      layers.targets.append(t);
     } else if (word === 'squall' || word === 'pirate') {
       const h = board.island.hexes[Number(n)];
       const t = el('polygon', { points: hexPoints(h), class: 'target hex-target', 'data-move': m, tabindex: 0 });
@@ -518,6 +651,34 @@ function drawTargets(v) {
     t.addEventListener('click', () => send(t.dataset.move));
     t.addEventListener('keydown', ev => { if (ev.key === 'Enter' || ev.key === ' ') send(t.dataset.move); });
   }
+}
+
+// Moves picked in two steps: [what kind of spot, the first step's tip, the second's]
+const TWO_STEP = {
+  moveship: ['edge', 'Move this ship', 'Move the ship here'],
+  knightmove: ['corner', 'Move this knight', 'Move the knight here'],
+  displace: ['corner', 'Use this knight', 'Push off this knight'],
+  swap: ['hex', 'Swap this number', 'with this one'],
+};
+// Moves on a corner (the city expansion), with their tips
+const CORNER_WORDS = {
+  wall: 'Build a wall under this Lodge',
+  recruit: 'A knight here',
+  promote: 'Promote this knight',
+  activate: 'Activate this knight',
+  chase: 'This knight chases the squall',
+  pillage: 'The raiders take this Lodge',
+  expel: 'Push off this knight',
+  removeknight: 'Remove this knight',
+};
+function targetShape(kind, n, extra = '', sea = false) {
+  if (kind === 'corner') {
+    const { x, y } = cornerAt(n);
+    return el('circle', { cx: x, cy: y, r: 11, class: `target corner${extra}`, tabindex: 0 });
+  }
+  if (kind === 'hex') return el('polygon', { points: hexPoints(board.island.hexes[n]), class: `target hex-target${extra}`, tabindex: 0 });
+  const [a, b] = sea ? seaEdgeEnds(n) : edgeEnds(n);
+  return el('line', { x1: a.x, y1: a.y, x2: b.x, y2: b.y, class: `target edge${sea ? ' sea' : ''}${extra}`, tabindex: 0 });
 }
 
 // An edge's ends moved a few pixels toward its sea hex (ship spots next to a Path spot on the coast)
@@ -548,8 +709,8 @@ function status(v) {
   switch (v.phase) {
     case 'setupHut': return mine ? 'Setup: place a Hut on a lit corner.' : `Setup: ${who} is placing a Hut.`;
     case 'setupPath': return mine ? (v.pirate !== null ? 'Setup: place a Path next to your new Hut, or a ship on the coast (dashed spots).' : 'Setup: place a Path next to your new Hut.') : `Setup: ${who} is placing a Path.`;
-    case 'preRoll': return mine ? 'Your turn: roll the dice (or play a project first).' : `${who}'s turn.`;
-    case 'discard': return mine ? `A 7! You hold too many cards: choose ${v.players[v.you].discard} more to lose.` : `A 7: ${who} is choosing cards to lose.`;
+    case 'preRoll': return mine ? (v.city ? `Your turn: roll the dice${legal().some(m => m.startsWith('fixedroll')) ? ' (or use Fixed Roll in the City tab)' : ''}.` : 'Your turn: roll the dice (or play a project first).') : `${who}'s turn.`;
+    case 'discard': return mine ? (v.lastRoll === 7 ? `A 7! You hold too many cards: choose ${v.players[v.you].discard} more to lose.` : `Choose ${v.players[v.you].discard} more cards to lose.`) : `${who} is choosing cards to lose.`;
     case 'moveSquall': return mine ? (v.pirate !== null ? 'Move the squall (a lit land hex) or the pirate (a lit sea hex).' : 'Move the squall: click a lit hex.') : `${who} is moving the ${v.pirate !== null ? 'squall or the pirate' : 'squall'}.`;
     case 'gold': return mine ? 'A gold field paid you: choose a resource.' : `${who} is choosing resources from a gold field.`;
     case 'pick': return mine ? 'The event card gives you a resource: choose one.' : `${who} is choosing a resource.`;
@@ -561,10 +722,30 @@ function status(v) {
     case 'steal': return mine ? 'Choose who to steal a card from.' : `${who} is choosing who to steal from.`;
     // 5-6 players: the player 3 seats on builds after each turn (no roll, no trading with players)
     case 'main': if (v.paired) return mine ? `Your extra build phase (after ${nameOf(v.turnOf)}'s turn): build, buy or play a project, trade with the bank or markets (not with players), then end it.` : `${who} has an extra build phase after ${nameOf(v.turnOf)}'s turn.`;
+      if (mine && v.city && !legal().includes('end')) return 'You hold more than 4 progress cards: play or drop one in the City tab before ending your turn.';
       return mine ? `You rolled ${v.lastRoll}. Pick something to build, trade or buy, then end your turn.` : `${who} rolled ${v.lastRoll}.`;
     case 'freeBuild': return mine ? (v.pirate !== null ? 'Road Crew: place a free Path or ship.' : 'Road Crew: place a free Path.') : `${who} is placing free Paths.`;
     case 'harvest': return mine ? 'Good Harvest: take a resource.' : `${who} is taking resources.`;
     case 'marketDay': return mine ? 'Market Day: choose the resource everyone else hands over.' : `${who} is calling a Market Day.`;
+    // The city expansion's decisions
+    case 'dropProgress': return mine ? 'You hold more than 4 progress cards: drop one.' : `${who} is dropping a progress card.`;
+    case 'pillage': return mine ? 'The raiders won: click the Lodge they take (it becomes a Hut).' : `The raiders are pillaging ${who === 'You' ? 'you' : `${who}'s`} Lodge.`;
+    case 'displaced': return mine ? 'Your knight was pushed off: click where it goes.' : `${who} is moving a displaced knight.`;
+    case 'drawCard': return mine ? 'You tied as the best defender: draw a progress card from a deck.' : `${who} is drawing a progress card.`;
+    case 'name': return mine ? 'Name a card kind for your progress card.' : `${who} is naming a card kind.`;
+    case 'target': return mine ? 'Choose a player for your progress card.' : `${who} is choosing a player.`;
+    case 'takeCards': return mine ? 'Guild Dues: take cards of your choice.' : `${who} is taking cards (Guild Dues).`;
+    case 'spy': return mine ? `Spy: their progress cards are ${v.city.spied.map(cardName).join(', ')}. Take one, or none.` : `${who} is spying.`;
+    case 'harbour': return mine ? 'Harbour Deal: offer a resource to each player with commodities (they pay a commodity), or stop.' : `${who} is making Harbour Deals.`;
+    case 'payGoods': return mine ? 'Harbour Deal: give a commodity of your choice back.' : `${who} is paying a commodity.`;
+    case 'smith': return mine ? 'Smithing: click a knight to promote for free, or stop.' : `${who} is promoting knights.`;
+    case 'freeWall': return mine ? 'Engineer: click a Lodge for a free wall.' : `${who} is building a free wall.`;
+    case 'swap': return mine ? 'Number Swap: click two hexes to swap their numbers.' : `${who} is swapping numbers.`;
+    case 'placeMerchant': return mine ? 'Merchant: click a hex by your building.' : `${who} is placing the merchant.`;
+    case 'removePath': return mine ? 'Diplomacy: click an open Path to remove.' : `${who} is removing a Path.`;
+    case 'expel': return mine ? 'Intrigue: click a knight touching your Paths to push it off.' : `${who} is pushing off a knight.`;
+    case 'giveUpKnight': return mine ? 'Treason: click one of your knights to remove.' : `${who} is removing a knight (Treason).`;
+    case 'treasonKnight': return mine ? 'Treason: place a knight of yours (no stronger), or skip.' : `${who} is placing a knight.`;
     default: return '';
   }
 }
@@ -587,11 +768,20 @@ function drawChoices(v) {
   for (const m of moves) {
     const [word, n] = m.split(' ');
     if (word === 'roll') box.append(button('Roll the dice', m, 'primary'));
-    if (word === 'discard') box.append(button(`Lose ${RESOURCES[n]} (${v.hand[n]})`, m));
+    if (word === 'discard') box.append(button(`Lose ${CARD_NAMES[n]} (${held(v, Number(n))})`, m));
     if (word === 'take') box.append(button(v.phase === 'marketDay' ? `Take everyone's ${RESOURCES[n]}` : `Take ${RESOURCES[n]}`, m));
+    // The city expansion
+    if (word === 'choose') box.append(button(chooseLabel(v, Number(n)), m));
+    if (word === 'takecard') box.append(button(`Take a ${CARD_NAMES[m.split(' ')[2]]}`, m));
+    if (word === 'takeprogress') box.append(button(`Take ${cardName(m.split(' ')[2])}`, m));
+    if (word === 'dropcard' && v.phase !== 'main') box.append(button(`Drop ${cardName(n)}`, m));
+    if (word === 'skip') box.append(button(v.phase === 'treasonKnight' ? 'Place no knight' : v.phase === 'spy' ? 'Take nothing' : 'Done', m));
+    // Fishing: spend fish, pass the old boot
+    if (word === 'fish') box.append(button(`${v.fishing.costs[n]} fish: ${FISH_ACTIONS[n]}`, m));
+    if (word === 'giveboot') box.append(button(`Give ${nameOf(Number(n))} the old boot`, m));
     if (word === 'steal') box.append(button(`Steal from ${nameOf(Number(n))} (${v.players[n].cards} cards)`, m));
     // Event cards and the two-player variant
-    if (word === 'gift') box.append(button(`Give ${nameOf(Number(n))} a ${RESOURCES[m.split(' ')[2]]}`, m));
+    if (word === 'gift') box.append(button(v.phase === 'harbour' ? `Offer ${nameOf(Number(n))} a ${CARD_NAMES[m.split(' ')[2]]}` : `Give ${nameOf(Number(n))} a ${CARD_NAMES[m.split(' ')[2]]}`, m));
     if (word === 'rob') box.append(button(`Rob ${nameOf(Number(n))} (${v.players[n].cards} cards)`, m));
     if (word === 'cashpilot') box.append(button('Cash in a played Pilot (+2 trade tokens)', m));
     if (word === 'forcetrade') box.append(button(`Forced trade (${v.players[v.you].renown <= v.players[1 - v.you].renown ? 1 : 2} token)`, m));
@@ -599,6 +789,18 @@ function drawChoices(v) {
     // Projects are played from Your projects, under the hand (drawMyProjects)
   }
   if (moves.includes('end')) box.append(button('End turn', 'end', 'primary'));
+}
+
+// Fishing's spending (engine fishing.rs FISH_COSTS order)
+const FISH_ACTIONS = ['send the squall off the island', 'steal a card', 'take a resource', 'a free Path', 'a free project'];
+
+// What a "choose" picks, by the decision: a deck, a card kind or a player
+function chooseLabel(v, x) {
+  switch (v.phase) {
+    case 'drawCard': return `Draw a ${DECKS[x]} card (${v.city.decks[x]} left)`;
+    case 'name': return `Name ${CARD_NAMES[x]}`;
+    default: return `Choose ${nameOf(x)}`;
+  }
 }
 
 // Your projects, under your hand: each one, and a Use button on those you can play now. Projects
@@ -664,6 +866,14 @@ const SHOP = [
   { key: 'repair', name: 'Repair a Path', cost: [1, 0, 0, 1, 0], piece: 0, note: 'An earthquake damaged it: no new Paths until it\'s repaired', repair: true },
   { key: 'ship', name: 'Ship', cost: [1, 0, 0, 0, 1], piece: 3, note: 'Sails on from your buildings and ships', sea: true },
   { key: 'moveship', name: 'Move a ship', cost: [0, 0, 0, 0, 0], piece: 3, note: 'Once a turn: a ship with an open end, not built this turn', sea: true, free: true },
+  // The city expansion only
+  { key: 'wall', name: 'Wall', cost: [0, 0, 0, 2, 0], note: 'Under a Lodge: +2 to your hand limit (3 at most)', city: true, why: 'No Lodge without a wall' },
+  { key: 'recruit', name: 'Knight', cost: [0, 1, 0, 0, 1], note: 'A basic knight on a free corner by your Path (starts inactive)', city: true, why: 'No free corner by your Paths, or no basic knight left' },
+  { key: 'activate', name: 'Activate a knight', cost: [0, 0, 1, 0, 0], note: 'Active knights defend against the raiders, and can act from next turn', city: true, why: 'No inactive knight' },
+  { key: 'promote', name: 'Promote a knight', cost: [0, 1, 0, 0, 1], note: 'Basic to strong; strong to mighty needs Politics 3. Once a turn each', city: true, why: 'No knight can be promoted' },
+  { key: 'knightmove', name: 'Move a knight', cost: [0, 0, 0, 0, 0], note: 'An active knight along your Paths (it becomes inactive)', city: true, free: true, verb: 'Move', why: 'No knight ready (active since before this turn)' },
+  { key: 'displace', name: 'Displace a knight', cost: [0, 0, 0, 0, 0], note: 'Push a weaker knight off with an active one', city: true, free: true, verb: 'Pick', why: 'No weaker knight in reach' },
+  { key: 'chase', name: 'Chase the squall', cost: [0, 0, 0, 0, 0], note: 'An active knight by the squall moves it, then steals', city: true, free: true, verb: 'Pick', why: 'No ready knight by the squall' },
 ];
 
 // Why an item can't be built now, or null if it can
@@ -674,10 +884,11 @@ function shopReason(v, item) {
   if (v.phase === 'preRoll') return 'After you roll';
   if (v.phase !== 'main') return 'Not now';
   if (item.key === 'moveship') return v.shipMoved ? 'Already moved one this turn' : 'No ship can move';
-  if (v.players[v.you].pieces[item.piece] === 0) return 'None left';
+  if (item.piece !== undefined && v.players[v.you].pieces[item.piece] === 0) return 'None left';
   const short = item.cost.map((n, r) => Math.max(0, n - v.hand[r]));
   if (short.some(n => n)) return `Need ${short.map((n, r) => (n ? `${n} ${RESOURCES[r]}` : null)).filter(Boolean).join(', ')}`;
-  return item.key === 'lodge' ? 'No Hut to upgrade' : 'No spot you can reach';
+  if (item.why) return item.why;
+  return item.key === 'lodge' ? (v.city?.medicine ? 'No Hut to upgrade' : 'No Hut to upgrade') : 'No spot you can reach';
 }
 
 function drawShop(v) {
@@ -689,7 +900,7 @@ function drawShop(v) {
     return;
   }
   const myDamaged = (v.damaged ?? []).some(e => v.roads.some(([re, p]) => re === e && p === v.you));
-  const pieces = SHOP.filter(item => (!item.sea || v.pirate !== null) && (!item.repair || myDamaged)).map(item => {
+  const pieces = SHOP.filter(item => (!item.sea || seaGame()) && (!item.city || v.city) && (!item.repair || myDamaged)).map(item => {
     const reason = shopReason(v, item);
     const b = document.createElement('button');
     b.type = 'button';
@@ -698,7 +909,7 @@ function drawShop(v) {
       b.textContent = 'Cancel';
       b.addEventListener('click', () => { mode = null; render(snap); });
     } else {
-      b.textContent = item.free ? 'Move' : 'Build';
+      b.textContent = item.verb ?? (item.free ? 'Move' : 'Build');
       b.disabled = reason !== null;
       b.addEventListener('click', () => { mode = item.key; moveFrom = null; render(snap); });
     }
@@ -793,12 +1004,14 @@ function projectReason(v, move) {
 // ---------- Trading with players ----------
 
 const hasCards = h => h.some(n => n > 0);
-const cardsText = h => h.map((n, r) => (n ? `${n} ${RESOURCES[r]}` : null)).filter(Boolean).join(' + ');
+const cardsText = h => h.map((n, r) => (n ? `${n} ${CARD_NAMES[r]}` : null)).filter(Boolean).join(' + ');
+// Counts as move text: 5 (resources), or 8 when commodities are in it (the city expansion)
+const countsText = h => (h.slice(5).some(n => n) ? h : h.slice(0, 5)).join(',');
 
-// +/− steppers for the five resources: obj[side][r] counts, at most max(r); raising one clears the
-// same resource on the other side (a resource is on one side of a trade only)
+// +/− steppers for the five resources (and the city expansion's commodities): obj[side][r] counts, at
+// most max(r); raising one clears the same kind on the other side (a kind is on one side of a trade only)
 function steppers(box, obj, side, other, max, redraw) {
-  box.replaceChildren(...RESOURCES.map((name, r) => {
+  box.replaceChildren(...(snap.view.city ? CARD_NAMES : RESOURCES).map((name, r) => {
     const row = document.createElement('span');
     row.className = `stepper card r${r}`;
     const less = document.createElement('button');
@@ -869,26 +1082,26 @@ function drawOffer(v) {
   }
   $('counter-box').hidden = !counter;
   if (counter) {
-    counter.mine = counter.mine.map((n, r) => Math.min(n, v.hand[r]));
+    counter.mine = counter.mine.map((n, r) => Math.min(n, held(v, r)));
     const redraw = () => drawOffer(snap.view);
-    steppers($('counter-mine'), counter, 'mine', 'theirs', r => v.hand[r], redraw);
+    steppers($('counter-mine'), counter, 'mine', 'theirs', r => held(v, r), redraw);
     steppers($('counter-theirs'), counter, 'theirs', 'mine', () => 9, redraw);
     $('send-counter').disabled = !hasCards(counter.mine) || !hasCards(counter.theirs);
   }
 }
 
 // Building an offer: steppers for what you give (up to your hand) and get, and who it's to
-const deal = { give: [0, 0, 0, 0, 0], get: [0, 0, 0, 0, 0], to: [] };
+const deal = { give: [0, 0, 0, 0, 0, 0, 0, 0], get: [0, 0, 0, 0, 0, 0, 0, 0], to: [] };
 function drawDeal(v) {
   const show = v.canOffer && !v.offer;
   $('deal-box').hidden = !show;
   if (!show) return;
   $('offers-left').textContent = v.offersLeft === null ? '' : `${v.offersLeft} offer${v.offersLeft === 1 ? '' : 's'} left this turn`;
-  deal.give = deal.give.map((n, r) => Math.min(n, v.hand[r]));
+  deal.give = deal.give.map((n, r) => Math.min(n, held(v, r)));
   const others = v.players.map((_, s) => s).filter(s => s !== v.you);
   deal.to = deal.to.filter(s => others.includes(s));
   if (!deal.to.length) deal.to = [...others];
-  steppers($('deal-give'), deal, 'give', 'get', r => v.hand[r], () => drawDeal(snap.view));
+  steppers($('deal-give'), deal, 'give', 'get', r => held(v, r), () => drawDeal(snap.view));
   steppers($('deal-get'), deal, 'get', 'give', () => 9, () => drawDeal(snap.view));
   $('deal-to').replaceChildren(...others.map(s => {
     const b = document.createElement('button');
@@ -937,6 +1150,18 @@ function drawPlayers(v) {
     const facts = [`${p.cards} card${p.cards === 1 ? '' : 's'}`];
     if (p.projectCount) facts.push(`${p.projectCount} project${p.projectCount === 1 ? '' : 's'}`);
     if (p.pilots) facts.push(`${p.pilots} Pilot${p.pilots === 1 ? '' : 's'} played`);
+    // The city expansion: knights' strength, the three tracks, progress cards held
+    if (v.city) {
+      facts.push(`tracks ${v.city.levels[s].join('/')}`);
+      facts.push(`knights ${v.city.defence[s]} active`);
+      if (v.city.progressCounts[s]) facts.push(`${v.city.progressCounts[s]} progress`);
+    }
+    // Fishing: fish tokens held (their values only for your own), and the old boot
+    if (v.fishing) {
+      const n = v.fishing.tokens[s];
+      if (n) facts.push(s === v.you ? `${v.fishing.fish} fish (${n} token${n === 1 ? '' : 's'})` : `${n} fish token${n === 1 ? '' : 's'}`);
+      if (v.fishing.boot === s) facts.push('the old boot (+1 to win)');
+    }
     const wonder = (v.wonders ?? []).find(([, owner]) => owner === s);
     if (wonder) facts.push(`${(WONDER_TEXT[wonder[0]] ?? [wonder[0]])[0]} ${wonder[2]}/4`);
     for (const [kind, n] of Object.entries(p.tokens ?? {})) {
@@ -944,6 +1169,11 @@ function drawPlayers(v) {
       if (n) facts.push(`${n} ${n === 1 ? one : many}`);
     }
     info.append(facts.join(' · '));
+    (v.city?.metro ?? []).forEach((m, t) => {
+      if (m?.[1] !== s) return;
+      const badge = Object.assign(document.createElement('span'), { className: 'title-badge', textContent: `★ ${TRACKS[t][0]}`, title: `${TRACKS[t][0]} metropolis: 2 Renown` });
+      info.append(' ', badge);
+    });
     for (const t of v.titles ?? []) {
       if (t.holder !== s) continue;
       const badge = document.createElement('span');
@@ -961,27 +1191,30 @@ function drawPlayers(v) {
 function drawHand(v) {
   $('hand-box').hidden = v.hand === null;
   if (v.hand === null) return;
-  $('hand').replaceChildren(...RESOURCES.map((r, i) => {
+  const kinds = v.city ? CARD_NAMES : RESOURCES;
+  $('hand').replaceChildren(...kinds.map((r, i) => {
     const li = document.createElement('li');
-    li.className = `card r${i}${v.hand[i] ? '' : ' none'}`;
-    li.dataset.count = v.hand[i];
+    const count = held(v, i);
+    li.className = `card r${i}${count ? '' : ' none'}`;
+    li.dataset.count = count;
     li.dataset.resource = r;
     const n = document.createElement('b');
-    n.textContent = v.hand[i];
+    n.textContent = count;
     const label = document.createElement('span');
     label.textContent = r;
     li.append(n, label);
     return li;
   }));
-  const affordable = SHOP.filter(item => !item.free && (!item.sea || v.pirate !== null) && item.cost.every((n, r) => v.hand[r] >= n)).map(item => item.name);
+  const affordable = SHOP.filter(item => !item.free && !item.repair && (!item.sea || seaGame()) && (!item.city || v.city) && item.cost.every((n, r) => v.hand[r] >= n)).map(item => item.name);
   if (v.row.length || v.deck) {
     if (PROJECT_COST.every((n, r) => v.hand[r] >= n)) affordable.push('a project');
   }
   $('can-build').textContent = affordable.length ? `Enough for: ${affordable.join(', ')}` : 'Not enough for anything yet.';
   drawMyProjects(v);
-  const held = v.hand.reduce((a, b) => a + b, 0);
-  $('hand-limit').textContent = `On a 7, holding more than ${v.handLimit} cards loses half${held > v.handLimit ? ` (you hold ${held})` : ''}.`;
-  $('hand-limit').classList.toggle('warn', held > v.handLimit);
+  const total = v.hand.reduce((a, b) => a + b, 0) + (v.city?.goods ?? []).reduce((a, b) => a + b, 0);
+  const limit = v.city ? v.city.handLimits[v.you] : v.handLimit;
+  $('hand-limit').textContent = `On a 7, holding more than ${limit} cards loses half${total > limit ? ` (you hold ${total})` : ''}.`;
+  $('hand-limit').classList.toggle('warn', total > limit);
 }
 
 // Trading: pick what to give (only what you can afford, at your rate) and what to get
@@ -995,7 +1228,8 @@ function drawTrade(v) {
   if (!trades.length) return;
   const gives = [...new Set(trades.map(m => Number(m.split(' ')[1])))];
   if (!gives.includes(trade.give)) trade.give = gives[0];
-  if (trade.get === trade.give || trade.get === null) trade.get = RESOURCES.findIndex((_, i) => i !== trade.give);
+  const kinds = v.city ? CARD_NAMES : RESOURCES;
+  if (trade.get === trade.give || trade.get === null) trade.get = kinds.findIndex((_, i) => i !== trade.give);
   const pick = (box, list, chosen, label, onPick) => {
     box.replaceChildren(...list.map(r => {
       const b = document.createElement('button');
@@ -1007,8 +1241,8 @@ function drawTrade(v) {
       return b;
     }));
   };
-  pick($('give'), gives, trade.give, r => `${v.rates[r]} ${RESOURCES[r]}`, r => { trade.give = r; });
-  pick($('get'), [0, 1, 2, 3, 4].filter(r => r !== trade.give), trade.get, r => RESOURCES[r], r => { trade.get = r; });
+  pick($('give'), gives, trade.give, r => `${rateOf(v, r)} ${kinds[r]}`, r => { trade.give = r; });
+  pick($('get'), kinds.map((_, i) => i).filter(r => r !== trade.give), trade.get, r => kinds[r], r => { trade.get = r; });
 }
 
 function drawProjects(v) {
@@ -1029,6 +1263,60 @@ function drawProjects(v) {
   $('held').textContent = mine
     ? `Yours: ${Object.keys(PROJECTS).map((k, i) => (mine[i] ? `${PROJECTS[k]} ×${mine[i]}` : null)).filter(Boolean).join(', ') || 'none'} · ${v.deck} left in the deck`
     : `${v.deck} left in the deck`;
+}
+
+// The City tab (the city expansion): the raiders, your tracks, Fixed Roll and your progress cards
+let fixed = [1, 1];
+function drawCity(v) {
+  $('tab-city').hidden = !v.city;
+  $('tab-projects').hidden = !!v.city; // no projects in the city expansion
+  if (!v.city) return;
+  const c = v.city;
+  const raid = c.lastRaid ? ` Last landing: ${c.lastRaid[0]} against ${c.lastRaid[1]}, ${c.lastRaid[2] ? 'the raiders won' : 'driven off'}.` : '';
+  $('raiders').textContent = `Raiders: ${c.raiders} of ${c.raidersAt} steps. Strength ${c.strength} (Lodges on the board) against ${c.defence.reduce((a, b) => a + b, 0)} (active knights).${c.landed ? '' : ' The squall waits until they first land.'}${raid}`;
+  $('tracks').replaceChildren(...TRACKS.map(([name, goods, power], t) => {
+    const li = document.createElement('li');
+    li.className = 'track';
+    const level = v.you === null ? 0 : c.levels[v.you][t];
+    const holder = c.metro[t] ? ` · ★ ${nameOf(c.metro[t][1])}` : '';
+    const head = Object.assign(document.createElement('strong'), { textContent: `${name}: level ${level} of 5${holder}` });
+    const help = Object.assign(document.createElement('span'), {
+      textContent: `${level < 5 && c.improveCost ? `Next: ${c.improveCost[t]} ${goods}. ` : ''}Level 3: ${power}. First to 4: the metropolis.`,
+    });
+    li.append(head, help);
+    if (legal().includes(`improve ${t}`)) li.append(button('Improve', `improve ${t}`));
+    return li;
+  }));
+  // Fixed Roll, before rolling: the red and the yellow die
+  const canFix = legal().some(m => m.startsWith('fixedroll '));
+  $('fixed-roll').hidden = !canFix;
+  if (canFix) {
+    const row = (i, label) => {
+      const g = document.createElement('div');
+      g.className = 'pick';
+      g.append(Object.assign(document.createElement('span'), { textContent: label }));
+      for (let n = 1; n <= 6; n++) {
+        const b = Object.assign(document.createElement('button'), { type: 'button', textContent: n });
+        b.setAttribute('aria-pressed', String(fixed[i] === n));
+        b.addEventListener('click', () => { fixed[i] = n; drawCity(snap.view); });
+        g.append(b);
+      }
+      return g;
+    };
+    $('fixed-dice').replaceChildren(row(0, 'Red'), row(1, 'Yellow'));
+    $('fixed-go').textContent = `Roll with ${fixed[0] + fixed[1]}`;
+    $('fixed-go').onclick = () => send(`fixedroll ${fixed[0]} ${fixed[1]}`);
+  }
+  const mine = c.progress ?? [];
+  $('progress-cards').replaceChildren(...mine.map(k => {
+    const li = document.createElement('li');
+    li.className = 'project';
+    li.append(Object.assign(document.createElement('strong'), { textContent: cardName(k) }), Object.assign(document.createElement('span'), { textContent: PROGRESS[k]?.[1] ?? '' }));
+    if (legal().includes(`card ${k}`)) li.append(button('Play', `card ${k}`));
+    if (legal().includes(`dropcard ${k}`)) li.append(button('Drop', `dropcard ${k}`));
+    return li;
+  }));
+  $('progress-note').textContent = `${mine.length ? '' : 'No progress cards. '}At most 4 in hand. Decks: ${DECKS.map((d, t) => `${d} ${c.decks[t]}`).join(' · ')}.${c.crane ? ' Crane: your next improvement is 1 cheaper.' : ''}${c.medicine ? ' Medicine: your next Lodge costs 2 Stone + 1 Grain.' : ''}${c.fleet !== null ? ` Trade Fleet: ${CARD_NAMES[c.fleet]} 2:1 this turn.` : ''}`;
 }
 
 function describe(entry) {
@@ -1054,10 +1342,10 @@ function describe(entry) {
     case 'forcetrade': return `${who} forced a trade`;
     case 'squallhome': return `${who} sent the squall to the Dunes`;
     case 'roll': return `${who} rolled ${entry.roll}`;
-    case 'discard': return `${who} lost a ${RESOURCES[a]}`;
+    case 'discard': return `${who} lost a ${CARD_NAMES[a]}`;
     case 'squall': return `${who} moved the squall`;
     case 'steal': return `${who} stole a card from ${Number(a) === snap.view.you ? 'you' : nameOf(Number(a))}`;
-    case 'trade': return `${who} traded ${RESOURCES[a]} for ${RESOURCES[b]}`;
+    case 'trade': return `${who} traded ${CARD_NAMES[a]} for ${CARD_NAMES[b]}`;
     case 'buy': return `${who} bought a project`;
     case 'play': return `${who} played ${PROJECTS[a]}`;
     case 'take': return entry.got === undefined
@@ -1070,6 +1358,29 @@ function describe(entry) {
     case 'counter': return `${Number(a) === snap.view.you ? 'You' : nameOf(Number(a))} made a counter-offer`;
     case 'accept': return `${who} took ${Number(a) === snap.view.you ? 'your' : `${nameOf(Number(a))}'s`} counter-offer`;
     case 'withdraw': return `${who} withdrew the offer`;
+    case 'wall': return `${who} built a wall`;
+    case 'improve': return `${who} improved ${TRACKS[a][0]}`;
+    case 'recruit': return `${who} placed a knight`;
+    case 'promote': return `${who} promoted a knight`;
+    case 'activate': return `${who} activated a knight`;
+    case 'knightmove': return `${who} moved a knight`;
+    case 'displace': return `${who} displaced a knight`;
+    case 'chase': return `${who} chased the squall`;
+    case 'card': return `${who} played ${cardName(a)}`;
+    case 'fixedroll': return `${who} played Fixed Roll`;
+    case 'dropcard': return `${who} dropped a progress card`;
+    case 'choose': return `${who} chose`;
+    case 'takecard': return `${who} took a card from ${Number(a) === snap.view.you ? 'you' : nameOf(Number(a))}`;
+    case 'takeprogress': return `${who} took a progress card from ${Number(a) === snap.view.you ? 'you' : nameOf(Number(a))}`;
+    case 'swap': return `${who} swapped two numbers`;
+    case 'removepath': return `${who} removed a Path`;
+    case 'merchant': return `${who} placed the merchant`;
+    case 'expel': return `${who} pushed off a knight`;
+    case 'removeknight': return `${who} removed a knight`;
+    case 'pillage': return `The raiders pillaged ${who === 'You' ? 'your' : `${who}'s`} Lodge`;
+    case 'skip': return `${who} finished`;
+    case 'fish': return `${who} spent fish: ${FISH_ACTIONS[a]}`;
+    case 'giveboot': return `${who} gave ${Number(a) === snap.view.you ? 'you' : nameOf(Number(a))} the old boot`;
     default: return `${who}: ${entry.move}`;
   }
 }

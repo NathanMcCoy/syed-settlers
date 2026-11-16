@@ -82,6 +82,8 @@ pub fn action_text(a: Action) -> String {
         Action::RemoveKnight(c) => format!("removeknight {c}"),
         Action::Pillage(c) => format!("pillage {c}"),
         Action::Skip => "skip".into(),
+        Action::Fish(k) => format!("fish {k}"),
+        Action::GiveBoot(s) => format!("giveboot {s}"),
     }
 }
 
@@ -189,6 +191,8 @@ pub fn parse_action(text: &str) -> Result<Action, String> {
         Some("removeknight") => Action::RemoveKnight(num(1)?),
         Some("pillage") => Action::Pillage(num(1)?),
         Some("skip") => Action::Skip,
+        Some("fish") => Action::Fish(small(1)?),
+        Some("giveboot") => Action::GiveBoot(small(1)?),
         _ => return Err(format!("unknown move \"{text}\"")),
     };
     let expected = match a {
@@ -291,12 +295,15 @@ pub fn view_json(g: &Game, seat: u8) -> String {
     } else {
         "[]".into()
     };
-    // The open offer, which everyone sees, with each seat's answer (null: none yet)
+    // The open offer, which everyone sees, with each seat's answer (null: none yet). Counts: 5
+    // resources, or 8 with the city expansion's commodities
+    let kinds = if g.city() { CARD_KINDS } else { 5 };
+    let cards = |h: &Cards| list(h[..kinds].iter());
     let offer = match &g.offer {
         None => "null".into(),
         Some(o) => format!(
             "{{\"by\":{},\"give\":{},\"get\":{},\"to\":{},\"open\":{},\"answers\":{},\"counters\":{}}}",
-            g.current, list(o.give), list(o.get),
+            g.current, cards(&o.give), cards(&o.get),
             list((0..g.players).filter(|&s| o.to & (1 << s) != 0)),
             o.open,
             list((0..g.players).map(|s| match o.answers[s] {
@@ -304,7 +311,7 @@ pub fn view_json(g: &Game, seat: u8) -> String {
             })),
             // Each seat's counter-offer: what the offerer would give and get instead
             list((0..g.players).map(|s| match o.counters[s] {
-                Some((give, get)) => format!("{{\"give\":{},\"get\":{}}}", list(give), list(get)),
+                Some((give, get)) => format!("{{\"give\":{},\"get\":{}}}", cards(&give), cards(&get)),
                 None => "null".into(),
             })),
         ),
@@ -318,7 +325,7 @@ pub fn view_json(g: &Game, seat: u8) -> String {
             "{{\"phase\":\"{}\",\"current\":{},\"toAct\":{},\"turn\":{},\"lastRoll\":{},\"squall\":{},\"winner\":{},",
             "\"buildings\":[{}],\"roads\":[{}],\"players\":[{}],\"longestPath\":{},\"mostPilots\":{},",
             "\"row\":{},\"deck\":{},\"lastTake\":{},\"win\":{},\"you\":{},\"hand\":{},\"rates\":{},\"legal\":{},",
-            "\"offer\":{},\"canOffer\":{},\"offersLeft\":{},\"dice\":{},\"bank\":{},\"short\":{},\"handLimit\":{},\"round\":{},\"roundLimit\":{},\"byRounds\":{},\"bought\":{},\"turnOf\":{},\"paired\":{},\"titles\":{},\"deciding\":{},\"pirate\":{},\"shipMoved\":{},\"event\":{},\"damaged\":{},\"revealed\":{},\"villages\":{},\"clothEnded\":{},\"wonders\":{},\"markers\":{},\"prizes\":{},\"heldMarkets\":{},\"markets\":{},\"fleet\":{},\"forts\":{},\"warships\":{},\"lastAttack\":{},\"city\":{}}}"
+            "\"offer\":{},\"canOffer\":{},\"offersLeft\":{},\"dice\":{},\"bank\":{},\"short\":{},\"handLimit\":{},\"round\":{},\"roundLimit\":{},\"byRounds\":{},\"bought\":{},\"turnOf\":{},\"paired\":{},\"titles\":{},\"deciding\":{},\"pirate\":{},\"shipMoved\":{},\"event\":{},\"damaged\":{},\"revealed\":{},\"villages\":{},\"clothEnded\":{},\"wonders\":{},\"markers\":{},\"prizes\":{},\"heldMarkets\":{},\"markets\":{},\"fleet\":{},\"forts\":{},\"warships\":{},\"lastAttack\":{},\"city\":{},\"fishing\":{}}}"
         ),
         // While decisions are being made (pending.rs), the phase is named after the first one ("discard")
         g.deciding().map_or(phase_name(g.phase), |d| d.decision.name()), g.current, g.to_act(), g.turn,
@@ -392,6 +399,23 @@ pub fn view_json(g: &Game, seat: u8) -> String {
         list((0..g.warship.len()).filter(|&e| g.warship[e])),
         if g.last_attack[0] == NOBODY { "null".into() } else { list(g.last_attack) },
         city_json(g, seat, mine),
+        fishing_json(g, seat, mine),
+    )
+}
+
+// Fishing's part of the view (null without it): the Lake and its numbers, how many tokens each player
+// holds (their values only to their owner), who has the old boot, the bag, and the costs
+fn fishing_json(g: &Game, seat: u8, mine: bool) -> String {
+    if !g.fishing() {
+        return "null".into();
+    }
+    format!(
+        "{{\"lake\":{},\"lakeNumbers\":{},\"tokens\":{},\"mine\":{},\"fish\":{},\"boot\":{},\"bag\":{},\"costs\":{}}}",
+        g.lake, list(LAKE_NUMBERS),
+        list((0..g.players).map(|p| g.fish[p].len())),
+        if mine { list(g.fish[seat as usize].iter()) } else { "null".into() },
+        if mine { g.fish_total(seat as usize).to_string() } else { "null".into() },
+        seat_or_null(g.boot), g.fish_bag.len(), list(FISH_COSTS),
     )
 }
 

@@ -44,6 +44,7 @@ impl Game {
         // Gold fields' owners then choose their resources (pending.rs), starting with this player
         let before: [u32; MAX_PLAYERS] = std::array::from_fn(|p| if p < self.players { self.cards(p) } else { 0 });
         let gold = self.produce(total);
+        self.fish_production(total);
         self.village_production(total);
         self.epidemic = false;
         let mut decisions = self.gold_decisions(&gold);

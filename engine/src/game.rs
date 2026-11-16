@@ -15,6 +15,7 @@ use std::sync::Arc;
 
 mod city;
 mod cloth;
+mod fishing;
 mod pending;
 mod pirates;
 mod sea;
@@ -29,6 +30,7 @@ mod wonders;
 pub use wonders::{BRIDGE, NO_SETUP, WALL, WONDERS, Wonder};
 pub use two::NEUTRAL;
 pub use city::*;
+pub use fishing::{FISH_COSTS, LAKE_NUMBERS};
 pub use events::{EVENTS, Event, event_card};
 pub use pending::{Decision, Pending};
 pub use sea::{GOLD, P_SHIP, SHIP, SHIP_COST};
@@ -105,6 +107,9 @@ pub enum Action {
     RemoveKnight(u16),    // Treason: remove your knight on this corner
     Pillage(u16),         // the raiders take your Lodge on this corner
     Skip,                 // end an optional choice (Harbour Deal, Smithing, Spy, Treason)
+    // The variants box's Fishing (fishing.rs)
+    Fish(u8),             // spend fish: 0 remove the squall, 1 steal, 2 take a resource, 3 free Path, 4 free project
+    GiveBoot(u8),         // pass the old boot to this player
     NeutralHut(u8, u16),  // the two-player variant: a Hut for this neutral colour on this corner
     NeutralPath(u8, u16), // ... a Path for this neutral colour on this edge
     CashPilot,       // discard a played Pilot for 2 trade tokens
@@ -331,6 +336,13 @@ pub struct Game {
     pub owner: u8,
     pub paired: bool,
     pub cs: CityState,                // the city expansion (city.rs); empty without it
+    // Fishing (fishing.rs): the bag (top last; 0 the old boot), spent tokens, each player's tokens,
+    // who holds the boot, the Lake's hex
+    pub fish_bag: Vec<u8>,
+    pub fish_used: Vec<u8>,
+    pub fish: [Vec<u8>; MAX_PLAYERS],
+    pub boot: u8,
+    pub lake: u16,
     pub rng: Rng,
 }
 
@@ -480,6 +492,11 @@ impl Game {
             owner: 0,
             paired: false,
             cs: CityState::default(),
+            fish_bag: Vec::new(),
+            fish_used: Vec::new(),
+            fish: Default::default(),
+            boot: NOBODY,
+            lake: NONE,
             rng,
             board,
         };
@@ -488,6 +505,9 @@ impl Game {
         }
         if g.city() {
             g.city_setup(true);
+        }
+        if g.fishing() {
+            g.fish_setup();
         }
         if g.settings().variant_two {
             g.place_neutrals();
@@ -566,9 +586,10 @@ impl Game {
     // ---- Winning (F10 in EXPANSIONS.md) ----
 
     // The Renown player p needs to win (rulesets will add modifiers here, e.g. +1 for an old boot)
-    pub fn win_target(&self, _p: usize) -> u32 {
+    pub fn win_target(&self, p: usize) -> u32 {
         let s = self.settings();
-        s.win as u32 + s.variant_ports as u32
+        // (Fishing: the old boot's holder needs 1 more)
+        s.win as u32 + s.variant_ports as u32 + (self.boot as usize == p) as u32
     }
 
     // Has p won? Enough Renown (rulesets will add their own ways here, e.g. finishing a wonder).
@@ -696,7 +717,8 @@ impl Game {
             Phase::MoveSquall { anywhere } => {
                 // squall.range 0 (the default): any land hex after a 7 too
                 let range = self.settings().squall_range as i32;
-                let anywhere = anywhere || range == 0;
+                // (a squall off the island, sent away by fish or not yet in play, goes anywhere)
+                let anywhere = anywhere || range == 0 || self.squall == NONE;
                 let before = out.len();
                 for &h in &self.board.land_hexes {
                     // Cloth: not on the small islands; the Forgotten Tribe: numbered hexes only
@@ -780,6 +802,7 @@ impl Game {
                 self.legal_wonders(pu, out);
                 self.legal_markets(pu, out);
                 self.legal_city(p, out);
+                self.legal_fish(p, out);
                 if let Some(o) = &self.offer {
                     out.push(Action::Withdraw);
                     for s in 0..self.players {
@@ -1250,6 +1273,8 @@ impl Game {
                 self.swap(s as usize, give, get);
             }
             Action::Withdraw => self.offer = None,
+            Action::Fish(k) => self.spend_fish(pu, k),
+            Action::GiveBoot(s) => self.boot = s,
             Action::Wall(_) | Action::Improve(_) | Action::Recruit(_) | Action::Promote(_) | Action::Activate(_)
             | Action::KnightMove(..) | Action::Displace(..) | Action::Chase(_) | Action::PlayCard(_) | Action::FixedRoll(..)
             | Action::DropCard(_) | Action::Choose(_) | Action::TakeCard(..) | Action::TakeProgress(..) | Action::SwapNumbers(..)
@@ -1312,6 +1337,7 @@ impl Game {
             // The second round's Hut collects one of each resource around it (a gold field: one of
             // the player's choice)
             if self.setup_step as usize >= (self.setup_rounds() - 1) * self.players {
+                self.setup_fish(pu, c); // Fishing: a token for a second Hut by fishing water
                 for h in listed(&self.board.graph.corner_hexes[c]) {
                     let r = self.board.resource[h];
                     if r == GOLD {

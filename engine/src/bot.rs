@@ -192,6 +192,32 @@ impl Greedy {
             }
         }
         let short = (0..5).any(|r| g.hands[p as usize][r] < need[r]);
+        // Fishing: the old boot goes to the leader; fish buy a project at 7, send the squall off this
+        // bot's buildings, a Path toward its goal, or a resource it's short of
+        if g.fishing() {
+            if let Some(a) = self.best_of(legal, |a| match a {
+                Action::GiveBoot(s) => Some(g.renown(*s as usize) as f64),
+                _ => None,
+            }) {
+                return a;
+            }
+            let total = g.fish_total(p as usize);
+            let squall_on_me = g.squall != crate::hex::NONE && g.board.graph.hex_corners[g.squall as usize].iter().any(|&c| g.corner_owner[c as usize] == p);
+            let pick = if legal.contains(&Action::Fish(4)) {
+                Some(4)
+            } else if squall_on_me && legal.contains(&Action::Fish(0)) {
+                Some(0)
+            } else if matches!(goal, Goal::Edge(..)) && total >= 6 && legal.contains(&Action::Fish(3)) {
+                Some(3)
+            } else if short && total >= 6 && legal.contains(&Action::Fish(2)) {
+                Some(2)
+            } else {
+                None
+            };
+            if let Some(k) = pick {
+                return Action::Fish(k);
+            }
+        }
         for k in [Project::Harvest, Project::MarketDay, Project::RoadCrew] {
             let worth = match k {
                 Project::RoadCrew => matches!(goal, Goal::Edge(..) | Goal::ShipEdge(..)),

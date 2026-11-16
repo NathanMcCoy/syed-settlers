@@ -23,6 +23,7 @@ pub enum Terrain {
     Gold, // the sea expansion: produces a resource of the player's choice
     Fog,  // the sea expansion's Fog Islands: a hidden hex, turned over when a Path or ship reaches it
     Village, // the sea scenario Cloth: a village trading cloth (a number, no resource)
+    Lake,    // the variants box's Fishing: fish tokens on 2, 3, 11 and 12 (no resource)
 }
 use Terrain::*;
 
@@ -39,11 +40,11 @@ impl Terrain {
             Fields => Some(2),
             Mine => Some(3),
             Paddy => Some(4),
-            Sea | Dunes | Gold | Fog | Village => None,
+            Sea | Dunes | Gold | Fog | Village | Lake => None,
         }
     }
     pub fn name(self) -> &'static str {
-        ["sea", "forest", "quarry", "fields", "mine", "paddy", "dunes", "gold", "fog", "village"][self as usize]
+        ["sea", "forest", "quarry", "fields", "mine", "paddy", "dunes", "gold", "fog", "village", "lake"][self as usize]
     }
 }
 
@@ -257,6 +258,9 @@ fn attempt_island(s: &Settings, rng: &mut Rng) -> Option<Island> {
     let main_average = land.iter().map(|h| pips(h.number)).sum::<u32>() as f64
         / land.iter().filter(|h| h.number != 0).count() as f64;
     let mut land = land;
+    if s.box_scenario == 1 {
+        fishing_lake(rng, &mut land)?;
+    }
     if s.sea && matches!(s.sea_scenario, 1 | 5 | 8) {
         land.extend(small_islands(rng, &main_set, s)?);
     } else if s.sea {
@@ -284,6 +288,10 @@ fn attempt_island(s: &Settings, rng: &mut Rng) -> Option<Island> {
     let graph = Graph::new(&hexes.iter().map(|h| h.cell).collect::<Vec<_>>());
 
     let markets = place_markets(rng, &hexes, &graph, s.markets_any, s.markets_each, s.markets_extra_fish, everywhere)?;
+    let mut hexes = hexes;
+    if s.box_scenario == 1 {
+        fishing_grounds(rng, &mut hexes, &graph, &markets)?;
+    }
     let squall = *rng.pick(&squall_starts(&hexes, everywhere));
     // (Wonders and the Pirate Islands have no pirate; the Pirate Islands' fleet is its own)
     let pirate = if s.sea && !matches!(s.sea_scenario, 7 | 8) { pirate_start(rng, &hexes, s.sea_scenario == 1)? } else { NONE };
@@ -305,6 +313,50 @@ fn attempt_island(s: &Settings, rng: &mut Rng) -> Option<Island> {
         fleet,
         info: Info { main_size: main.len(), main_average, attempts: 0 },
     })
+}
+
+// Fishing: the Dunes move to the island's middle (the hex or one of its 6 neighbours) as the Lake; the
+// hex they swap with takes the Dunes' place, number and all
+fn fishing_lake(rng: &mut Rng, land: &mut [Hex]) -> Option<()> {
+    let dunes = land.iter().position(|h| h.terrain == Dunes)?;
+    let inner: Vec<usize> = (0..land.len()).filter(|&i| land[i].region == 0 && land[i].cell.distance(Cell::new(0, 0)) <= 1).collect();
+    let i = *rng.pick(&inner);
+    let (t, n) = (land[i].terrain, land[i].number);
+    land[dunes].terrain = t;
+    land[dunes].number = n;
+    // (last, so a Dunes already in the middle simply becomes the Lake)
+    land[i].terrain = Lake;
+    land[i].number = 0;
+    Some(())
+}
+
+// Fishing: six fishing grounds (numbered 4, 5, 6, 8, 9, 10) on sea hexes touching the island, spread
+// evenly round it from a random start, away from the sea hexes the markets face
+fn fishing_grounds(rng: &mut Rng, hexes: &mut [Hex], g: &Graph, markets: &[Market]) -> Option<()> {
+    let faced: Vec<usize> = markets.iter().filter_map(|m| {
+        let e = g.hex_edges[m.hex as usize][m.side as usize] as usize;
+        listed(&g.edge_hexes[e]).find(|&h| hexes[h].terrain == Sea)
+    }).collect();
+    let land: Vec<Cell> = hexes.iter().filter(|h| h.terrain != Sea).map(|h| h.cell).collect();
+    let angle = |c: Cell| ((3 * c.r) as f64 * 0.5).atan2((2 * c.q + c.r) as f64 * 0.866);
+    let coast: Vec<usize> = (0..hexes.len())
+        .filter(|&h| hexes[h].terrain == Sea && !faced.contains(&h) && land.iter().any(|l| l.distance(hexes[h].cell) == 1))
+        .collect();
+    let mut numbers = [4u8, 5, 6, 8, 9, 10];
+    rng.shuffle(&mut numbers);
+    let turn = rng.next_f64() * std::f64::consts::TAU;
+    let mut used: Vec<usize> = Vec::new();
+    for (k, &n) in numbers.iter().enumerate() {
+        let want = turn + k as f64 * std::f64::consts::TAU / 6.0;
+        let gap = |h: usize| {
+            let d = (angle(hexes[h].cell) - want).rem_euclid(std::f64::consts::TAU);
+            d.min(std::f64::consts::TAU - d)
+        };
+        let h = coast.iter().copied().filter(|h| !used.contains(h)).min_by(|&a, &b| gap(a).total_cmp(&gap(b)))?;
+        used.push(h);
+        hexes[h].number = n;
+    }
+    Some(())
 }
 
 // Where the squall may start: the island's Dunes, or with none, its weakest hexes (fewest pips)

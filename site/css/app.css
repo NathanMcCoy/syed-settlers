@@ -43,6 +43,25 @@ button { font: inherit; padding: 6px 12px; border-radius: 6px; border: 1px solid
 .fleet { fill: #1d2228; stroke: #fffaf0; stroke-width: 2; }
 .road.warship { stroke-width: 9; }
 .marker.fort { font-size: 13px; }
+/* Fishing: the Lake and its four numbers */
+.t-lake { fill: #4a9fd8; }
+.lake-numbers { font: 800 11px system-ui, sans-serif; fill: #fffaf0; text-anchor: middle; stroke: #1d2228; stroke-width: 2px; paint-order: stroke; pointer-events: none; }
+/* The city expansion: walls, metropolises, knights, the merchant, the event die, commodities */
+.wall { fill: none; stroke-width: 3; stroke-dasharray: 4 2; }
+.wall.p0 { stroke: var(--p0); } .wall.p1 { stroke: var(--p1); } .wall.p2 { stroke: var(--p2); }
+.wall.p3 { stroke: var(--p3); } .wall.p4 { stroke: var(--p4); } .wall.p5 { stroke: var(--p5); }
+.metro { font: 900 14px system-ui, sans-serif; fill: #ffd400; stroke: #1d2228; stroke-width: 1px; text-anchor: middle; pointer-events: none; }
+.knight circle { fill: #fffaf0; stroke-width: 3; }
+.knight.active circle { fill: #1d2228; }
+.knight text { font: 800 10px system-ui, sans-serif; text-anchor: middle; fill: #1d2228; pointer-events: none; }
+.knight.active text { fill: #fffaf0; }
+.knight.p0 circle { stroke: var(--p0); } .knight.p1 circle { stroke: var(--p1); } .knight.p2 circle { stroke: var(--p2); }
+.knight.p3 circle { stroke: var(--p3); } .knight.p4 circle { stroke: var(--p4); } .knight.p5 circle { stroke: var(--p5); }
+.event-die { display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 6px; border: 1px solid #b9b2a3; font-weight: 800; background: #fffaf0; color: #1d2228; }
+.event-die.gate.t0 { background: #3f7d3a; color: #fff; } .event-die.gate.t1 { background: #e2c35a; } .event-die.gate.t2 { background: #2a64d6; color: #fff; }
+.card.r5 { background: #e9e2cf; } .card.r6 { background: #c58fb8; } .card.r7 { background: #d9b45a; }
+.track { display: flex; flex-direction: column; gap: 2px; }
+#fixed-dice .pick { display: flex; gap: 4px; align-items: center; margin: 4px 0; }
 .marker { font: 800 11px system-ui, sans-serif; fill: #1d2228; stroke: #fffaf0; stroke-width: 3px; paint-order: stroke; }
 .t-village { fill: #d9b98c; stroke: #7a5a2e; stroke-width: 2; }
 .village-cloth { font: 700 9px system-ui, sans-serif; fill: #1d2228; text-anchor: middle; }
