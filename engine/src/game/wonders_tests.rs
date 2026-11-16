@@ -47,7 +47,7 @@ fn claim_a_wonder_whose_requirement_you_meet_then_build_its_levels() {
     let cost = Wonder::GreatWall.cost();
     assert_eq!(cost, [3, 0, 1, 0, 1]);
     for level in 1..=4 {
-        g.hands[0] = cost;
+        g.hands[0] = cards_of(cost);
         g.apply(Action::BuildWonder).unwrap();
         assert_eq!(g.wonder_level[0], level);
         assert_eq!(g.over(), level == 4, "a finished wonder wins");

@@ -65,7 +65,7 @@ fn an_epidemic_pays_lodges_only_one() {
     g.corner_owner[c] = 0;
     g.corner_kind[c] = LODGE;
     g.squall = g.board.land_hexes.iter().copied().find(|&x| x as usize != h && g.board.number[x as usize] != n).unwrap();
-    g.hands = [[0; 5]; MAX_PLAYERS];
+    g.hands = [[0; 8]; MAX_PLAYERS];
     g.event_deck.push(card);
     g.apply(Action::Roll).unwrap();
     assert!(g.hands[0][r] >= 1 && g.hands[0][r] <= (g.board.by_number[n as usize].len()) as u8, "1 per Lodge per hex");
@@ -75,7 +75,7 @@ fn an_epidemic_pays_lodges_only_one() {
 #[test]
 fn good_neighbours_pass_a_card_to_the_left() {
     let mut g = game_with(3, "variant.events=true");
-    g.hands = [[1, 0, 0, 0, 0], [0, 2, 0, 0, 0], [0; 5], [0; 5], [0; 5], [0; 5]];
+    g.hands = [[1, 0, 0, 0, 0, 0, 0, 0], [0, 2, 0, 0, 0, 0, 0, 0], [0; 8], [0; 8], [0; 8], [0; 8]];
     g.event_deck.push(card_of(Event::GoodNeighbours));
     g.apply(Action::Roll).unwrap();
     // Seat 3 has nothing to give: only seats 1 and 2 decide
@@ -104,12 +104,12 @@ fn an_earthquake_damages_a_path_which_blocks_paths_and_huts_until_repaired() {
     assert!(g.damaged[e]);
     g.phase = Phase::Main;
     g.current = 0;
-    g.hands[0] = [3, 0, 0, 3, 0];
+    g.hands[0] = [3, 0, 0, 3, 0, 0, 0, 0];
     let list = legal(&g);
     assert!(!list.iter().any(|a| matches!(a, Action::Path(_))), "no new Paths until it's repaired");
     assert!(list.contains(&Action::Repair(e as u16)));
     g.apply(Action::Repair(e as u16)).unwrap();
-    assert!(!g.damaged[e] && g.hands[0] == [2, 0, 0, 2, 0]);
+    assert!(!g.damaged[e] && g.hands[0] == [2, 0, 0, 2, 0, 0, 0, 0]);
     assert!(legal(&g).iter().any(|a| matches!(a, Action::Path(_))));
 }
 
@@ -117,7 +117,7 @@ fn an_earthquake_damages_a_path_which_blocks_paths_and_huts_until_repaired() {
 fn trade_advantage_lets_the_longest_path_rob_anyone_and_a_plentiful_year_feeds_everyone() {
     let mut g = game_with(3, "variant.events=true");
     g.holders[Title::LongestPath as usize] = 2;
-    g.hands = [[0, 0, 3, 0, 0], [0; 5], [0; 5], [0; 5], [0; 5], [0; 5]];
+    g.hands = [[0, 0, 3, 0, 0, 0, 0, 0], [0; 8], [0; 8], [0; 8], [0; 8], [0; 8]];
     g.event_deck.push(card_of(Event::TradeAdvantage));
     g.apply(Action::Roll).unwrap();
     assert_eq!(g.deciding().unwrap(), Pending { seat: 2, decision: Decision::Rob });
@@ -125,7 +125,7 @@ fn trade_advantage_lets_the_longest_path_rob_anyone_and_a_plentiful_year_feeds_e
     assert_eq!((g.hands[0][2], g.hands[2][2]), (2, 1));
     let mut g = game_with(3, "variant.events=true");
     g.event_deck.push(card_of(Event::PlentifulYear));
-    g.hands = [[0; 5]; MAX_PLAYERS];
+    g.hands = [[0; 8]; MAX_PLAYERS];
     g.apply(Action::Roll).unwrap();
     for seat in [0u8, 1, 2] {
         assert_eq!(g.deciding().unwrap().seat, seat);

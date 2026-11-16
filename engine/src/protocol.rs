@@ -60,17 +60,19 @@ pub fn action_text(a: Action) -> String {
     }
 }
 
-fn counts(h: &Hand) -> String {
-    h.iter().map(|n| n.to_string()).collect::<Vec<_>>().join(",")
+// 5 counts (resources), or 8 when commodities are in it (the city expansion)
+fn counts(h: &Cards) -> String {
+    let n = if h[5..].iter().all(|&x| x == 0) { 5 } else { 8 };
+    h[..n].iter().map(|n| n.to_string()).collect::<Vec<_>>().join(",")
 }
 
-fn parse_counts(word: Option<&&str>, text: &str) -> Result<Hand, String> {
-    let bad = || format!("expected 5 counts like 1,0,0,2,0 in \"{text}\"");
+fn parse_counts(word: Option<&&str>, text: &str) -> Result<Cards, String> {
+    let bad = || format!("expected 5 counts like 1,0,0,2,0 (or 8, with commodities) in \"{text}\"");
     let parts: Vec<&str> = word.ok_or_else(bad)?.split(',').collect();
-    if parts.len() != 5 {
+    if parts.len() != 5 && parts.len() != 8 {
         return Err(bad());
     }
-    let mut h = [0u8; 5];
+    let mut h = [0u8; 8];
     for (i, p) in parts.iter().enumerate() {
         h[i] = p.parse().map_err(|_| bad())?;
         if h[i] > 30 {
@@ -225,7 +227,7 @@ pub fn view_json(g: &Game, seat: u8) -> String {
         .collect();
     let mine = seat != NOBODY && (seat as usize) < g.players;
     let (hand, rates) = if mine {
-        (list(g.hands[seat as usize]), list((0..5).map(|r| g.rate(seat, r))))
+        (list(g.hands[seat as usize][..5].iter()), list((0..5).map(|r| g.rate(seat, r))))
     } else {
         ("null".into(), "null".into())
     };
@@ -374,15 +376,15 @@ mod tests {
         assert!(seen.len() >= 10, "most kinds of move came up ({})", seen.len());
         for a in [
             Action::Play(Project::MarketDay), Action::Play(Project::RoadCrew), Action::Take(4), Action::Steal(2), Action::Discard(0),
-            Action::Offer { give: [2, 0, 0, 0, 1], get: [0, 0, 0, 1, 0], to: 6, open: false },
-            Action::Offer { give: [1, 0, 0, 0, 0], get: [0, 0, 0, 0, 2], to: 14, open: true },
-            Action::Counter { seat: 2, give: [1, 0, 1, 0, 0], get: [0, 0, 0, 1, 0] }, Action::Accept(3),
+            Action::Offer { give: [2, 0, 0, 0, 1, 0, 0, 0], get: [0, 0, 0, 1, 0, 0, 0, 0], to: 6, open: false },
+            Action::Offer { give: [1, 0, 0, 0, 0, 0, 0, 0], get: [0, 0, 0, 0, 2, 0, 0, 0], to: 14, open: true },
+            Action::Counter { seat: 2, give: [1, 0, 1, 0, 0, 0, 0, 0], get: [0, 0, 0, 1, 0, 0, 0, 0] }, Action::Accept(3),
             Action::Answer(2, true), Action::Answer(1, false), Action::Deal(3), Action::Withdraw,
         ] {
             assert_eq!(parse_action(&action_text(a)), Ok(a));
         }
-        assert_eq!(action_text(Action::Offer { give: [2, 0, 0, 0, 1], get: [0, 0, 0, 1, 0], to: 6, open: false }), "offer 2,0,0,0,1 0,0,0,1,0 6");
-        assert_eq!(action_text(Action::Offer { give: [2, 0, 0, 0, 1], get: [0, 0, 0, 1, 0], to: 6, open: true }), "offer 2,0,0,0,1 0,0,0,1,0 6 open");
+        assert_eq!(action_text(Action::Offer { give: [2, 0, 0, 0, 1, 0, 0, 0], get: [0, 0, 0, 1, 0, 0, 0, 0], to: 6, open: false }), "offer 2,0,0,0,1 0,0,0,1,0 6");
+        assert_eq!(action_text(Action::Offer { give: [2, 0, 0, 0, 1, 0, 0, 0], get: [0, 0, 0, 1, 0, 0, 0, 0], to: 6, open: true }), "offer 2,0,0,0,1 0,0,0,1,0 6 open");
     }
 
     #[test]
@@ -401,8 +403,8 @@ mod tests {
         let s = Settings::default();
         let island = generate(&s, "view").unwrap();
         let mut g = Game::new(&island, &s, 3, 1);
-        g.hands[0] = [1, 2, 3, 4, 5];
-        g.hands[1] = [9, 0, 0, 0, 0];
+        g.hands[0] = [1, 2, 3, 4, 5, 0, 0, 0];
+        g.hands[1] = [9, 0, 0, 0, 0, 0, 0, 0];
         let v0 = view_json(&g, 0);
         assert!(v0.contains("\"you\":0,\"hand\":[1,2,3,4,5]"));
         assert!(!v0.contains("[9,0,0,0,0]"), "not player 2's hand");
@@ -420,7 +422,7 @@ mod tests {
         let mut g = Game::new(&island, &s, 2, 1);
         g.turn = 1;
         g.phase = Phase::Main;
-        g.hands[0] = PROJECT_COST;
+        g.hands[0] = cards_of(PROJECT_COST);
         let top = *g.deck.last().unwrap() as usize;
         g.apply(Action::Buy(0)).unwrap();
         let mut want = [0u8; 5];
@@ -472,7 +474,7 @@ mod groundwork_tests {
         // A 7 with a big hand: seat 2 decides what to lose
         g.turn = 1;
         g.phase = Phase::PreRoll;
-        g.hands[2] = [9, 0, 0, 0, 0];
+        g.hands[2] = [9, 0, 0, 0, 0, 0, 0, 0];
         g.rolled(7);
         let v = view_json(&g, 2);
         assert!(v.contains("\"phase\":\"discard\"") && v.contains("\"deciding\":{\"seat\":2,\"decision\":\"discard\"}"));

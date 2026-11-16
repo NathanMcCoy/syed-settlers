@@ -85,7 +85,7 @@ impl Game {
         let hand = &self.hands[d.seat as usize];
         match d.decision {
             Decision::Discard { .. } => {
-                for r in 0..5 {
+                for r in 0..CARD_KINDS {
                     if hand[r] > 0 {
                         out.push(Action::Discard(r as u8));
                     }
@@ -104,7 +104,7 @@ impl Game {
                 for o in 0..self.players {
                     let ok = if to == NOBODY { o != me && self.public_renown(o) < mine } else { o == to as usize };
                     if ok {
-                        for r in 0..5 {
+                        for r in 0..CARD_KINDS {
                             if hand[r] > 0 {
                                 out.push(Action::Gift(o as u8, r as u8));
                             }

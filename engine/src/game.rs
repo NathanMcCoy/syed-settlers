@@ -36,8 +36,12 @@ pub use tokens::{TOKEN_COUNT, TOKENS, Token};
 pub const MAX_PLAYERS: usize = 6;
 pub const NOBODY: u8 = u8::MAX;
 
-// Resources, in this order everywhere: Timber, Stone, Grain, Copper, Fish
+// Resources, in this order everywhere: Timber, Stone, Grain, Copper, Fish. A cost is a Hand.
 pub type Hand = [u8; 5];
+// A player's cards: the 5 resources, then the city expansion's 3 commodities (Paper, Cloth, Coin;
+// always 0 without it). Trades between players use Cards.
+pub type Cards = [u8; 8];
+pub const CARD_KINDS: usize = 8;
 pub const PATH_COST: Hand = [1, 0, 0, 1, 0];     // Timber + Copper
 pub const HUT_COST: Hand = [1, 0, 1, 1, 1];      // Timber + Grain + Copper + Fish
 pub const LODGE_COST: Hand = [0, 3, 2, 0, 0];    // 3 Stone + 2 Grain
@@ -98,12 +102,12 @@ pub enum Action {
     // deal with one who accepted, or withdraws. Offers aren't in legal() (too many to list): see
     // offer_ok().
     // `open`: the first to accept trades at once, without the offerer choosing
-    Offer { give: Hand, get: Hand, to: u8, open: bool },
+    Offer { give: Cards, get: Cards, to: u8, open: bool },
     Answer(u8, bool), // this seat accepts (true) or declines the offer
     Deal(u8),         // trade with this seat, who accepted
     Withdraw,
     // A seat offered the trade proposes a changed one instead: what the OFFERER would give and get
-    Counter { seat: u8, give: Hand, get: Hand },
+    Counter { seat: u8, give: Cards, get: Cards },
     Accept(u8),       // the offerer takes this seat's counter-offer
 }
 
@@ -223,7 +227,7 @@ pub struct Game {
     pub corner_kind: Vec<u8>,
     pub edge_owner: Vec<u8>,
     pub edge_kind: Vec<u8>,
-    pub hands: [Hand; MAX_PLAYERS],
+    pub hands: [Cards; MAX_PLAYERS],
     pub pieces: [[u8; 4]; MAX_PLAYERS], // Paths, Huts, Lodges, ships still in hand (P_PATH, P_HUT, P_LODGE, P_SHIP)
     pub held: [[u8; 5]; MAX_PLAYERS], // projects held, by Project (Lighthouses count for Renown)
     pub bought: [u8; 5],              // projects the current player bought this turn
@@ -309,33 +313,39 @@ pub struct Game {
 // each seat's answer (0 none yet, 1 accepted, 2 declined)
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Offer {
-    pub give: Hand,
-    pub get: Hand,
+    pub give: Cards,
+    pub get: Cards,
     pub to: u8,
     pub open: bool,
     pub answers: [u8; MAX_PLAYERS],
     // Counter-offers, per seat: what the offerer would give and get instead
-    pub counters: [Option<(Hand, Hand)>; MAX_PLAYERS],
+    pub counters: [Option<(Cards, Cards)>; MAX_PLAYERS],
 }
 pub const ACCEPTED: u8 = 1;
 pub const DECLINED: u8 = 2;
 pub const COUNTERED: u8 = 3;
 
 // Is this a real trade: cards on both sides, no resource on both?
-fn trade_shape_ok(give: &Hand, get: &Hand) -> Result<(), String> {
+fn trade_shape_ok(give: &Cards, get: &Cards) -> Result<(), String> {
     if give.iter().all(|&n| n == 0) || get.iter().all(|&n| n == 0) {
         return Err("an offer needs cards on both sides".into());
     }
-    if (0..5).any(|r| give[r] > 0 && get[r] > 0) {
+    if (0..CARD_KINDS).any(|r| give[r] > 0 && get[r] > 0) {
         return Err("a resource can't be on both sides".into());
     }
     Ok(())
 }
 
-pub fn afford(hand: &Hand, cost: &Hand) -> bool {
+// A cost as cards (no commodities)
+pub fn cards_of(h: Hand) -> Cards {
+    [h[0], h[1], h[2], h[3], h[4], 0, 0, 0]
+}
+
+// (A cost may be a Hand or Cards: only its length is compared)
+pub fn afford(hand: &[u8], cost: &[u8]) -> bool {
     hand.iter().zip(cost).all(|(h, c)| h >= c)
 }
-fn pay(hand: &mut Hand, cost: &Hand) {
+fn pay(hand: &mut [u8], cost: &[u8]) {
     for (h, c) in hand.iter_mut().zip(cost) {
         *h -= c;
     }
@@ -378,7 +388,7 @@ impl Game {
             corner_kind: vec![0; g.corners()],
             edge_owner: vec![NOBODY; g.edges()],
             edge_kind: vec![0; g.edges()],
-            hands: [[0; 5]; MAX_PLAYERS],
+            hands: [[0; 8]; MAX_PLAYERS],
             pieces: [[s.pieces_path, s.pieces_hut, s.pieces_lodge, if s.sea { s.pieces_ship } else { 0 }]; MAX_PLAYERS],
             held: [[0; 5]; MAX_PLAYERS],
             bought: [0; 5],
@@ -785,7 +795,7 @@ impl Game {
     }
 
     // May the current player make this offer now? Why not, if not.
-    pub fn offer_ok(&self, give: &Hand, get: &Hand, to: u8) -> Result<(), String> {
+    pub fn offer_ok(&self, give: &Cards, get: &Cards, to: u8) -> Result<(), String> {
         if self.phase != Phase::Main {
             return Err("offers are made after rolling".into());
         }
@@ -832,7 +842,7 @@ impl Game {
     }
 
     // May `seat` send this counter-offer (what the offerer would give and get) now? Why not, if not.
-    pub fn counter_ok(&self, seat: u8, give: &Hand, get: &Hand) -> Result<(), String> {
+    pub fn counter_ok(&self, seat: u8, give: &Cards, get: &Cards) -> Result<(), String> {
         let Some(o) = &self.offer else { return Err("there's no offer to answer".into()) };
         let s = seat as usize;
         if seat == self.current || s >= self.players || o.to & (1 << s) == 0 {
@@ -856,11 +866,11 @@ impl Game {
     }
 
     // The offerer gives `give` to seat s and gets `get` from them; the offer ends
-    fn swap(&mut self, s: usize, give: Hand, get: Hand) {
+    fn swap(&mut self, s: usize, give: Cards, get: Cards) {
         let me = self.current as usize;
         pay(&mut self.hands[me], &give);
         pay(&mut self.hands[s], &get);
-        for r in 0..5 {
+        for r in 0..CARD_KINDS {
             self.hands[me][r] += get[r];
             self.hands[s][r] += give[r];
         }
@@ -1368,7 +1378,7 @@ impl Game {
         let n = self.cards(v as usize);
         if n > 0 {
             let mut pick = self.rng.below(n as usize) as u32;
-            for r in 0..5 {
+            for r in 0..CARD_KINDS {
                 let have = self.hands[v as usize][r] as u32;
                 if pick < have {
                     self.hands[v as usize][r] -= 1;

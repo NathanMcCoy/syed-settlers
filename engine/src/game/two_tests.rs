@@ -35,7 +35,7 @@ fn building_a_path_or_a_hut_owes_a_neutral_one() {
     let c = (0..g.corner_owner.len()).find(|&c| g.spaced(c) && g.board.corner_region[c] == 0).unwrap();
     g.corner_owner[c] = 0;
     g.corner_kind[c] = HUT;
-    g.hands[0] = PATH_COST;
+    g.hands[0] = cards_of(PATH_COST);
     let e = legal(&g).iter().find_map(|a| if let Action::Path(e) = a { Some(*e) } else { None }).unwrap();
     g.apply(Action::Path(e)).unwrap();
     assert_eq!(g.deciding().unwrap(), Pending { seat: 0, decision: Decision::Neutral { hut: false } });
@@ -45,7 +45,7 @@ fn building_a_path_or_a_hut_owes_a_neutral_one() {
     g.apply(list[0]).unwrap();
     assert_eq!((g.edge_owner[ne as usize], g.phase), (n, Phase::Main));
     // Neutral Huts get no resources
-    g.hands = [[0; 5]; MAX_PLAYERS];
+    g.hands = [[0; 8]; MAX_PLAYERS];
     for total in 2..=12 {
         if total != 7 {
             g.produce(total);
@@ -59,7 +59,7 @@ fn two_production_rolls_the_second_a_different_number() {
     let mut g = two_game();
     g.turn = 1;
     g.phase = Phase::PreRoll;
-    g.hands = [[0; 5]; MAX_PLAYERS];
+    g.hands = [[0; 8]; MAX_PLAYERS];
     for _ in 0..20 {
         g.phase = Phase::PreRoll;
         g.rolled_once = false;
@@ -86,8 +86,8 @@ fn trade_tokens_buy_a_forced_trade_or_send_the_squall_home() {
     let mut g = two_game();
     g.turn = 1;
     g.phase = Phase::Main;
-    g.hands[0] = [2, 0, 0, 0, 0];
-    g.hands[1] = [0, 3, 0, 0, 0];
+    g.hands[0] = [2, 0, 0, 0, 0, 0, 0, 0];
+    g.hands[1] = [0, 3, 0, 0, 0, 0, 0, 0];
     assert!(!legal(&g).contains(&Action::ForceTrade), "no tokens yet");
     g.pilots[0] = 1;
     g.apply(Action::CashPilot).unwrap();

@@ -136,8 +136,8 @@ fn random_play_never_breaks_a_rule() {
             // Now and then an offer to other players, and random answers from them
             if g.phase == Phase::Main && rng.below(6) == 0 {
                 let me = g.current as usize;
-                let mut give = [0u8; 5];
-                let mut get = [0u8; 5];
+                let mut give = [0u8; 8];
+                let mut get = [0u8; 8];
                 if let Some(r) = (0..5).find(|&r| g.hands[me][r] > 0) {
                     give[r] = 1 + rng.below(g.hands[me][r] as usize) as u8;
                     get[(r + 1 + rng.below(4)) % 5] = 1 + rng.below(2) as u8;
@@ -159,7 +159,7 @@ fn random_play_never_breaks_a_rule() {
                         let (me, them) = (g.current as usize, s as usize);
                         if let (Some(a), Some(b)) = ((0..5).find(|&r| g.hands[me][r] > 0), (0..5).find(|&r| g.hands[them][r] > 0)) {
                             if a != b {
-                                let (mut give, mut get) = ([0u8; 5], [0u8; 5]);
+                                let (mut give, mut get) = ([0u8; 8], [0u8; 8]);
                                 give[a] = 1;
                                 get[b] = 1;
                                 let ok = g.counter_ok(s, &give, &get).is_ok();
@@ -296,7 +296,7 @@ fn rolling_pays_huts_one_and_lodges_two_except_under_the_squall() {
 #[test]
 fn a_seven_halves_big_hands_then_moves_the_squall_then_steals() {
     let mut g = after_setup(3);
-    g.hands = [[3, 3, 3, 0, 0], [2, 2, 2, 1, 0], [5, 0, 0, 0, 3], [0; 5], [0; 5], [0; 5]];
+    g.hands = [[3, 3, 3, 0, 0, 0, 0, 0], [2, 2, 2, 1, 0, 0, 0, 0], [5, 0, 0, 0, 3, 0, 0, 0], [0; 8], [0; 8], [0; 8]];
     g.phase = Phase::PreRoll;
     g.rolled(7);
     assert_eq!(g.phase, Phase::Decide);
@@ -343,7 +343,7 @@ fn a_seven_halves_big_hands_then_moves_the_squall_then_steals() {
 #[test]
 fn a_squall_range_limits_its_steps_after_a_seven_but_not_for_a_pilot() {
     let mut g = after_setup_with(2, "squall.range=1");
-    g.hands = [[0; 5]; MAX_PLAYERS];
+    g.hands = [[0; 8]; MAX_PLAYERS];
     g.phase = Phase::PreRoll;
     g.rolled(7);
     let moves = |g: &Game| -> Vec<u16> { legal(g).iter().filter_map(|a| match a { Action::Squall(h) => Some(*h), _ => None }).collect() };
@@ -357,7 +357,7 @@ fn a_squall_range_limits_its_steps_after_a_seven_but_not_for_a_pilot() {
 #[test]
 fn small_hands_keep_everything_on_a_seven() {
     let mut g = after_setup(2);
-    g.hands = [[1, 1, 1, 1, 1], [7, 0, 0, 0, 0], [0; 5], [0; 5], [0; 5], [0; 5]];
+    g.hands = [[1, 1, 1, 1, 1, 0, 0, 0], [7, 0, 0, 0, 0, 0, 0, 0], [0; 8], [0; 8], [0; 8], [0; 8]];
     g.phase = Phase::PreRoll;
     g.rolled(7);
     assert_eq!(g.phase, Phase::MoveSquall { anywhere: false });
@@ -366,14 +366,14 @@ fn small_hands_keep_everything_on_a_seven() {
 #[test]
 fn nobody_to_steal_from_returns_to_the_turn() {
     let mut g = after_setup(2);
-    g.hands = [[0; 5]; MAX_PLAYERS];
-    g.hands[0] = [1, 0, 0, 0, 0];
+    g.hands = [[0; 8]; MAX_PLAYERS];
+    g.hands[0] = [1, 0, 0, 0, 0, 0, 0, 0];
     g.phase = Phase::MoveSquall { anywhere: true };
     g.back = Phase::Main;
     let h = legal(&g).iter().find_map(|a| match a { Action::Squall(h) => Some(*h), _ => None }).unwrap();
     g.apply(Action::Squall(h)).unwrap();
     assert_eq!(g.phase, Phase::Main, "others have no cards, so nothing to steal");
-    assert_eq!(g.hands[0], [1, 0, 0, 0, 0]);
+    assert_eq!(g.hands[0], [1, 0, 0, 0, 0, 0, 0, 0]);
 }
 
 #[test]
@@ -400,9 +400,9 @@ fn trading_rates_bank_and_markets() {
     g.current = 0;
 
     g.phase = Phase::Main;
-    g.hands[0] = [0, 2, 0, 0, 0];
+    g.hands[0] = [0, 2, 0, 0, 0, 0, 0, 0];
     g.apply(Action::Trade(1, 3)).unwrap();
-    assert_eq!(g.hands[0], [0, 0, 0, 1, 0]);
+    assert_eq!(g.hands[0], [0, 0, 0, 1, 0, 0, 0, 0]);
     assert!(g.apply(Action::Trade(1, 3)).is_err());
 }
 
@@ -411,7 +411,7 @@ fn paths_join_your_network_but_not_through_another_players_building() {
     let mut g = after_setup(2);
     g.phase = Phase::Main;
     g.current = 0;
-    g.hands[0] = [5, 0, 0, 5, 5];
+    g.hands[0] = [5, 0, 0, 5, 5, 0, 0, 0];
     let board = g.board.clone();
     let gr = &board.graph;
     let edges = |g: &Game| -> Vec<usize> {
@@ -553,14 +553,14 @@ fn a_lodge_replaces_a_hut_and_returns_it() {
     let mut g = after_setup(2);
     g.phase = Phase::Main;
     g.current = 0;
-    g.hands[0] = LODGE_COST;
+    g.hands[0] = cards_of(LODGE_COST);
     let c = (0..g.corner_owner.len()).find(|&c| g.corner_owner[c] == 0).unwrap();
     let (huts, renown) = (g.pieces[0][P_HUT], g.renown(0));
     g.apply(Action::Lodge(c as u16)).unwrap();
     assert_eq!(g.corner_kind[c], LODGE);
     assert_eq!(g.pieces[0][P_HUT], huts + 1);
     assert_eq!(g.renown(0), renown + 1);
-    assert_eq!(g.hands[0], [0; 5]);
+    assert_eq!(g.hands[0], [0; 8]);
 }
 
 #[test]
@@ -572,7 +572,7 @@ fn face_up_projects_refill_and_cant_be_played_the_turn_theyre_bought() {
     g.row = vec![Project::Pilot as u8, Project::Harvest as u8, Project::Lighthouse as u8];
     let deck = g.deck.len();
     let next = *g.deck.last().unwrap();
-    g.hands[0] = [0, 3, 3, 0, 3];
+    g.hands[0] = [0, 3, 3, 0, 3, 0, 0, 0];
     let renown = g.renown(0);
     g.apply(Action::Buy(2)).unwrap();
     assert_eq!(g.renown(0), renown + 1, "a Lighthouse counts at once");
@@ -604,7 +604,7 @@ fn hidden_projects_are_drawn_unseen() {
     assert_eq!(g.deck.len(), total as usize);
     g.turn = 1;
     g.phase = Phase::Main;
-    g.hands[0] = PROJECT_COST;
+    g.hands[0] = cards_of(PROJECT_COST);
     let top = *g.deck.last().unwrap();
     assert!(legal(&g).contains(&Action::Buy(0)));
     g.apply(Action::Buy(0)).unwrap();
@@ -617,7 +617,7 @@ fn road_crew_places_two_free_paths() {
     g.phase = Phase::Main;
     g.current = 0;
     g.held[0][Project::RoadCrew as usize] = 1;
-    g.hands[0] = [0; 5];
+    g.hands[0] = [0; 8];
     let paths = g.pieces[0][P_PATH];
     g.apply(Action::Play(Project::RoadCrew)).unwrap();
     for _ in 0..2 {
@@ -628,7 +628,7 @@ fn road_crew_places_two_free_paths() {
     }
     assert_eq!(g.phase, Phase::Main);
     assert_eq!(paths - g.pieces[0][P_PATH], 2);
-    assert_eq!(g.hands[0], [0; 5], "free");
+    assert_eq!(g.hands[0], [0; 8], "free");
 }
 
 #[test]
@@ -636,14 +636,14 @@ fn market_day_takes_every_card_of_one_resource_from_everyone_else() {
     let mut g = after_setup(3);
     g.phase = Phase::Main;
     g.current = 1;
-    g.hands = [[1, 0, 3, 0, 0], [0, 0, 1, 2, 0], [2, 1, 4, 0, 0], [0; 5], [0; 5], [0; 5]];
+    g.hands = [[1, 0, 3, 0, 0, 0, 0, 0], [0, 0, 1, 2, 0, 0, 0, 0], [2, 1, 4, 0, 0, 0, 0, 0], [0; 8], [0; 8], [0; 8]];
     g.held[1][Project::MarketDay as usize] = 1;
     g.apply(Action::Play(Project::MarketDay)).unwrap();
     assert_eq!(g.phase, Phase::MarketDay);
     assert_eq!(legal(&g), (0..5).map(Action::Take).collect::<Vec<_>>(), "any of the 5, even one nobody has");
     g.apply(Action::Take(2)).unwrap();
-    assert_eq!(g.hands[1], [0, 0, 8, 2, 0], "1 + 3 + 4 Grain");
-    assert_eq!((g.hands[0], g.hands[2]), ([1, 0, 0, 0, 0], [2, 1, 0, 0, 0]));
+    assert_eq!(g.hands[1], [0, 0, 8, 2, 0, 0, 0, 0], "1 + 3 + 4 Grain");
+    assert_eq!((g.hands[0], g.hands[2]), ([1, 0, 0, 0, 0, 0, 0, 0], [2, 1, 0, 0, 0, 0, 0, 0]));
     assert_eq!(&g.last_take[..3], &[3, 0, 4]);
     assert_eq!(g.phase, Phase::Main);
     assert!(!legal(&g).iter().any(|a| matches!(a, Action::Play(_))), "one project a turn");
@@ -655,7 +655,7 @@ fn you_only_win_on_your_own_turn() {
     g.phase = Phase::Main;
     g.current = 0;
     g.held[1][Project::Lighthouse as usize] = 10;
-    g.hands[0] = [4, 0, 0, 0, 0];
+    g.hands[0] = [4, 0, 0, 0, 0, 0, 0, 0];
     g.apply(Action::Trade(0, 1)).unwrap();
     assert!(!g.over(), "player 2 has 10+ Renown, but it's player 1's turn");
     g.apply(Action::EndTurn).unwrap();
@@ -667,19 +667,19 @@ fn trading_game() -> Game {
     let mut g = after_setup(3);
     g.phase = Phase::Main;
     g.current = 0;
-    g.hands = [[2, 0, 0, 0, 1], [0, 0, 0, 2, 0], [0, 0, 1, 0, 0], [0; 5], [0; 5], [0; 5]];
+    g.hands = [[2, 0, 0, 0, 1, 0, 0, 0], [0, 0, 0, 2, 0, 0, 0, 0], [0, 0, 1, 0, 0, 0, 0, 0], [0; 8], [0; 8], [0; 8]];
     g
 }
 
 #[test]
 fn offers_must_be_real_trades_the_player_can_pay() {
     let g = trading_game();
-    let one = |r: usize| { let mut h = [0u8; 5]; h[r] = 1; h };
+    let one = |r: usize| { let mut h = [0u8; 8]; h[r] = 1; h };
     for (give, get, to, why) in [
-        ([0; 5], one(3), 0b110, "both sides"),
-        (one(0), [0; 5], 0b110, "both sides"),
+        ([0; 8], one(3), 0b110, "both sides"),
+        (one(0), [0; 8], 0b110, "both sides"),
         (one(0), one(0), 0b110, "both sides"),
-        ([3, 0, 0, 0, 0], one(3), 0b110, "don't have"),
+        ([3, 0, 0, 0, 0, 0, 0, 0], one(3), 0b110, "don't have"),
         (one(0), one(3), 0b001, "other players"),
         (one(0), one(3), 0, "other players"),
         (one(0), one(3), 0b1000, "other players"),
@@ -695,14 +695,14 @@ fn offers_must_be_real_trades_the_player_can_pay() {
     let mut off = Game::new(&generate(&s, "rules").unwrap(), &s, 3, 7);
     off.phase = Phase::Main;
     off.turn = 1;
-    off.hands[0] = [1, 0, 0, 0, 0];
+    off.hands[0] = [1, 0, 0, 0, 0, 0, 0, 0];
     assert!(off.offer_ok(&one(0), &one(3), 0b110).unwrap_err().contains("off"), "trade.players=false turns it off");
     // A limit, when set: trade.offers=2 allows 2 a turn
     let s = Settings::parse("trade.offers=2").unwrap();
     let mut two = Game::new(&generate(&s, "rules").unwrap(), &s, 3, 7);
     two.phase = Phase::Main;
     two.turn = 1;
-    two.hands[0] = [1, 0, 0, 0, 0];
+    two.hands[0] = [1, 0, 0, 0, 0, 0, 0, 0];
     for _ in 0..2 {
         two.apply(Action::Offer { give: one(0), get: one(3), to: 0b110, open: false }).unwrap();
         two.apply(Action::Withdraw).unwrap();
@@ -720,7 +720,7 @@ fn offers_must_be_real_trades_the_player_can_pay() {
 #[test]
 fn an_offer_is_answered_by_others_and_dealt_with_one_who_accepted() {
     let mut g = trading_game();
-    let offer = Action::Offer { give: [1, 0, 0, 0, 0], get: [0, 0, 0, 1, 0], to: 0b110, open: false };
+    let offer = Action::Offer { give: [1, 0, 0, 0, 0, 0, 0, 0], get: [0, 0, 0, 1, 0, 0, 0, 0], to: 0b110, open: false };
     assert!(g.apply_as(1, offer).is_err(), "only the player whose turn it is offers");
     g.apply_as(0, offer).unwrap();
     assert_eq!(g.offers_made, 1);
@@ -734,15 +734,15 @@ fn an_offer_is_answered_by_others_and_dealt_with_one_who_accepted() {
     g.apply_as(2, Action::Answer(2, false)).unwrap();
     assert!(legal(&g).contains(&Action::Deal(1)) && !legal(&g).contains(&Action::Deal(2)));
     g.apply(Action::Deal(1)).unwrap();
-    assert_eq!(g.hands[0], [1, 0, 0, 1, 1]);
-    assert_eq!(g.hands[1], [1, 0, 0, 1, 0]);
+    assert_eq!(g.hands[0], [1, 0, 0, 1, 1, 0, 0, 0]);
+    assert_eq!(g.hands[1], [1, 0, 0, 1, 0, 0, 0, 0]);
     assert!(g.offer.is_none());
 }
 
 #[test]
 fn offers_are_limited_withdrawn_and_end_with_the_turn() {
     let mut g = trading_game();
-    let offer = Action::Offer { give: [1, 0, 0, 0, 0], get: [0, 0, 1, 0, 0], to: 0b100, open: false };
+    let offer = Action::Offer { give: [1, 0, 0, 0, 0, 0, 0, 0], get: [0, 0, 1, 0, 0, 0, 0, 0], to: 0b100, open: false };
     for _ in 0..3 {
         g.apply(offer).unwrap();
         g.apply(Action::Withdraw).unwrap();
@@ -754,8 +754,8 @@ fn offers_are_limited_withdrawn_and_end_with_the_turn() {
 
     // An accepted offer can't be dealt once the offerer has spent the cards
     let mut g = trading_game();
-    g.hands[0] = [4, 0, 0, 0, 0];
-    g.apply(Action::Offer { give: [1, 0, 0, 0, 0], get: [0, 0, 0, 1, 0], to: 0b010, open: false }).unwrap();
+    g.hands[0] = [4, 0, 0, 0, 0, 0, 0, 0];
+    g.apply(Action::Offer { give: [1, 0, 0, 0, 0, 0, 0, 0], get: [0, 0, 0, 1, 0, 0, 0, 0], to: 0b010, open: false }).unwrap();
     g.apply_as(1, Action::Answer(1, true)).unwrap();
     assert!(legal(&g).contains(&Action::Deal(1)));
     g.apply(Action::Trade(0, 2)).unwrap();
@@ -767,18 +767,18 @@ fn offers_are_limited_withdrawn_and_end_with_the_turn() {
 #[test]
 fn an_open_offer_goes_to_the_first_who_accepts_at_once() {
     let mut g = trading_game();
-    g.hands[2] = [0, 0, 0, 1, 0];
-    g.apply(Action::Offer { give: [1, 0, 0, 0, 0], get: [0, 0, 0, 1, 0], to: 0b110, open: true }).unwrap();
+    g.hands[2] = [0, 0, 0, 1, 0, 0, 0, 0];
+    g.apply(Action::Offer { give: [1, 0, 0, 0, 0, 0, 0, 0], get: [0, 0, 0, 1, 0, 0, 0, 0], to: 0b110, open: true }).unwrap();
     g.apply_as(2, Action::Answer(2, true)).unwrap();
     assert!(g.offer.is_none(), "taken at once");
-    assert_eq!(g.hands[0], [1, 0, 0, 1, 1]);
-    assert_eq!(g.hands[2], [1, 0, 0, 0, 0]);
+    assert_eq!(g.hands[0], [1, 0, 0, 1, 1, 0, 0, 0]);
+    assert_eq!(g.hands[2], [1, 0, 0, 0, 0, 0, 0, 0]);
     assert!(!{ let mut v = Vec::new(); g.legal_for(1, &mut v); v }.iter().any(|a| matches!(a, Action::Answer(..))), "too late for player 2");
 
     // Accepting an open offer needs the offerer to still hold the cards
     let mut g = trading_game();
-    g.hands[0] = [4, 0, 0, 0, 0];
-    g.apply(Action::Offer { give: [1, 0, 0, 0, 0], get: [0, 0, 0, 1, 0], to: 0b010, open: true }).unwrap();
+    g.hands[0] = [4, 0, 0, 0, 0, 0, 0, 0];
+    g.apply(Action::Offer { give: [1, 0, 0, 0, 0, 0, 0, 0], get: [0, 0, 0, 1, 0, 0, 0, 0], to: 0b010, open: true }).unwrap();
     g.apply(Action::Trade(0, 2)).unwrap();   // the Timber goes to the bank
     let mut v = Vec::new();
     g.legal_for(1, &mut v);
@@ -788,30 +788,30 @@ fn an_open_offer_goes_to_the_first_who_accepts_at_once() {
 #[test]
 fn a_counter_offer_can_be_taken_by_the_offerer() {
     let mut g = trading_game();   // player 1 [2,0,0,0,1], player 2 [0,0,0,2,0]
-    g.apply(Action::Offer { give: [2, 0, 0, 0, 0], get: [0, 0, 0, 2, 0], to: 0b010, open: false }).unwrap();
+    g.apply(Action::Offer { give: [2, 0, 0, 0, 0, 0, 0, 0], get: [0, 0, 0, 2, 0, 0, 0, 0], to: 0b010, open: false }).unwrap();
     // Player 2 wants Fish too, and gives only 1 Copper
-    let counter = Action::Counter { seat: 1, give: [1, 0, 0, 0, 1], get: [0, 0, 0, 1, 0] };
+    let counter = Action::Counter { seat: 1, give: [1, 0, 0, 0, 1, 0, 0, 0], get: [0, 0, 0, 1, 0, 0, 0, 0] };
     assert!(g.apply_as(2, counter).is_err(), "only the countering seat sends it");
-    assert!(g.counter_ok(1, &[1, 0, 0, 0, 1], &[0, 0, 0, 3, 0]).unwrap_err().contains("don't have"));
-    assert!(g.counter_ok(1, &[0, 0, 0, 0, 0], &[0, 0, 0, 1, 0]).unwrap_err().contains("both sides"));
+    assert!(g.counter_ok(1, &[1, 0, 0, 0, 1, 0, 0, 0], &[0, 0, 0, 3, 0, 0, 0, 0]).unwrap_err().contains("don't have"));
+    assert!(g.counter_ok(1, &[0, 0, 0, 0, 0, 0, 0, 0], &[0, 0, 0, 1, 0, 0, 0, 0]).unwrap_err().contains("both sides"));
     g.apply_as(1, counter).unwrap();
     let o = g.offer.unwrap();
-    assert_eq!((o.answers[1], o.counters[1]), (COUNTERED, Some(([1, 0, 0, 0, 1], [0, 0, 0, 1, 0]))));
+    assert_eq!((o.answers[1], o.counters[1]), (COUNTERED, Some(([1, 0, 0, 0, 1, 0, 0, 0], [0, 0, 0, 1, 0, 0, 0, 0]))));
     assert!(legal(&g).contains(&Action::Accept(1)));
     assert!(!legal(&g).contains(&Action::Deal(1)), "a counter isn't an acceptance");
     let before: u32 = (0..3).map(|p| g.cards(p)).sum();
     g.apply(Action::Accept(1)).unwrap();
-    assert_eq!(g.hands[0], [1, 0, 0, 1, 0]);
-    assert_eq!(g.hands[1], [1, 0, 0, 1, 1]);
+    assert_eq!(g.hands[0], [1, 0, 0, 1, 0, 0, 0, 0]);
+    assert_eq!(g.hands[1], [1, 0, 0, 1, 1, 0, 0, 0]);
     assert_eq!((0..3).map(|p| g.cards(p)).sum::<u32>(), before);
     assert!(g.offer.is_none());
 
     // Someone not offered the trade can't counter it; nor after accepting
     let mut g = trading_game();
-    g.apply(Action::Offer { give: [1, 0, 0, 0, 0], get: [0, 0, 0, 1, 0], to: 0b010, open: false }).unwrap();
-    assert!(g.counter_ok(2, &[1, 0, 0, 0, 0], &[0, 0, 1, 0, 0]).unwrap_err().contains("only a player offered"));
+    g.apply(Action::Offer { give: [1, 0, 0, 0, 0, 0, 0, 0], get: [0, 0, 0, 1, 0, 0, 0, 0], to: 0b010, open: false }).unwrap();
+    assert!(g.counter_ok(2, &[1, 0, 0, 0, 0, 0, 0, 0], &[0, 0, 1, 0, 0, 0, 0, 0]).unwrap_err().contains("only a player offered"));
     g.apply_as(1, Action::Answer(1, true)).unwrap();
-    assert!(g.counter_ok(1, &[1, 0, 0, 0, 0], &[0, 0, 0, 1, 0]).unwrap_err().contains("already accepted"));
+    assert!(g.counter_ok(1, &[1, 0, 0, 0, 0, 0, 0, 0], &[0, 0, 0, 1, 0, 0, 0, 0]).unwrap_err().contains("already accepted"));
 }
 
 #[test]
@@ -820,16 +820,16 @@ fn bots_accept_trades_that_help_them_and_refuse_ones_that_dont() {
     let bot = Greedy::new(9);
     // Player 2 has 2 Timber, 2 Copper and no Grain: Grain (which both a Hut and a Lodge need) for one
     // of the Timber helps whatever its goal is
-    g.hands[0] = [0, 0, 1, 0, 0];
-    g.hands[1] = [2, 0, 0, 2, 0];
-    g.offer = Some(Offer { give: [0, 0, 1, 0, 0], get: [1, 0, 0, 0, 0], to: 0b010, open: false, answers: [0; MAX_PLAYERS], counters: [None; MAX_PLAYERS] });
+    g.hands[0] = [0, 0, 1, 0, 0, 0, 0, 0];
+    g.hands[1] = [2, 0, 0, 2, 0, 0, 0, 0];
+    g.offer = Some(Offer { give: [0, 0, 1, 0, 0, 0, 0, 0], get: [1, 0, 0, 0, 0, 0, 0, 0], to: 0b010, open: false, answers: [0; MAX_PLAYERS], counters: [None; MAX_PLAYERS] });
     assert!(bot.answer(&g, 1), "Grain it needs for a spare Timber");
     // Taking both Copper for nothing they need
-    g.offer = Some(Offer { give: [0, 0, 0, 0, 0], get: [0, 0, 0, 2, 0], to: 0b010, open: false, answers: [0; MAX_PLAYERS], counters: [None; MAX_PLAYERS] });
+    g.offer = Some(Offer { give: [0, 0, 0, 0, 0, 0, 0, 0], get: [0, 0, 0, 2, 0, 0, 0, 0], to: 0b010, open: false, answers: [0; MAX_PLAYERS], counters: [None; MAX_PLAYERS] });
     assert!(!bot.answer(&g, 1), "giving cards away for nothing");
     // Never when the offerer is about to win
     g.held[0][Project::Lighthouse as usize] = 10;
-    g.offer = Some(Offer { give: [0, 0, 1, 0, 0], get: [1, 0, 0, 0, 0], to: 0b010, open: false, answers: [0; MAX_PLAYERS], counters: [None; MAX_PLAYERS] });
+    g.offer = Some(Offer { give: [0, 0, 1, 0, 0, 0, 0, 0], get: [1, 0, 0, 0, 0, 0, 0, 0], to: 0b010, open: false, answers: [0; MAX_PLAYERS], counters: [None; MAX_PLAYERS] });
     assert!(!bot.answer(&g, 1), "the same trade, but the offerer is near winning");
 }
 
@@ -838,7 +838,7 @@ fn the_bank_holds_what_players_dont_and_pays_a_roll_in_full_or_not_at_all() {
     let mut g = after_setup(3);
     let cap = g.settings().bank_cards as u32;
     assert_eq!(cap, 19);
-    g.hands = [[0; 5]; MAX_PLAYERS];
+    g.hands = [[0; 8]; MAX_PLAYERS];
     assert!((0..5).all(|r| g.bank(r) == 19));
     g.hands[0][2] = 10;
     g.hands[1][2] = 8;
@@ -878,7 +878,7 @@ fn the_bank_holds_what_players_dont_and_pays_a_roll_in_full_or_not_at_all() {
     let mut g = after_setup(3);
     g.phase = Phase::Main;
     g.current = 0;
-    g.hands = [[4, 0, 0, 0, 0], [0, 0, 0, 0, 10], [0, 0, 0, 0, 10], [0; 5], [0; 5], [0; 5]];
+    g.hands = [[4, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 10, 0, 0, 0], [0, 0, 0, 0, 10, 0, 0, 0], [0; 8], [0; 8], [0; 8]];
     assert!(!legal(&g).contains(&Action::Trade(0, 4)), "no Fish left in the bank");
     assert!(legal(&g).contains(&Action::Trade(0, 1)));
     g.held[0][Project::Harvest as usize] = 1;
@@ -954,9 +954,9 @@ fn with_five_or_six_the_player_three_seats_on_takes_an_extra_build_phase() {
         let list = legal(&g);
         assert!(!list.contains(&Action::Roll) && list.contains(&Action::EndTurn));
         // Bank trades yes, offers to players no
-        g.hands[3] = [4, 0, 0, 0, 0];
+        g.hands[3] = [4, 0, 0, 0, 0, 0, 0, 0];
         assert!(legal(&g).contains(&Action::Trade(0, 1)));
-        let offer = Action::Offer { give: [1, 0, 0, 0, 0], get: [0, 1, 0, 0, 0], to: 1, open: false };
+        let offer = Action::Offer { give: [1, 0, 0, 0, 0, 0, 0, 0], get: [0, 1, 0, 0, 0, 0, 0, 0], to: 1, open: false };
         assert!(g.apply(offer).unwrap_err().contains("extra build phase"));
         assert!(!g.offers_left());
         // A project may be played (one per phase); a Pilot moves the squall and steals for seat 4
@@ -1005,7 +1005,7 @@ fn the_paired_player_can_win_in_the_extra_build_phase() {
     // Seat 4 holds hidden Lighthouses one short of winning, and builds a Lodge
     let c = (0..g.corner_owner.len()).find(|&c| g.corner_owner[c] == 3).unwrap();
     g.held[3][Project::Lighthouse as usize] = g.settings().win - 1 - g.renown(3) as u8;
-    g.hands[3] = LODGE_COST;
+    g.hands[3] = cards_of(LODGE_COST);
     g.apply(Action::Lodge(c as u16)).unwrap();
     assert_eq!((g.over(), g.winner), (true, 3));
 }
@@ -1057,12 +1057,12 @@ fn building_a_hut_in_the_middle_of_a_line_takes_longest_path_away() {
     g.edge_owner[side] = 1;
     g.edge_kind[side] = PATH;
     g.current = 1;
-    g.hands[1] = HUT_COST;
+    g.hands[1] = cards_of(HUT_COST);
     g.apply(Action::Hut(mid as u16)).unwrap();
     assert_eq!((g.line[0], g.holder(Title::LongestPath)), (3, NOBODY), "split into 2 and 3: under 5, so nobody holds it");
     // Player 1 can't build on past player 2's Hut either
     g.current = 0;
-    g.hands[0] = PATH_COST;
+    g.hands[0] = cards_of(PATH_COST);
     let beyond = listed(&gr.corner_edges[mid]).filter(|&e| e != line[1] && e != line[2] && e != side).collect::<Vec<_>>();
     let mut list = Vec::new();
     g.legal(&mut list);
@@ -1144,7 +1144,7 @@ fn a_replay_rebuilds_the_game_exactly() {
             if g.phase == Phase::Main && g.offer.is_none() && rng.below(5) == 0 {
                 let me = g.current as usize;
                 if let Some(r) = (0..5).find(|&r| g.hands[me][r] > 0) {
-                    let (mut give, mut get) = ([0u8; 5], [0u8; 5]);
+                    let (mut give, mut get) = ([0u8; 8], [0u8; 8]);
                     give[r] = 1;
                     get[(r + 1) % 5] = 1;
                     let to = ((1u16 << players) - 1) as u8 & !(1 << me);

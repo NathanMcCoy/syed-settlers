@@ -108,11 +108,11 @@ fn ships_join_ships_and_buildings_not_paths_and_never_pass_others_or_the_pirate(
     let mut g = sea_game(3, "ships");
     let c = coastal_corner(&g);
     main_phase_with_hut(&mut g, c);
-    g.hands[0] = [5, 0, 0, 0, 5];
+    g.hands[0] = [5, 0, 0, 0, 5, 0, 0, 0];
     let e = open_sea_edge(&g, c);
     assert!(legal(&g).contains(&Action::Ship(e as u16)), "next to the Hut");
     g.apply(Action::Ship(e as u16)).unwrap();
-    assert_eq!(g.hands[0], [4, 0, 0, 0, 4], "Timber + Fish");
+    assert_eq!(g.hands[0], [4, 0, 0, 0, 4, 0, 0, 0], "Timber + Fish");
     // Carrying on from the ship's far end
     let far = other_end(&g, e, c);
     let next = listed(&g.board.graph.corner_edges[far]).find(|&f| f != e && g.board.edge_sea[f] && g.edge_owner[f] == NOBODY && !g.by_pirate(f));
@@ -138,7 +138,7 @@ fn ships_join_ships_and_buildings_not_paths_and_never_pass_others_or_the_pirate(
     g.corner_kind[c] = 0;
     g.edge_owner[path] = 0;
     g.edge_kind[path] = PATH;
-    g.hands[0] = [5, 0, 0, 0, 5];
+    g.hands[0] = [5, 0, 0, 0, 5, 0, 0, 0];
     assert!(!legal(&g).iter().any(|a| matches!(a, Action::Ship(_))), "ships join ships or buildings only");
     // A coastal edge takes a Path or a ship, not both
     assert!(g.board.edge_land[path] && g.board.edge_sea[path] || !g.board.edge_sea[path]);
@@ -150,7 +150,7 @@ fn one_ship_moves_a_turn_from_an_open_end_but_not_a_new_one_or_a_closed_line() {
     let c = coastal_corner(&g);
     main_phase_with_hut(&mut g, c);
     let e = open_sea_edge(&g, c);
-    g.hands[0] = [5, 0, 0, 0, 5];
+    g.hands[0] = [5, 0, 0, 0, 5, 0, 0, 0];
     g.apply(Action::Ship(e as u16)).unwrap();
     assert!(!g.ship_movable(0, e), "not on the turn it was built");
     g.apply(Action::EndTurn).unwrap();
@@ -211,7 +211,7 @@ fn gold_fields_pay_resources_of_the_players_choice() {
     g.turn = 1;
     g.current = 0;
     g.phase = Phase::PreRoll;
-    g.hands = [[0; 5]; MAX_PLAYERS];
+    g.hands = [[0; 8]; MAX_PLAYERS];
     g.rolled(n);
     // Seat 2 (next after the roller) chooses 2, then seat 3... in seat order from the roller: 1 then 2
     assert_eq!(g.phase, Phase::Decide);
@@ -222,12 +222,12 @@ fn gold_fields_pay_resources_of_the_players_choice() {
     g.apply_as(2, Action::Take(0)).unwrap();
     g.apply_as(2, Action::Take(4)).unwrap();
     assert_eq!(g.phase, Phase::Main);
-    assert_eq!((g.hands[1], g.hands[2]), ([0, 0, 0, 1, 0], [1, 0, 0, 0, 1]));
+    assert_eq!((g.hands[1], g.hands[2]), ([0, 0, 0, 1, 0, 0, 0, 0], [1, 0, 0, 0, 1, 0, 0, 0]));
     // With the bank empty, gold pays nothing and play goes on
     let mut g2 = g.clone();
     g2.phase = Phase::PreRoll;
-    g2.hands = [[0; 5]; MAX_PLAYERS];
-    g2.hands[0] = [19, 19, 19, 19, 19]; // the whole bank
+    g2.hands = [[0; 8]; MAX_PLAYERS];
+    g2.hands[0] = [19, 19, 19, 19, 19, 0, 0, 0]; // the whole bank
     g2.rolled(n);
     assert_eq!(g2.phase, Phase::Main, "nothing to take: no decision");
 }
@@ -240,8 +240,8 @@ fn the_pirate_robs_ship_owners_and_the_squall_or_pirate_is_the_rollers_choice() 
     let e = open_sea_edge(&g, c);
     g.edge_owner[e] = 1;
     g.edge_kind[e] = SHIP;
-    g.hands[1] = [0, 0, 2, 0, 0];
-    g.hands[0] = [0; 5];
+    g.hands[1] = [0, 0, 2, 0, 0, 0, 0, 0];
+    g.hands[0] = [0; 8];
     g.phase = Phase::MoveSquall { anywhere: false };
     g.back = Phase::Main;
     let list = legal(&g);
@@ -249,7 +249,7 @@ fn the_pirate_robs_ship_owners_and_the_squall_or_pirate_is_the_rollers_choice() 
     let h = listed(&g.board.graph.edge_hexes[e]).find(|&h| g.board.terrain[h] == Terrain::Sea && h != g.pirate as usize).unwrap();
     g.apply(Action::Pirate(h as u16)).unwrap();
     assert_eq!(g.pirate, h as u16);
-    assert_eq!((g.hands[0], g.hands[1]), ([0, 0, 1, 0, 0], [0, 0, 1, 0, 0]), "one card from the ship's owner");
+    assert_eq!((g.hands[0], g.hands[1]), ([0, 0, 1, 0, 0, 0, 0, 0], [0, 0, 1, 0, 0, 0, 0, 0]), "one card from the ship's owner");
     assert_eq!(g.phase, Phase::Main);
     // A Pilot can send the pirate too
     g.held[0][Project::Pilot as usize] = 1;
@@ -274,7 +274,7 @@ fn the_first_hut_on_each_small_island_earns_the_bonus_once() {
     let before = g.renown(0);
     for c in [a, b] {
         ship_at(&mut g, c);
-        g.hands[0] = HUT_COST;
+        g.hands[0] = cards_of(HUT_COST);
         g.apply(Action::Hut(c as u16)).unwrap();
     }
     assert_eq!(g.tokens_of(0, Token::Renown), 2, "2 Renown tokens, once");
@@ -295,7 +295,7 @@ fn road_crew_places_paths_or_ships() {
     let path = *legal(&g).iter().find(|a| matches!(a, Action::Path(_))).unwrap();
     g.apply(path).unwrap();
     assert_eq!(g.phase, Phase::Main);
-    assert_eq!(g.hands[0], [0; 5], "free");
+    assert_eq!(g.hands[0], [0; 8], "free");
 }
 
 #[test]
@@ -363,7 +363,7 @@ fn home_islands_are_where_you_set_up_and_every_other_island_is_a_bonus() {
         let e = listed(&g.board.graph.corner_edges[c]).next().unwrap();
         g.edge_owner[e] = 0;
         g.edge_kind[e] = if g.board.edge_land[e] { PATH } else { SHIP };
-        g.hands[0] = HUT_COST;
+        g.hands[0] = cards_of(HUT_COST);
         g.apply(Action::Hut(c as u16)).unwrap();
         assert_eq!(g.tokens_of(0, Token::Renown), bonus, "a Hut on island {region}");
     }
@@ -408,7 +408,7 @@ fn fog_hides_hexes_until_a_path_or_ship_reaches_them() {
     let top = *g.fog_tiles.last().unwrap();
     g.turn = 1;
     g.phase = Phase::Main;
-    g.hands = [[0; 5]; MAX_PLAYERS];
+    g.hands = [[0; 8]; MAX_PLAYERS];
     g.lift_fog(0, e);
     assert_eq!(g.board.terrain[h], top);
     assert!(g.revealed.contains(&(h as u16)));

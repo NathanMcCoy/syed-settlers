@@ -180,7 +180,7 @@ impl Game {
             return;
         }
         let mut pick = self.rng.below(n as usize) as u32;
-        for r in 0..5 {
+        for r in 0..CARD_KINDS {
             let have = self.hands[victim][r] as u32;
             if pick < have {
                 self.hands[victim][r] -= 1;
