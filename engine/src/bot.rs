@@ -114,10 +114,20 @@ impl Greedy {
                         -((*f + *gr) as f64 - target as f64).abs() + if fits { 0.0 } else { -10.0 }
                     }
                     Action::Wagon(e) => wagon_value(g, p, *e as usize),
+                    // Raider attack: guard the coast by its own buildings, send raiders at the leader
+                    Action::Capture(h) => threat(g, p, *h as usize) + g.raiders_on[*h as usize] as f64 * 0.1,
+                    Action::PlaceGuard(e) => guard_value(g, p, *e as usize),
+                    Action::MoveRaider(f, t) => {
+                        let from = if *f == crate::hex::NONE { 0.0 } else { threat(g, p, *f as usize) };
+                        from - threat(g, p, *t as usize) + leader_on(g, p, *t as usize)
+                    }
+                    Action::GuardMove(f, t) => guard_value(g, p, *t as usize) - guard_value(g, p, *f as usize),
+                    Action::GuardRun(f, t) => guard_value(g, p, *t as usize) - guard_value(g, p, *f as usize) - 0.5,
+                    Action::Skip => 0.01,
                     _ => f64::MIN,
                 })
             }
-            Phase::Rolled { .. } | Phase::SecondRoll | Phase::VoteDone | Phase::TurnEnd => legal[0],
+            Phase::Rolled { .. } | Phase::SecondRoll | Phase::VoteDone | Phase::TurnEnd | Phase::ExpelDone => legal[0],
             Phase::MoveSquall { .. } => self.best_by(legal, |a| match a {
                 Action::Squall(h) => squall_value(g, p, *h as usize),
                 Action::Pirate(h) => pirate_value(g, p, *h as usize),
@@ -205,8 +215,12 @@ impl Greedy {
                 return Action::Bridge(e as u16);
             }
         }
+        // Raider attack: orders bring knights (until all 6 are out)
+        if g.raider_attack() && legal.contains(&Action::Buy(0)) && g.edge_knights(p) < EDGE_KNIGHTS {
+            return Action::Buy(0);
+        }
         // Rivers: coins buy what's short; a spare resource buys a coin when this bot is Poor
-        if g.rivers() {
+        if g.rivers() || g.raider_attack() {
             let hand = g.hands[p as usize];
             if let Some(r) = (0..5).filter(|&r| hand[r] < need[r]).max_by_key(|&r| need[r] - hand[r]) {
                 if legal.contains(&Action::SpendCoins(r as u8)) {
@@ -315,6 +329,13 @@ impl Greedy {
         let spot = if pieces[P_HUT] > 0 { reachable_spot(g, p) } else { None };
         if let Some((_, 0, _)) = spot {
             return (Goal::Hut, HUT_COST);
+        }
+        // Raider attack: with raiders gathering on this bot's coast, orders (knights) come first
+        if g.raider_attack() && g.edge_knights(p) < EDGE_KNIGHTS {
+            let danger: f64 = g.coast.iter().map(|&h| threat(g, p, h as usize)).sum();
+            if danger >= 2.0 {
+                return (Goal::Project, PROJECT_COST);
+            }
         }
         if pieces[P_LODGE] > 0 && g.huts(pu) > 0 {
             return (Goal::Lodge, LODGE_COST);
@@ -439,6 +460,35 @@ fn spot_value(g: &Game, p: u8, c: usize) -> f64 {
     }
     if b.corner_market[c] != NOBODY {
         v += 1.0;
+    }
+    v
+}
+
+// Raider attack: how much the raiders on hex h hurt p (its buildings there, by how close to conquest)
+fn threat(g: &Game, p: u8, h: usize) -> f64 {
+    let mine: u32 = g.board.graph.hex_corners[h].iter().filter(|&&c| g.corner_owner[c as usize] == p).map(|&c| g.corner_kind[c as usize] as u32).sum();
+    mine as f64 * g.raiders_on.get(h).copied().unwrap_or(0) as f64
+}
+
+// ... how much raiders on h would hurt the leader (other than p)
+fn leader_on(g: &Game, p: u8, h: usize) -> f64 {
+    let leader = (0..g.players).filter(|&o| o != p as usize).max_by_key(|&o| g.renown(o)).unwrap_or(0);
+    g.board.graph.hex_corners[h].iter().filter(|&&c| g.corner_owner[c as usize] as usize == leader).map(|&c| g.corner_kind[c as usize] as f64).sum::<f64>() * 0.5
+}
+
+// ... a knight on edge e: the raiders it could help drive off by p's buildings (more when it tips the
+// balance), and a little for any coastal hex with raiders
+fn guard_value(g: &Game, p: u8, e: usize) -> f64 {
+    let gr = &g.board.graph;
+    let mut v = 0.0;
+    for h in listed(&gr.edge_hexes[e]) {
+        let r = g.raiders_on.get(h).copied().unwrap_or(0) as usize;
+        if r == 0 {
+            continue;
+        }
+        let knights = gr.hex_edges[h].iter().filter(|&&x| g.edge_knight[x as usize] != NOBODY && x as usize != e).count();
+        let tips = knights + 1 > r && knights <= r;
+        v += threat(g, p, h) + r as f64 * 0.3 + if tips { 2.0 } else { 0.0 };
     }
     v
 }

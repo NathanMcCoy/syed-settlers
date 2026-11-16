@@ -43,6 +43,13 @@ button { font: inherit; padding: 6px 12px; border-radius: 6px; border: 1px solid
 .fleet { fill: #1d2228; stroke: #fffaf0; stroke-width: 2; }
 .road.warship { stroke-width: 9; }
 .marker.fort { font-size: 13px; }
+/* Raider attack: the Keep, raiders, conquered hexes, knights on edges */
+.t-keep { fill: #9a8f7a; }
+.hex.conquered { filter: grayscale(0.85) brightness(0.8); }
+.marker.raiders { fill: #7a1f1f; }
+.edge-knight { fill: #fffaf0; stroke-width: 3; }
+.edge-knight.p0 { stroke: var(--p0); } .edge-knight.p1 { stroke: var(--p1); } .edge-knight.p2 { stroke: var(--p2); }
+.edge-knight.p3 { stroke: var(--p3); } .edge-knight.p4 { stroke: var(--p4); } .edge-knight.p5 { stroke: var(--p5); }
 /* Merchant trains: the watering hole and wagons */
 .t-oasis { fill: #b5d77a; }
 .wagon { stroke: #6b4423; stroke-width: 6; stroke-linecap: butt; pointer-events: none; }

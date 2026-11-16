@@ -333,7 +333,22 @@ Played on their own: not with the sea, the city expansion, event cards or the tw
   front of a train that hasn't ended; a train ends when its front reaches a corner with another wagon, or can't go
   on. 22 wagons. A building with 2+ wagons at its corner: +1 Renown. A wagon on a Path: +1 to its owner's line
   length. (Ours: no vote negotiation.)
-- Still to come: 4 Raider attack, 5 Traders and raiders.
+- **4 Raider attack** (12 Renown): the Keep on the centre hex and the Dunes in the ring round it (`island.dunes` 2,
+  `island.forest` 3; numbers: the usual 18 less one 11). The coast: the numbered hexes touching the sea, clockwise from
+  a random start; a raider each on its 2 and 12 (36 raiders). No squall: a 7 discards, then the roller robs anyone.
+  The second setup building is a Lodge. Every Hut or Lodge built: 3 rolls, each not 7 and not already rolled, each a
+  raider on every coastal hex with that number holding fewer than 3. 3 raiders conquer a hex: no production, no
+  building on its corners or edges; a building touching only conquered land hexes counts no Renown and uses no
+  market. Orders (Stone + Grain + Fish, used at once; the deck reshuffles its discards): Capture 4 (redrawn if no
+  raider is on the coast), Knighthood 14 (a knight on a free Keep edge), Swift Knight 4 (any free land edge), Turncoat
+  4 (2 coins; move 2 raiders from two different coastal hexes, or from the supply when none are out, to other
+  unconquered coastal hexes). 6 knights each. End of turn: each knight may move up to 3 edges (4-5 for a Grain),
+  ignoring pieces, ending on a free non-Keep edge; Keep knights must move. Then clockwise: a coastal hex with raiders
+  and more knights on its edges than raiders is freed; prisoners: one player there takes all; several: 1 each when
+  enough, the rest to the most knights (dice on a tie, the others 3 coins); too few: dice order, those left out 3
+  coins. Then a die (1/6, 2/5, 3/4) picks the pair of opposite sides whose knights go home, 3 coins each. 2 prisoners
+  = 1 Renown. Coins as in Rivers. (Ours: a number on two coastal hexes lands on both; the layout.)
+- Still to come: 5 Traders and raiders.
 
 ## The city expansion ⚙ (`city`, chosen when starting a game)
 

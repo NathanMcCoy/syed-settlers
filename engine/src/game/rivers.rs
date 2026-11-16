@@ -78,13 +78,14 @@ impl Game {
         self.wealth_renown(p) < 0
     }
 
+    // (coins also come with Raider attack)
     pub(super) fn legal_rivers(&self, p: u8, out: &mut Vec<Action>) {
-        if !self.rivers() {
+        if !self.rivers() && !self.raider_attack() {
             return;
         }
         let pu = p as usize;
         let hand = &self.hands[pu];
-        if afford(hand, &BRIDGE_COST) && self.bridges_left[pu] > 0 && !self.paths_blocked(p) {
+        if self.rivers() && afford(hand, &BRIDGE_COST) && self.bridges_left[pu] > 0 && !self.paths_blocked(p) {
             for e in 0..self.edge_owner.len() {
                 if self.bridge_site[e] && self.edge_connected(p, e) {
                     out.push(Action::Bridge(e as u16));

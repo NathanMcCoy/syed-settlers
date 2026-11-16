@@ -18,6 +18,7 @@ mod cloth;
 mod fishing;
 mod rivers;
 mod merchant;
+mod raiders;
 mod pending;
 mod pirates;
 mod sea;
@@ -35,6 +36,7 @@ pub use city::*;
 pub use fishing::{FISH_COSTS, LAKE_NUMBERS};
 pub use rivers::{BRIDGE_COST, BRIDGES};
 pub use merchant::{MOST_BID, WAGONS};
+pub use raiders::{CAPTURE, EDGE_KNIGHTS, KNIGHTHOOD, ORDERS, RAIDERS, SWIFT_KNIGHT, TURNCOAT};
 pub use events::{EVENTS, Event, event_card};
 pub use pending::{Decision, Pending};
 pub use sea::{GOLD, P_SHIP, SHIP, SHIP_COST};
@@ -121,6 +123,12 @@ pub enum Action {
     // The variants box's Merchant trains (merchant.rs)
     Bid(u8, u8),          // bid this much Fish and Grain in the wagon vote
     Wagon(u16),           // place the wagon on this edge
+    // The variants box's Raider attack (raiders.rs)
+    Capture(u16),         // take a raider on this coastal hex prisoner
+    PlaceGuard(u16),      // a knight on this edge
+    MoveRaider(u16, u16), // a raider from this coastal hex (NONE: the supply) to that one
+    GuardMove(u16, u16),  // your knight from this edge to that one (up to 3 steps)
+    GuardRun(u16, u16),   // the same, 4 or 5 steps, for a Grain
     NeutralHut(u8, u16),  // the two-player variant: a Hut for this neutral colour on this corner
     NeutralPath(u8, u16), // ... a Path for this neutral colour on this edge
     CashPilot,       // discard a played Pilot for 2 trade tokens
@@ -167,6 +175,7 @@ pub enum Phase {
     MarketDay,                  // Market Day: choose the resource everyone hands over
     VoteDone,                   // only as `after`: Merchant trains' vote is counted (merchant.rs)
     TurnEnd,                    // only as `after`: the phase ends once the decisions are made
+    ExpelDone,                  // only as `after`: Raider attack's knights have moved; drive the raiders off
     Over,
 }
 
@@ -377,6 +386,20 @@ pub struct Game {
     pub trains: Vec<(u16, u16, bool)>,
     pub wagon_due: bool,
     pub bids: [u8; MAX_PLAYERS],
+    // Raider attack (raiders.rs): the Keep, raiders per hex and in supply, the coast in order, knights
+    // per edge (owner), knights moved this turn, prisoners, the order deck and its discards, the last
+    // order drawn and the last landing's numbers
+    pub keep: u16,
+    pub raiders_on: Vec<u8>,
+    pub raider_supply: u8,
+    pub coast: Vec<u16>,
+    pub edge_knight: Vec<u8>,
+    pub knight_moved: Vec<bool>,
+    pub prisoners: [u8; MAX_PLAYERS],
+    pub orders: Vec<u8>,
+    pub orders_used: Vec<u8>,
+    pub last_order: u8,
+    pub last_landing: Vec<u8>,
     pub rng: Rng,
 }
 
@@ -543,6 +566,17 @@ impl Game {
             trains: Vec::new(),
             wagon_due: false,
             bids: [0; MAX_PLAYERS],
+            keep: NONE,
+            raiders_on: Vec::new(),
+            raider_supply: 0,
+            coast: Vec::new(),
+            edge_knight: Vec::new(),
+            knight_moved: Vec::new(),
+            prisoners: [0; MAX_PLAYERS],
+            orders: Vec::new(),
+            orders_used: Vec::new(),
+            last_order: NOBODY,
+            last_landing: Vec::new(),
             rng,
             board,
         };
@@ -560,6 +594,9 @@ impl Game {
         }
         if g.merchant_trains() {
             g.merchant_setup();
+        }
+        if g.raider_attack() {
+            g.raiders_setup();
         }
         if g.settings().variant_two {
             g.place_neutrals();
@@ -635,7 +672,8 @@ impl Game {
             + self.city_renown(p)
             + self.wagon_renown(p);
         // Rivers: +1 the Wealthiest, -2 the Poor (never below 0)
-        (r as i32 + self.wealth_renown(p)).max(0) as u32
+        // (Raider attack: prisoners, and conquered buildings counting nothing)
+        (r as i32 + self.wealth_renown(p) + self.raid_renown(p)).max(0) as u32
     }
 
     // ---- Winning (F10 in EXPANSIONS.md) ----
@@ -710,8 +748,8 @@ impl Game {
             }
         }
         for c in 0..self.corner_owner.len() {
-            if self.corner_owner[c] != p {
-                continue;
+            if self.corner_owner[c] != p || self.building_conquered(c) {
+                continue; // (Raider attack: a conquered building uses no market)
             }
             let m = self.board.corner_market[c];
             if m == NOBODY {
@@ -805,7 +843,7 @@ impl Game {
                 let medicine = self.cs.medicine && afford(hand, &MEDICINE_COST);
                 if (medicine || afford(hand, &LODGE_COST)) && pieces[P_LODGE] > 0 {
                     for c in 0..g.corners() {
-                        if self.corner_owner[c] == p && self.corner_kind[c] == HUT {
+                        if self.corner_owner[c] == p && self.corner_kind[c] == HUT && !self.by_conquered_corner(c) {
                             out.push(Action::Lodge(c as u16));
                         }
                     }
@@ -819,7 +857,7 @@ impl Game {
                 }
                 if afford(hand, &HUT_COST) && pieces[P_HUT] > 0 {
                     for c in 0..g.corners() {
-                        if self.spaced(c) && self.touches_own_edge(p, c) && !self.by_damage(c) && self.hut_spot(c) && self.pirate_hut_ok(p, c) {
+                        if self.spaced(c) && self.touches_own_edge(p, c) && !self.by_damage(c) && self.hut_spot(c) && self.pirate_hut_ok(p, c) && !self.by_conquered_corner(c) {
                             out.push(Action::Hut(c as u16));
                         }
                     }
@@ -844,7 +882,9 @@ impl Game {
                     }
                 }
                 if afford(hand, &PROJECT_COST) {
-                    if self.settings().projects_face_up {
+                    if self.raider_attack() {
+                        out.push(Action::Buy(0)); // an order, played at once
+                    } else if self.settings().projects_face_up {
                         for slot in 0..self.row.len() {
                             out.push(Action::Buy(slot as u8));
                         }
@@ -899,7 +939,7 @@ impl Game {
                     out.push(Action::Take(r));
                 }
             }
-            Phase::Over | Phase::Rolled { .. } | Phase::VoteDone | Phase::TurnEnd => {}
+            Phase::Over | Phase::Rolled { .. } | Phase::VoteDone | Phase::TurnEnd | Phase::ExpelDone => {}
         }
     }
 
@@ -908,7 +948,7 @@ impl Game {
             return; // an earthquake: repair first
         }
         for e in 0..self.edge_owner.len() {
-            if self.board.edge_land[e] && !self.is_bridge_site(e) && self.edge_connected(p, e) {
+            if self.board.edge_land[e] && !self.is_bridge_site(e) && !self.by_conquered_edge(e) && self.edge_connected(p, e) {
                 out.push(Action::Path(e as u16));
             }
         }
@@ -1087,6 +1127,7 @@ impl Game {
                 self.corner_kind[c as usize] = LODGE;
                 self.pieces[pu][P_LODGE] -= 1;
                 self.wagon_due |= self.merchant_trains(); // Merchant trains: building earns a wagon
+                self.raider_landing(); // Raider attack: every building brings a landing
                 if self.cs.hut_debt[pu] > 0 {
                     self.cs.hut_debt[pu] -= 1; // a pillaged Lodge's Hut that had no piece
                 } else {
@@ -1238,6 +1279,7 @@ impl Game {
                 self.hands[pu][give as usize] -= rate;
                 self.hands[pu][get as usize] += 1;
             }
+            Action::Buy(_) if self.raider_attack() => self.buy_order(pu),
             Action::Buy(slot) => {
                 pay(&mut self.hands[pu], &PROJECT_COST);
                 let k = if self.settings().projects_face_up {
@@ -1339,6 +1381,7 @@ impl Game {
                 self.coins[pu] += 1;
             }
             Action::Bid(f, gr) => self.bid(pu, f, gr),
+            Action::Capture(_) | Action::PlaceGuard(_) | Action::MoveRaider(..) | Action::GuardMove(..) | Action::GuardRun(..) => self.raid_decided(a),
             Action::Wagon(e) => {
                 self.place_wagon(e as usize);
                 self.decided(None);
@@ -1360,7 +1403,8 @@ impl Game {
             }
             Action::EndTurn => {
                 // Merchant trains: a wagon earned this phase is voted on and placed first
-                if !self.start_vote() {
+                // Raider attack: knights move and the raiders are driven off first
+                if !self.start_vote() && !self.start_guard_moves() {
                     self.end_phase();
                 }
                 if self.over() {
@@ -1403,7 +1447,7 @@ impl Game {
         self.corner_owner[c] = p;
         self.river_coins_corner(pu, c); // Rivers: a coin for a Hut on a river hex
         // The city expansion: the second setup building is a Lodge
-        if setup && self.city() && self.setup_step as usize >= self.players {
+        if setup && (self.city() || self.raider_attack()) && self.setup_step as usize >= self.players {
             self.corner_kind[c] = LODGE;
             self.pieces[pu][P_LODGE] -= 1;
         } else {
@@ -1433,6 +1477,7 @@ impl Game {
             self.island_reach(pu, c, false);
             self.hut_tokens(pu, c);
             self.check_villages(pu);
+            self.raider_landing(); // Raider attack: every building brings a landing
         }
         // A new building can break other players' lines
         self.update_titles();
@@ -1528,8 +1573,8 @@ impl Game {
         let city = self.city();
         let mut gold = [0u8; MAX_PLAYERS];
         for &h in &self.board.by_number[total as usize] {
-            if h == self.squall {
-                continue;
+            if h == self.squall || self.conquered(h as usize) {
+                continue; // (Raider attack: a conquered hex produces nothing)
             }
             let r = self.board.resource[h as usize] as usize;
             if r == NOBODY as usize {

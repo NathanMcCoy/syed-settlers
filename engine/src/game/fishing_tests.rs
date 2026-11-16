@@ -38,7 +38,7 @@ fn the_lake_sits_in_the_middle_and_six_fishing_grounds_ring_the_island() {
         assert_eq!(g.fish_bag.len(), 30);
     }
     assert!(Settings::parse_for("box.scenario=1;sea=true", 3).unwrap_err().contains("on its own"));
-    assert!(Settings::parse_for("box.scenario=4", 3).unwrap_err().contains("isn't ready"));
+    assert!(Settings::parse_for("box.scenario=5", 3).unwrap_err().contains("isn't ready"));
 }
 
 #[test]
