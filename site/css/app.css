@@ -47,6 +47,10 @@ button { font: inherit; padding: 6px 12px; border-radius: 6px; border: 1px solid
 .pirate { fill: #1d2228; fill-opacity: 0.55; stroke: #fffaf0; stroke-width: 2; }
 .target.edge.sea { stroke-dasharray: 6 3; }
 .target.edge.from { stroke: #ffd400; }
+.road.damaged { stroke-dasharray: 2 4; stroke-linecap: round; }
+.event-card { display: inline-flex; gap: 6px; align-items: baseline; padding: 3px 9px; border-radius: 6px; background: #fffaf0; border: 1px solid rgba(0, 0, 0, 0.25); font-size: 0.9rem; }
+.event-card strong { font-size: 1.1rem; }
+.variants { border: 1px solid rgba(0, 0, 0, 0.15); border-radius: 6px; padding: 6px 10px; display: grid; gap: 4px; }
 .token { fill: #fffaf0; stroke: rgba(0, 0, 0, 0.3); }
 .number { font: 700 15px system-ui, sans-serif; fill: #1d2228; text-anchor: middle; dominant-baseline: central; }
 .number.strong { fill: #b3261e; }

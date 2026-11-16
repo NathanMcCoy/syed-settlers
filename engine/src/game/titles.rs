@@ -9,8 +9,9 @@ use super::*;
 pub enum Title {
     LongestPath, // the longest line of Paths (worked out after a Path or a building)
     MostPilots,  // the most Pilots played (worked out when one is played)
+    StrongestPorts, // variant.ports: the most Renown in buildings on markets (after any building)
 }
-pub const TITLES: [Title; 2] = [Title::LongestPath, Title::MostPilots];
+pub const TITLES: [Title; 3] = [Title::LongestPath, Title::MostPilots, Title::StrongestPorts];
 pub const TITLE_COUNT: usize = TITLES.len();
 
 impl Title {
@@ -19,6 +20,15 @@ impl Title {
         match self {
             Title::LongestPath => "longestPath",
             Title::MostPilots => "mostPilots",
+            Title::StrongestPorts => "strongestPorts",
+        }
+    }
+
+    // Is this title in play in this game?
+    pub fn active(self, s: &Settings) -> bool {
+        match self {
+            Title::LongestPath | Title::MostPilots => true,
+            Title::StrongestPorts => s.variant_ports,
         }
     }
 
@@ -26,6 +36,7 @@ impl Title {
         match self {
             Title::LongestPath => s.longest_min,
             Title::MostPilots => s.most_pilots_min,
+            Title::StrongestPorts => 3,
         }
     }
 
@@ -33,6 +44,7 @@ impl Title {
         match self {
             Title::LongestPath => s.longest_renown,
             Title::MostPilots => s.most_pilots_renown,
+            Title::StrongestPorts => 2,
         }
     }
 }
@@ -48,16 +60,19 @@ impl Game {
         match t {
             Title::LongestPath => self.line[p],
             Title::MostPilots => self.pilots[p],
+            Title::StrongestPorts => self.port_renown(p),
         }
     }
 
     // Work out who holds this title now, from the players' current values
     pub(super) fn refresh_title(&mut self, t: Title) {
+        // (With the two-player variant, the neutral colours can hold titles too)
+        let owners = self.title_owners();
         let mut values = [0u8; MAX_PLAYERS];
-        for (p, v) in values.iter_mut().enumerate().take(self.players) {
+        for (p, v) in values.iter_mut().enumerate().take(owners) {
             *v = self.title_value(t, p);
         }
-        self.holders[t as usize] = title(self.holders[t as usize], &values[..self.players], t.min(self.settings()));
+        self.holders[t as usize] = title(self.holders[t as usize], &values[..owners], t.min(self.settings()));
     }
 
     // Renown from titles for player p

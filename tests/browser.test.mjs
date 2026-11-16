@@ -175,6 +175,41 @@ for (const [name, type] of Object.entries(BROWSERS)) {
     }
   });
 
+  for (const [label, seats, settings] of [
+    ['event cards, the friendly squall and Strongest Ports', 3, { 'variant.events': true, 'variant.friendly': true, 'variant.ports': true }],
+    ['the two-player variant', 2, { 'variant.two': true }],
+  ]) {
+    test(`${name}: a game with ${label}, played by clicking`, async () => {
+      const others = Array.from({ length: seats - 1 }, () => ({ kind: 'bot' }));
+      const { id, key } = await (await fetch(base + '/api/games', { method: 'POST', body: JSON.stringify({ seats: [{ kind: 'person', name: 'Tester' }, ...others], settings }) })).json();
+      assert.ok(id, 'the game was made');
+      const { browser, page, errors } = await open(type);
+      try {
+        await page.goto(`${base}/?g=${id}#k=${key}`);
+        await page.waitForSelector('#board svg');
+        let rolls = 0;
+        for (let i = 0; i < 800 && rolls < 10; i++) {
+          const state = await page.evaluate(() => ({ phase: document.body.dataset.phase, mine: document.body.dataset.myTurn === 'true' }));
+          if (state.phase === 'over') break;
+          if (!state.mine) { await page.waitForTimeout(25); continue; }
+          const before = await page.evaluate(() => document.querySelector('#log').textContent);
+          if (await page.locator('.target').count()) await page.locator('.target').first().click({ force: true });
+          else if (await page.locator('#choices button', { hasText: 'Roll' }).count()) { await page.locator('#choices button', { hasText: 'Roll' }).click(); rolls++; }
+          else if (await page.locator('#choices button', { hasText: 'End turn' }).count()) await page.locator('#choices button', { hasText: 'End turn' }).click();
+          else if (await page.locator('#choices button').count()) await page.locator('#choices button').first().click();
+          await page.waitForFunction(b => document.querySelector('#log').textContent !== b || document.querySelector('#move-error').textContent, before, { timeout: 5000 });
+          assert.equal(await page.textContent('#move-error'), '', 'the server accepted every click');
+        }
+        assert.ok(rolls >= 10 || (await page.evaluate(() => document.body.dataset.phase)) === 'over', `rolled ${rolls} times`);
+        if (settings['variant.events']) assert.equal(await page.locator('#dice .event-card').count(), 1, 'an event card instead of dice');
+        if (settings['variant.two']) assert.ok(await page.locator('.building title', { hasText: 'Neutral' }).count() >= 2, 'the neutral Huts');
+        assert.deepEqual(errors, []);
+      } finally {
+        await browser.close();
+      }
+    });
+  }
+
   test(`${name}: a friend's link opens their own seat and the key leaves the address`, async () => {
     const { browser, page, errors } = await open(type);
     try {

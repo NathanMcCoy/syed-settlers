@@ -17,7 +17,12 @@ mod pending;
 mod sea;
 mod titles;
 mod tokens;
+mod events;
 mod turns;
+mod two;
+mod variants;
+pub use two::NEUTRAL;
+pub use events::{EVENTS, Event, event_card};
 pub use pending::{Decision, Pending};
 pub use sea::{GOLD, P_SHIP, SHIP, SHIP_COST};
 pub use titles::{TITLE_COUNT, TITLES, Title, title};
@@ -60,6 +65,15 @@ pub enum Action {
     Ship(u16),       // the sea expansion: build (or in setup, place) a ship on a sea edge
     MoveShip(u16, u16), // move your ship from this edge to that one (once a turn)
     Pirate(u16),     // move the pirate to this sea hex (instead of the squall)
+    Gift(u8, u8),    // event cards: give this player one card of this resource
+    Rob(u8),         // event cards: take a random card from this player
+    Damage(u16),     // event cards (an earthquake): damage your own Path on this edge
+    Repair(u16),     // repair your damaged Path on this edge (Timber + Copper)
+    NeutralHut(u8, u16),  // the two-player variant: a Hut for this neutral colour on this corner
+    NeutralPath(u8, u16), // ... a Path for this neutral colour on this edge
+    CashPilot,       // discard a played Pilot for 2 trade tokens
+    ForceTrade,      // spend trade tokens: take 2 random cards from the other player, give 2 back
+    SquallHome,      // spend trade tokens: send the squall to the Dunes
     Lodge(u16),      // upgrade your Hut on this corner
     Path(u16),       // on an edge
     Roll,
@@ -91,6 +105,8 @@ pub enum Phase {
     SetupPath { hut: u16 },
     PreRoll,
     Decide,                     // decisions by one or more players (pending.rs), e.g. a 7's discards
+    Rolled { total: u8 },       // only as `after`: produce this number once the decisions are made
+    SecondRoll,                 // the two-player variant: roll again (a different number)
     MoveSquall { anywhere: bool },
     Steal,
     Main,
@@ -198,6 +214,18 @@ pub struct Game {
     pub ships_new: Vec<u16>,
     pub ship_moved: bool,
     pub islands_reached: [u16; MAX_PLAYERS],
+    // Event cards (events.rs): the deck (top last), the last card's event (NOBODY before the first),
+    // whether this production is an epidemic, and Paths an earthquake damaged
+    pub event_deck: Vec<u8>,
+    pub last_event: u8,
+    pub epidemic: bool,
+    pub damaged: Vec<bool>,
+    // The two-player variant (two.rs): the first roll's number this turn, whether it's been rolled,
+    // whether trade tokens were spent and a Pilot cashed in this turn
+    pub first_roll: u8,
+    pub rolled_once: bool,
+    pub token_used: bool,
+    pub pilot_cashed: bool,
     pub pending: Vec<Pending>,        // decisions waiting (pending.rs); the first is being made
     pub after: Phase,                 // where the game goes once they're all made
     pub last_take: [u8; MAX_PLAYERS], // what each player handed over on the last Market Day
@@ -271,7 +299,7 @@ impl Game {
             }
         }
         let g = &board.graph;
-        Game {
+        let mut g = Game {
             players,
             phase: Phase::SetupHut,
             back: Phase::PreRoll,
@@ -299,6 +327,14 @@ impl Game {
             ships_new: Vec::new(),
             ship_moved: false,
             islands_reached: [0; MAX_PLAYERS],
+            event_deck: Vec::new(),
+            last_event: NOBODY,
+            epidemic: false,
+            damaged: vec![false; g.edges()],
+            first_roll: 0,
+            rolled_once: false,
+            token_used: false,
+            pilot_cashed: false,
             pending: Vec::new(),
             after: Phase::PreRoll,
             last_take: [0; MAX_PLAYERS],
@@ -313,7 +349,14 @@ impl Game {
             paired: false,
             rng,
             board,
+        };
+        if g.settings().variant_events {
+            g.new_event_deck();
         }
+        if g.settings().variant_two {
+            g.place_neutrals();
+        }
+        g
     }
 
     // A game rebuilt from how it started and every move since (F14 in EXPANSIONS.md): the same island,
@@ -367,7 +410,8 @@ impl Game {
 
     // The Renown player p needs to win (rulesets will add modifiers here, e.g. +1 for an old boot)
     pub fn win_target(&self, _p: usize) -> u32 {
-        self.settings().win as u32
+        let s = self.settings();
+        s.win as u32 + s.variant_ports as u32
     }
 
     // Has p won? Enough Renown (rulesets will add their own ways here, e.g. finishing a wonder).
@@ -456,7 +500,9 @@ impl Game {
             Phase::PreRoll => {
                 out.push(Action::Roll);
                 self.legal_plays(pu, out);
+                self.legal_tokens(pu, out);
             }
+            Phase::SecondRoll => out.push(Action::Roll),
             Phase::Decide => {
                 if let Some(d) = self.deciding() {
                     self.legal_decision(d, out);
@@ -466,10 +512,15 @@ impl Game {
                 // squall.range 0 (the default): any land hex after a 7 too
                 let range = self.settings().squall_range as i32;
                 let anywhere = anywhere || range == 0;
+                let before = out.len();
                 for &h in &self.board.land_hexes {
-                    if h != self.squall && (anywhere || self.board.hex_distance(h, self.squall) <= range) {
+                    if h != self.squall && (anywhere || self.board.hex_distance(h, self.squall) <= range) && self.squall_allowed(h as usize) {
                         out.push(Action::Squall(h));
                     }
+                }
+                // Friendly squall with nowhere allowed: the Dunes
+                if out.len() == before && self.settings().variant_friendly {
+                    out.extend(self.squall_fallback().into_iter().map(Action::Squall));
                 }
                 if self.pirate != NONE {
                     for &h in &self.board.sea_hexes {
@@ -494,9 +545,16 @@ impl Game {
                         }
                     }
                 }
+                if afford(hand, &PATH_COST) && self.settings().variant_events {
+                    for e in 0..self.edge_owner.len() {
+                        if self.damaged[e] && self.edge_owner[e] == p {
+                            out.push(Action::Repair(e as u16));
+                        }
+                    }
+                }
                 if afford(hand, &HUT_COST) && pieces[P_HUT] > 0 {
                     for c in 0..g.corners() {
-                        if self.spaced(c) && self.touches_own_edge(p, c) {
+                        if self.spaced(c) && self.touches_own_edge(p, c) && !self.by_damage(c) {
                             out.push(Action::Hut(c as u16));
                         }
                     }
@@ -529,6 +587,7 @@ impl Game {
                     }
                 }
                 self.legal_plays(pu, out);
+                self.legal_tokens(pu, out);
                 if let Some(o) = &self.offer {
                     out.push(Action::Withdraw);
                     for s in 0..self.players {
@@ -564,11 +623,14 @@ impl Game {
                     out.push(Action::Take(r));
                 }
             }
-            Phase::Over => {}
+            Phase::Over | Phase::Rolled { .. } => {}
         }
     }
 
     fn legal_paths(&self, p: u8, out: &mut Vec<Action>) {
+        if self.paths_blocked(p) {
+            return; // an earthquake: repair first
+        }
         for e in 0..self.edge_owner.len() {
             if self.board.edge_land[e] && self.edge_connected(p, e) {
                 out.push(Action::Path(e as u16));
@@ -696,7 +758,7 @@ impl Game {
         let mut out = Vec::with_capacity(3);
         for &c in &self.board.graph.hex_corners[self.squall as usize] {
             let o = self.corner_owner[c as usize];
-            if o != NOBODY && o != self.current && self.cards(o as usize) > 0 && !out.contains(&o) {
+            if o != NOBODY && o != self.current && self.cards(o as usize) > 0 && !out.contains(&o) && !self.protected(o as usize) {
                 out.push(o);
             }
         }
@@ -744,6 +806,7 @@ impl Game {
                 self.corner_kind[c as usize] = LODGE;
                 self.pieces[pu][P_LODGE] -= 1;
                 self.pieces[pu][P_HUT] += 1;
+                self.refresh_ports();
             }
             Action::Path(e) => self.place_edge(p, e as usize, PATH),
             Action::Ship(e) => self.place_edge(p, e as usize, SHIP),
@@ -766,9 +829,71 @@ impl Game {
                     _ => self.phase = Phase::Steal,
                 }
             }
-            Action::Roll => {
-                let total = self.production_roll();
+            Action::Roll if self.phase == Phase::SecondRoll => {
+                // The two-player variant's second roll: a number different from the first
+                let mut total = self.production_roll();
+                while total == self.first_roll {
+                    total = self.production_roll();
+                }
+                self.rolled_once = true;
                 self.rolled(total);
+            }
+            Action::Roll if self.two() => {
+                let total = self.production_roll();
+                self.first_roll = total;
+                self.rolled(total);
+            }
+            Action::NeutralHut(n, c) => {
+                self.corner_owner[c as usize] = n;
+                self.corner_kind[c as usize] = HUT;
+                self.update_titles();
+                self.decided(None);
+            }
+            Action::NeutralPath(n, e) => {
+                self.edge_owner[e as usize] = n;
+                self.edge_kind[e as usize] = PATH;
+                self.update_titles();
+                self.decided(None);
+            }
+            Action::CashPilot => {
+                self.pilots[pu] -= 1;
+                self.pilot_cashed = true;
+                self.give_tokens(pu, Token::Trade, 2);
+                self.refresh_title(Title::MostPilots);
+            }
+            Action::ForceTrade => self.force_trade(pu),
+            Action::SquallHome => {
+                let cost = self.token_cost(pu);
+                self.spend_tokens(pu, Token::Trade, cost);
+                self.token_used = true;
+                if let Some(&h) = self.board.land_hexes.iter().find(|&&h| self.board.terrain[h as usize] == Terrain::Dunes) {
+                    self.squall = h;
+                }
+            }
+            Action::Roll => {
+                if self.settings().variant_events {
+                    self.draw_event();
+                } else {
+                    let total = self.production_roll();
+                    self.rolled(total);
+                }
+            }
+            Action::Gift(to, r) => {
+                self.hands[pu][r as usize] -= 1;
+                self.hands[to as usize][r as usize] += 1;
+                self.decided(None);
+            }
+            Action::Rob(v) => {
+                self.rob(pu, v as usize);
+                self.decided(None);
+            }
+            Action::Damage(e) => {
+                self.damaged[e as usize] = true;
+                self.decided(None);
+            }
+            Action::Repair(e) => {
+                pay(&mut self.hands[pu], &PATH_COST);
+                self.damaged[e as usize] = false;
             }
             Action::Discard(r) => {
                 self.hands[pu][r as usize] -= 1;
@@ -825,10 +950,14 @@ impl Game {
             }
             Action::Take(r) => match self.phase {
                 Phase::Decide => {
-                    // A gold field: one resource of the player's choice
+                    // A gold field or an event: one resource of the player's choice
                     self.hands[pu][r as usize] += 1;
-                    let Some(Pending { decision: Decision::Gold { left }, .. }) = self.deciding() else { unreachable!("gold is decided") };
-                    self.decided(if left > 1 { Some(Decision::Gold { left: left - 1 }) } else { None });
+                    let next = match self.deciding().map(|d| d.decision) {
+                        Some(Decision::Gold { left }) if left > 1 => Some(Decision::Gold { left: left - 1 }),
+                        Some(Decision::Pick { left }) if left > 1 => Some(Decision::Pick { left: left - 1 }),
+                        _ => None,
+                    };
+                    self.decided(next);
                 }
                 Phase::Harvest { left } => {
                     self.hands[pu][r as usize] += 1;
@@ -931,17 +1060,28 @@ impl Game {
             }
             let decisions = self.gold_decisions(&gold);
             self.decide_then(decisions, Phase::SetupPath { hut: c as u16 });
+            self.hut_tokens(pu, c);
         } else {
             self.island_bonus(pu, c);
+            self.hut_tokens(pu, c);
         }
         // A new building can break other players' lines
         self.update_titles();
+        self.refresh_ports();
+        // The two-player variant: a Hut built owes a neutral Hut (or Path)
+        if !setup {
+            if let Some(d) = self.owe_neutral(p, true) {
+                let after = self.phase;
+                self.decide_then([d], after);
+            }
+        }
     }
 
     // A Path or a ship (kind PATH or SHIP): bought in the main phase, free with Road Crew or in setup
     fn place_edge(&mut self, p: u8, e: usize, kind: u8) {
         let pu = p as usize;
         let (cost, piece) = if kind == SHIP { (SHIP_COST, P_SHIP) } else { (PATH_COST, P_PATH) };
+        let built = matches!(self.phase, Phase::Main | Phase::FreeBuild { .. });
         match self.phase {
             Phase::Main => pay(&mut self.hands[pu], &cost),
             Phase::FreeBuild { left } => self.phase = Phase::FreeBuild { left: left - 1 },
@@ -968,6 +1108,13 @@ impl Game {
             }
         }
         self.finish_free_build();
+        // The two-player variant: a Path built owes a neutral Path
+        if kind == PATH && built {
+            if let Some(d) = self.owe_neutral(p, false) {
+                let after = self.phase;
+                self.decide_then([d], after);
+            }
+        }
     }
 
     // Road Crew ends when both Paths are down, or when nothing more can be placed
@@ -1001,11 +1148,13 @@ impl Game {
             let r = self.board.resource[h as usize] as usize;
             for &c in &g.hex_corners[h as usize] {
                 let o = self.corner_owner[c as usize];
-                if o != NOBODY {
+                if o != NOBODY && (o as usize) < self.players {
+                    // An epidemic (event cards): Lodges produce 1, not 2
+                    let n = if self.epidemic { 1 } else { self.corner_kind[c as usize] };
                     if r == GOLD as usize {
-                        gold[o as usize] += self.corner_kind[c as usize];
+                        gold[o as usize] += n;
                     } else {
-                        owed[o as usize][r] += self.corner_kind[c as usize];
+                        owed[o as usize][r] += n;
                     }
                 }
             }
@@ -1070,7 +1219,7 @@ impl Game {
     // Longest Path, after a Path or a building is placed (Most Pilots changes only when a Pilot is
     // played)
     fn update_titles(&mut self) {
-        for p in 0..self.players {
+        for p in 0..self.title_owners() {
             self.line[p] = self.longest_line(p as u8);
         }
         self.refresh_title(Title::LongestPath);

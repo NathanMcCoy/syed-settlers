@@ -9,8 +9,24 @@ import { islandSvg, el, centre, point, hexPoints, RESOURCES, SIZE } from './boar
 const $ = id => document.getElementById(id);
 const COLOURS = ['Red', 'Blue', 'Orange', 'Purple', 'Green', 'Brown'];
 // Titles and tokens by the names the engine uses (titles.rs, tokens.rs); unknown ones show their name
-const TITLE_NAMES = { longestPath: 'Longest Path', mostPilots: 'Most Pilots' };
+const TITLE_NAMES = { longestPath: 'Longest Path', mostPilots: 'Most Pilots', strongestPorts: 'Strongest Ports' };
 const TOKEN_NAMES = { renown: ['Renown token', 'Renown tokens'], trade: ['trade token', 'trade tokens'] };
+// Event cards (the variants box)
+const EVENT_NAMES = {
+  beautifulDay: ['A beautiful day', 'Nothing happens.'],
+  squallAttacks: ['The squall attacks', 'A 7: big hands lose half, the squall moves.'],
+  squallFlees: ['The squall flees', 'It goes to the Dunes.'],
+  conflict: ['Conflict', 'The player with Most Pilots (or the most played) robs anyone.'],
+  tradeAdvantage: ['Trade advantage', 'Longest Path robs anyone.'],
+  calmSeas: ['Calm seas', 'The most buildings on markets: a resource of their choice.'],
+  tournament: ['Tournament', 'The most Pilots played: a resource of their choice.'],
+  plentifulYear: ['A plentiful year', 'Everyone takes a resource of their choice.'],
+  goodNeighbours: ['Good neighbours', 'Everyone gives a card to the player on their left.'],
+  helpfulNeighbour: ['A helpful neighbour', 'The leader gives a card to someone behind.'],
+  epidemic: ['Epidemic', 'Lodges produce 1, not 2.'],
+  earthquake: ['Earthquake', 'Everyone damages one of their Paths: repair it before building Paths.'],
+  newYear: ['New Year', 'The deck is shuffled again.'],
+};
 const PROJECTS = { pilot: 'Pilot', lighthouse: 'Lighthouse', roadCrew: 'Road Crew', harvest: 'Good Harvest', marketDay: 'Market Day' };
 const PROJECT_HELP = {
   pilot: 'Move the squall to any land hex, then steal',
@@ -85,6 +101,9 @@ function home() {
     if (Number(f.rounds.value) !== 0) settings.rounds = Number(f.rounds.value);
     if (f.faceUp.checked) settings['projects.faceUp'] = true;
     if (f.sea.checked) settings.sea = true;
+    for (const [box, name] of [['friendly', 'variant.friendly'], ['ports', 'variant.ports'], ['events', 'variant.events'], ['two', 'variant.two']]) {
+      if (f[box].checked) settings[name] = true;
+    }
     $('home-error').textContent = '';
     try {
       const res = await fetch('/api/games', { method: 'POST', body: JSON.stringify({ seats, settings }) });
@@ -179,7 +198,8 @@ function drawBoard() {
 
 const cornerAt = c => point(board.corners[c]);
 const edgeEnds = e => board.edges[e].map(cornerAt);
-const nameOf = s => snap.seats[s]?.name ?? `Seat ${s + 1}`;
+// (Owners past the seats are the two-player variant's neutral colours)
+const nameOf = s => snap.seats[s]?.name ?? (s >= snap.seats.length ? 'Neutral' : `Seat ${s + 1}`);
 // The server sends only this seat's moves: on your turn everything you can do, otherwise only your
 // answers to a trade offer made to you
 const legal = () => snap.view.legal;
@@ -248,7 +268,8 @@ function drawPieces(v, before) {
   layers.roads.replaceChildren();
   for (const [e, p, kind] of v.roads) {
     const [a, b] = edgeEnds(e);
-    const line = el('line', { x1: a.x, y1: a.y, x2: b.x, y2: b.y, class: `road${kind === 2 ? ' ship' : ''} p${p}${glow(`e${e}:${kind}`)}`, 'data-edge': e });
+    const broken = (v.damaged ?? []).includes(e) ? ' damaged' : '';
+    const line = el('line', { x1: a.x, y1: a.y, x2: b.x, y2: b.y, class: `road${kind === 2 ? ' ship' : ''}${broken} p${p}${glow(`e${e}:${kind}`)}`, 'data-edge': e });
     line.append(el('title', {}, `${nameOf(p)}'s ${kind === 2 ? 'ship' : 'Path'}`));
     layers.roads.append(line);
   }
@@ -277,7 +298,13 @@ const PIPS = { 1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6,
 function drawDice(v) {
   const box = $('dice');
   const parts = [];
-  if (v.dice) {
+  if (v.event) {
+    const [title, text] = EVENT_NAMES[v.event.name] ?? [v.event.name, ''];
+    const card = Object.assign(document.createElement('span'), { className: 'event-card', title: text });
+    card.append(Object.assign(document.createElement('strong'), { textContent: v.event.number }), ` ${title}`);
+    parts.push(card);
+    box.setAttribute('aria-label', `Event card: ${v.event.number}, ${title}. ${text}`);
+  } else if (v.dice) {
     box.setAttribute('aria-label', `Last roll: ${v.dice[0]} and ${v.dice[1]}, ${v.dice[0] + v.dice[1]}`);
     parts.push(...v.dice.map(n => {
       const die = document.createElement('span');
@@ -375,6 +402,17 @@ function drawTargets(v) {
       const t = el('line', { x1: a.x, y1: a.y, x2: b.x, y2: b.y, class: 'target edge', 'data-move': m, 'data-edge-target': n, tabindex: 0 });
       t.append(el('title', {}, 'Build a Path here'));
       layers.targets.append(t);
+    } else if (word === 'neutralhut') {
+      const { x, y } = cornerAt(Number(m.split(' ')[2]));
+      const t = el('circle', { cx: x, cy: y, r: 9, class: 'target corner', 'data-move': m, tabindex: 0 });
+      t.append(el('title', {}, 'A Hut for the neutral colour'));
+      layers.targets.append(t);
+    } else if (word === 'neutralpath' || word === 'damage' || word === 'repair') {
+      const e = Number(m.split(' ')[word === 'neutralpath' ? 2 : 1]);
+      const [a, b] = edgeEnds(e);
+      const t = el('line', { x1: a.x, y1: a.y, x2: b.x, y2: b.y, class: 'target edge', 'data-move': m, 'data-edge-target': e, tabindex: 0 });
+      t.append(el('title', {}, word === 'damage' ? 'Damage this Path' : word === 'repair' ? 'Repair this Path' : 'A Path for the neutral colour'));
+      layers.targets.append(t);
     } else if (word === 'ship') {
       // Drawn a little toward the sea, so a coastal edge's Path and ship spots don't overlap
       const [a, b] = seaEdgeEnds(Number(n));
@@ -426,6 +464,12 @@ function status(v) {
     case 'discard': return mine ? `A 7! You hold too many cards: choose ${v.players[v.you].discard} more to lose.` : `A 7: ${who} is choosing cards to lose.`;
     case 'moveSquall': return mine ? (v.pirate !== null ? 'Move the squall (a lit land hex) or the pirate (a lit sea hex).' : 'Move the squall: click a lit hex.') : `${who} is moving the ${v.pirate !== null ? 'squall or the pirate' : 'squall'}.`;
     case 'gold': return mine ? 'A gold field paid you: choose a resource.' : `${who} is choosing resources from a gold field.`;
+    case 'pick': return mine ? 'The event card gives you a resource: choose one.' : `${who} is choosing a resource.`;
+    case 'gift': return mine ? 'The event card: choose a card to give.' : `${who} is choosing a card to give.`;
+    case 'rob': return mine ? 'The event card lets you rob someone: choose who.' : `${who} is choosing who to rob.`;
+    case 'damage': return mine ? 'Earthquake: click one of your Paths to damage.' : `${who} is choosing a Path to damage.`;
+    case 'neutral': return mine ? 'Now build one for a neutral colour: click a lit spot.' : `${who} is building for a neutral colour.`;
+    case 'secondRoll': return mine ? 'Roll again: two productions a turn (the second a different number).' : `${who} is rolling again.`;
     case 'steal': return mine ? 'Choose who to steal a card from.' : `${who} is choosing who to steal from.`;
     // 5-6 players: the player 3 seats on builds after each turn (no roll, no trading with players)
     case 'main': if (v.paired) return mine ? `Your extra build phase (after ${nameOf(v.turnOf)}'s turn): build, buy or play a project, trade with the bank or markets (not with players), then end it.` : `${who} has an extra build phase after ${nameOf(v.turnOf)}'s turn.`;
@@ -458,6 +502,12 @@ function drawChoices(v) {
     if (word === 'discard') box.append(button(`Lose ${RESOURCES[n]} (${v.hand[n]})`, m));
     if (word === 'take') box.append(button(v.phase === 'marketDay' ? `Take everyone's ${RESOURCES[n]}` : `Take ${RESOURCES[n]}`, m));
     if (word === 'steal') box.append(button(`Steal from ${nameOf(Number(n))} (${v.players[n].cards} cards)`, m));
+    // Event cards and the two-player variant
+    if (word === 'gift') box.append(button(`Give ${nameOf(Number(n))} a ${RESOURCES[m.split(' ')[2]]}`, m));
+    if (word === 'rob') box.append(button(`Rob ${nameOf(Number(n))} (${v.players[n].cards} cards)`, m));
+    if (word === 'cashpilot') box.append(button('Cash in a played Pilot (+2 trade tokens)', m));
+    if (word === 'forcetrade') box.append(button(`Forced trade (${v.players[v.you].renown <= v.players[1 - v.you].renown ? 1 : 2} token)`, m));
+    if (word === 'squallhome') box.append(button('Send the squall to the Dunes (trade tokens)', m));
     // Projects are played from Your projects, under the hand (drawMyProjects)
   }
   if (moves.includes('end')) box.append(button('End turn', 'end', 'primary'));
@@ -523,6 +573,7 @@ const SHOP = [
   { key: 'hut', name: 'Hut', cost: [1, 0, 1, 1, 1], piece: 1, note: '1 Renown' },
   { key: 'lodge', name: 'Lodge', cost: [0, 3, 2, 0, 0], piece: 2, note: '2 Renown, upgrades a Hut' },
   // The sea expansion only
+  { key: 'repair', name: 'Repair a Path', cost: [1, 0, 0, 1, 0], piece: 0, note: 'An earthquake damaged it: no new Paths until it\'s repaired', repair: true },
   { key: 'ship', name: 'Ship', cost: [1, 0, 0, 0, 1], piece: 3, note: 'Sails on from your buildings and ships', sea: true },
   { key: 'moveship', name: 'Move a ship', cost: [0, 0, 0, 0, 0], piece: 3, note: 'Once a turn: a ship with an open end, not built this turn', sea: true, free: true },
 ];
@@ -549,7 +600,8 @@ function drawShop(v) {
     $('shop').replaceChildren(li);
     return;
   }
-  const pieces = SHOP.filter(item => !item.sea || v.pirate !== null).map(item => {
+  const myDamaged = (v.damaged ?? []).some(e => v.roads.some(([re, p]) => re === e && p === v.you));
+  const pieces = SHOP.filter(item => (!item.sea || v.pirate !== null) && (!item.repair || myDamaged)).map(item => {
     const reason = shopReason(v, item);
     const b = document.createElement('button');
     b.type = 'button';
@@ -872,6 +924,15 @@ function describe(entry) {
     case 'ship': return `${who} built a ship`;
     case 'moveship': return `${who} moved a ship`;
     case 'pirate': return `${who} moved the pirate`;
+    case 'gift': return `${who} gave ${Number(a) === snap.view.you ? 'you' : nameOf(Number(a))} a card`;
+    case 'rob': return `${who} robbed ${Number(a) === snap.view.you ? 'you' : nameOf(Number(a))}`;
+    case 'damage': return `${who}'s Path was damaged by the earthquake`;
+    case 'repair': return `${who} repaired a Path`;
+    case 'neutralhut': return `${who} built a neutral Hut`;
+    case 'neutralpath': return `${who} built a neutral Path`;
+    case 'cashpilot': return `${who} cashed in a Pilot for trade tokens`;
+    case 'forcetrade': return `${who} forced a trade`;
+    case 'squallhome': return `${who} sent the squall to the Dunes`;
     case 'roll': return `${who} rolled ${entry.roll}`;
     case 'discard': return `${who} lost a ${RESOURCES[a]}`;
     case 'squall': return `${who} moved the squall`;
