@@ -137,16 +137,24 @@ test('live updates arrive for each move, with the seat\'s own view', async () =>
 
 // Plays the first legal move for `key` until it's that seat's main turn with at least one card
 async function toMyMainTurn(id, key) {
-  return until(async () => {
-    const g = await getJson(`/api/games/${id}?k=${key}`);
-    const v = g.view;
-    if (v.toAct === v.you && v.phase === 'main' && v.hand.some(n => n > 0)) return g;
-    if (v.toAct === v.you && v.legal.length) {
-      const pick = v.legal.find(m => m === 'roll') ?? v.legal.find(m => m === 'end') ?? v.legal[0];
-      await post(`/api/games/${id}/move`, { k: key, move: pick });
-    }
-    return null;
-  }, 30_000);
+  let last = null, moves = 0;
+  try {
+    return await until(async () => {
+      const g = await getJson(`/api/games/${id}?k=${key}`);
+      const v = g.view;
+      last = { phase: v.phase, toAct: v.toAct, you: v.you, turn: v.turn, hand: v.hand, legal: v.legal.slice(0, 4), log: g.log.slice(-4) };
+      if (v.toAct === v.you && v.phase === 'main' && v.hand.some(n => n > 0)) return g;
+      if (v.toAct === v.you && v.legal.length) {
+        const pick = v.legal.find(m => m === 'roll') ?? v.legal.find(m => m === 'end') ?? v.legal[0];
+        await post(`/api/games/${id}/move`, { k: key, move: pick });
+        moves++;
+      }
+      return null;
+    }, 30_000);
+  } catch (e) {
+    // Say where the game was when it gave up (a timeout alone doesn't show why)
+    throw new Error(`no main turn with cards after ${moves} moves; last seen ${JSON.stringify(last)}`);
+  }
 }
 
 // An offer of one card the player has for one of a resource they don't offer

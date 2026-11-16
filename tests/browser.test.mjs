@@ -20,15 +20,17 @@ const BROWSERS = { chromium, webkit };
 
 // A game against a bot where it's your turn and you can play a project, reached through the API:
 // buy project cards whenever possible, trade with the bank for a missing Stone, Grain or Fish, build
-// Huts and Lodges for more cards. A simple strategy that usually gets there within 30 of the tester's
-// turns, so start a fresh game when one doesn't (8 tries). The budget is turns, not seconds: a time
+// Huts and Lodges for more cards. A simple strategy that usually gets there within 150 of the tester's
+// turns (median ~35 with a bot opponent, measured Nov 16; 30 was too few), so start a fresh game when
+// one doesn't (8 tries). The budget is turns, not seconds: a time
 // budget failed whenever other test files kept the CPU busy (Nov 16: all 8 tries timed out in
 // Chromium while the 6-seat API game ran alongside).
 // Settings: win at 20 Renown (the most allowed) and a big deck without Lighthouses (never played).
 // `deck`: other deck settings (e.g. only Market Days). `passive`: the other seat is a friend this
 // helper plays (roll, end, nothing else) instead of a bot. Needed with a Market-Day-only deck: the
 // bot buys Market Days and takes the tester's cards with them, so the tester then got a project in
-// only ~27% of tries (11 of 40, measured Nov 16) and all 8 tries failed now and then.
+// only ~27% of tries (11 of 40, measured Nov 16) and all 8 tries failed now and then. With any deck,
+// a bot opponent sometimes buys the whole deck first (9 of 40 tries never got a project).
 async function gameWithPlayableProject(deck = {}, passive = false) {
   const settings = { win: 20, 'projects.deck.pilot': 30, 'projects.deck.lighthouse': 0, 'projects.deck.roadCrew': 10, 'projects.deck.harvest': 10, 'projects.deck.marketDay': 10, ...deck };
   const PROJECT = [1, 2, 4];
@@ -39,7 +41,7 @@ async function gameWithPlayableProject(deck = {}, passive = false) {
     assert.ok(id, 'the game was made with these settings');
     const friend = passive ? invites[0].key : null;
     let turns = 0;
-    for (const end = Date.now() + 60_000; turns < 30 && Date.now() < end; ) {
+    for (const end = Date.now() + 60_000; turns < 150 && Date.now() < end; ) {
       const v = (await (await fetch(`${fastBase}/api/games/${id}?k=${key}`)).json()).view;
       if (v.phase === 'over') break;
       if (passive && v.toAct !== v.you) {
@@ -370,7 +372,7 @@ for (const [name, type] of Object.entries(BROWSERS)) {
   });
 
   test(`${name}: a project you can play has a Use button in Your projects, not in the turn bar`, async () => {
-    const { id, key, v } = await gameWithPlayableProject();
+    const { id, key, v } = await gameWithPlayableProject({}, true);
     const { browser, page, errors } = await open(type);
     try {
       await page.goto(`${fastBase}/?g=${id}#k=${key}`);
