@@ -2,7 +2,7 @@
 // A person plays against bots only by clicking what the page lights up; a friend's link opens their
 // own seat; nothing logs an error (including the security policy refusing something); phones don't
 // scroll sideways.
-import { test, after } from 'node:test';
+import { test as nodeTest, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { chromium, webkit } from 'playwright';
 import { start } from '../server/server.mjs';
@@ -16,7 +16,16 @@ const fast = await start({ port: 0, host: '127.0.0.1', botDelay: 0 });
 const fastBase = `http://127.0.0.1:${fast.address().port}`;
 after(() => fast.close());
 
-const BROWSERS = { chromium, webkit };
+// CI splits these across machines: BROWSER=webkit runs one browser's tests, and SHARD=2/3 every
+// third test from the second on (in the order they're written). BROWSER=none runs none (CI's unit
+// job runs every other test file). Unset: everything, as locally.
+const [part, parts] = (process.env.SHARD || '1/1').split('/').map(Number);
+if (!(parts >= 1 && part >= 1 && part <= parts)) throw new Error(`SHARD must look like 2/3, not ${process.env.SHARD}`);
+let written = 0, registered = 0;
+const test = (...args) => { if (written++ % parts === part - 1) { registered++; nodeTest(...args); } };
+const ALL_BROWSERS = { chromium, webkit };
+if (process.env.BROWSER && process.env.BROWSER !== 'none' && !ALL_BROWSERS[process.env.BROWSER]) throw new Error(`BROWSER must be ${Object.keys(ALL_BROWSERS).join(', ')} or none`);
+const BROWSERS = Object.fromEntries(Object.entries(ALL_BROWSERS).filter(([n]) => !process.env.BROWSER || n === process.env.BROWSER));
 
 // A game against a bot where it's your turn and you can play a project, reached through the API:
 // buy project cards whenever possible, trade with the bank for a missing Stone, Grain or Fish, build
@@ -582,3 +591,7 @@ for (const [name, type] of Object.entries(BROWSERS)) {
     }
   });
 }
+
+// Nothing registered (BROWSER=none, or a shard with nothing in it): node:test then never runs the
+// after() hooks, and the two open servers would keep this file running for ever
+if (!registered) { server.close(); fast.close(); }
