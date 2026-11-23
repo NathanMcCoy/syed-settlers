@@ -8,7 +8,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { chromium, webkit } from 'playwright';
 import { start } from '../server/server.mjs';
 
-const ENDPOINT = 'https://admin.pacificfish.ca/api/bugs';
+const ENDPOINT = 'https://bugs.pacificfish.ca/api/bugs';
 // [address, app, what shows once it's ready, then (optional) what to do first]
 const PAGES = [['/', 'settlers', '#board svg', async page => {   // a game against a bot, mid-way through setup
   await page.fill('input[name="name"]', 'Tester');
@@ -97,6 +97,8 @@ for (const [name, engine] of [['Chromium', chromium], ['WebKit', webkit]]) {
       await box.locator('textarea').fill('sent later');
       await box.getByRole('button', { name: 'Save' }).click();
       await box.getByText('kept on this device').waitFor();
+      assert.equal(await box.locator('a.bugreport-signin').getAttribute('href'),
+        `https://bugs.pacificfish.ca/signin?then=${encodeURIComponent(page.url())}`, 'a sign-in link that comes back here');
       assert.ok(await box.getByRole('button', { name: 'Download it' }).isVisible(), 'it can be downloaded');
       await box.getByRole('button', { name: 'Close' }).click();
       assert.equal(await btn.locator('span').innerText(), '1');
