@@ -97,7 +97,7 @@ jobs:
         run: npx playwright install --with-deps ${{ matrix.browser }}
       - if: steps.browsers.outputs.cache-hit == 'true'
         run: npx playwright install-deps ${{ matrix.browser }}
-      - run: node --test tests/browser.test.mjs
+      - run: node --test tests/browser.test.mjs tests/bugreport.test.mjs
         env:
           BROWSER: ${{ matrix.browser }}
           SHARD: ${{ matrix.shard }}
